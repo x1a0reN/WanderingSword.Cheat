@@ -401,9 +401,15 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 
 	Edit->SetHintText(MakeText(Hint));
 	Edit->SetText(MakeText(DefaultValue));
-	Edit->MinimumDesiredWidth = 180.0f;
+	Edit->MinimumDesiredWidth = 320.0f;
 	Edit->SelectAllTextWhenFocused = true;
 	Edit->ClearKeyboardFocusOnCommit = false;
+	Edit->Font.Size = 22;
+	Edit->WidgetStyle.Font.Size = 22;
+	Edit->WidgetStyle.Padding.Left = 10.0f;
+	Edit->WidgetStyle.Padding.Top = 8.0f;
+	Edit->WidgetStyle.Padding.Right = 10.0f;
+	Edit->WidgetStyle.Padding.Bottom = 8.0f;
 	ClearEditableTextBindings(Edit);
 
 	auto MakeSlateColor = [](float R, float G, float B, float A) -> FSlateColor
@@ -429,17 +435,67 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 	auto* InputSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
 	if (InputSize)
 	{
-		InputSize->SetWidthOverride(220.0f);
-		InputSize->SetHeightOverride(34.0f);
+		InputSize->SetWidthOverride(340.0f);
+		InputSize->SetHeightOverride(50.0f);
 		InputSize->SetContent(InputWidget);
 		InputWidget = InputSize;
 	}
 
 	UPanelWidget* ValuePanel = nullptr;
-	if (Item->VolumeSlider)
-		ValuePanel = Item->VolumeSlider->GetParent();
-	if (!ValuePanel && Item->TXT_CurrentValue)
-		ValuePanel = Item->TXT_CurrentValue->GetParent();
+	const char* ValuePanelSource = "none";
+	int ValuePanelScore = -1;
+
+	auto GetPanelTypeName = [](UPanelWidget* P) -> const char*
+	{
+		if (!P) return "null";
+		if (P->IsA(UHorizontalBox::StaticClass())) return "HorizontalBox";
+		if (P->IsA(UOverlay::StaticClass())) return "Overlay";
+		if (P->IsA(UCanvasPanel::StaticClass())) return "CanvasPanel";
+		if (P->IsA(UVerticalBox::StaticClass())) return "VerticalBox";
+		return "PanelWidget";
+	};
+
+	auto GetPanelScore = [](UPanelWidget* P) -> int
+	{
+		if (!P) return -1;
+		if (P->IsA(UHorizontalBox::StaticClass())) return 100;
+		if (P->IsA(UOverlay::StaticClass())) return 90;
+		if (P->IsA(UCanvasPanel::StaticClass())) return 60;
+		if (P->IsA(UVerticalBox::StaticClass())) return 50;
+		return 40;
+	};
+
+	auto ConsiderPanel = [&](UPanelWidget* Candidate, const char* SourceTag, int Depth)
+	{
+		if (!Candidate)
+			return;
+		const int Score = GetPanelScore(Candidate) - (Depth * 4);
+		if (Score > ValuePanelScore)
+		{
+			ValuePanelScore = Score;
+			ValuePanel = Candidate;
+			ValuePanelSource = SourceTag ? SourceTag : "unknown";
+		}
+	};
+
+	auto ProbeParentChain = [&](UWidget* Leaf, const char* SourceTag)
+	{
+		UWidget* Cursor = Leaf;
+		for (int Depth = 0; Cursor && Depth < 6; ++Depth)
+		{
+			auto* Parent = Cursor->GetParent();
+			if (!Parent)
+				break;
+			ConsiderPanel(Parent, SourceTag, Depth);
+			Cursor = static_cast<UWidget*>(Parent);
+		}
+	};
+
+	// 优先从数值文本链路找右侧容器，避免误拿到根 Canvas 导致输入框落在左侧(0,0)。
+	ProbeParentChain(Item->TXT_CurrentValue, "TXT_CurrentValue");
+	ProbeParentChain(static_cast<UWidget*>(Item->BTN_Plus), "BTN_Plus");
+	ProbeParentChain(static_cast<UWidget*>(Item->BTN_Minus), "BTN_Minus");
+	ProbeParentChain(Item->VolumeSlider, "VolumeSlider");
 
 	if (Item->BTN_Minus)
 	{
@@ -458,12 +514,68 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 
 	if (ValuePanel)
 	{
-		ValuePanel->AddChild(InputWidget);
+		UPanelSlot* AddedSlot = nullptr;
+		if (ValuePanel->IsA(UHorizontalBox::StaticClass()))
+		{
+			AddedSlot = static_cast<UHorizontalBox*>(ValuePanel)->AddChildToHorizontalBox(InputWidget);
+		}
+		else if (ValuePanel->IsA(UCanvasPanel::StaticClass()))
+		{
+			auto* CanvasSlot = static_cast<UCanvasPanel*>(ValuePanel)->AddChildToCanvas(InputWidget);
+			AddedSlot = CanvasSlot;
+			if (CanvasSlot)
+			{
+				FAnchors Anchors{};
+				Anchors.Minimum = FVector2D{ 0.56f, 0.0f };
+				Anchors.Maximum = FVector2D{ 0.98f, 1.0f };
+				CanvasSlot->SetAnchors(Anchors);
+
+				FMargin Offsets{};
+				Offsets.Left = 0.0f;
+				Offsets.Top = 0.0f;
+				Offsets.Right = 0.0f;
+				Offsets.Bottom = 0.0f;
+				CanvasSlot->SetOffsets(Offsets);
+				CanvasSlot->SetAlignment(FVector2D{ 0.0f, 0.5f });
+			}
+		}
+		else
+		{
+			AddedSlot = ValuePanel->AddChild(InputWidget);
+		}
+
+		if (AddedSlot && AddedSlot->IsA(UHorizontalBoxSlot::StaticClass()))
+		{
+			auto* HSlot = static_cast<UHorizontalBoxSlot*>(AddedSlot);
+			HSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+			HSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+			FSlateChildSize FillSize{};
+			FillSize.Value = 1.0f;
+			FillSize.SizeRule = ESlateSizeRule::Fill;
+			HSlot->SetSize(FillSize);
+			FMargin Padding{};
+			Padding.Left = 8.0f;
+			Padding.Top = 0.0f;
+			Padding.Right = 0.0f;
+			Padding.Bottom = 0.0f;
+			HSlot->SetPadding(Padding);
+		}
+
+		std::cout << "[SDK] CreateVolumeEditBoxItem: item=" << (void*)Item
+		          << " panel=" << (void*)ValuePanel
+		          << " panelType=" << GetPanelTypeName(ValuePanel)
+		          << " panelSource=" << ValuePanelSource
+		          << " panelScore=" << ValuePanelScore
+		          << " children=" << ValuePanel->GetChildrenCount()
+		          << " addedSlot=" << (void*)AddedSlot << "\n";
 	}
 	else if (FallbackContainer)
 	{
-		// 兜底：右侧容器丢失时仍保证编辑框可见
+		// 兜底：仅在完全找不到内部面板时才加到外层容器，并做右移避免压到左侧标题
 		FallbackContainer->AddChild(InputWidget);
+		InputWidget->SetRenderTranslation(FVector2D{ 260.0f, 0.0f });
+		std::cout << "[SDK] CreateVolumeEditBoxItem: fallback add to container="
+		          << (void*)FallbackContainer << "\n";
 	}
 
 	return Item;
