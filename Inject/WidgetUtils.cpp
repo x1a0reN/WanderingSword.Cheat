@@ -63,7 +63,9 @@ void ClearSliderGameBinding(USlider* Slider)
 {
 	if (!Slider) return;
 	auto base = reinterpret_cast<uintptr_t>(Slider);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8)); // OnValueChanged only
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04A8)); // OnMouseCaptureEnd
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04C8)); // OnControllerCaptureEnd
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8)); // OnValueChanged
 }
 
 // Clear all blueprint event bindings from a UButton (or UNeoUIButtonBase)

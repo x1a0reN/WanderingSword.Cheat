@@ -32,7 +32,7 @@ void ClearDelegate(void* DelegatePtr);
 /// 清除 USlider 的 OnValueChanged/OnMouseCaptureBegin/End 委托。
 void ClearSliderBindings(USlider* Slider);
 
-/// 清除 USlider 游戏特有的绑定 (OnValueChanged + OnMouseCaptureEnd)。
+/// 清除 USlider 游戏特有的绑定 (OnValueChanged + CaptureEnd)。
 void ClearSliderGameBinding(USlider* Slider);
 
 /// 清除 UButton 的 OnClicked/OnPressed/OnReleased/OnHovered/OnUnhovered 委托。

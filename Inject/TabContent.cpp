@@ -1,5 +1,4 @@
 #include <iostream>
-
 #include "TabContent.hpp"
 #include "GCManager.hpp"
 #include "ItemBrowser.hpp"
@@ -75,68 +74,63 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	Container->ClearChildren();
 	int Count = 0;
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
 
-	// ── 基础数值 (滑块) ──
 	auto AddSlider = [&](const wchar_t* Title) {
 		auto* Item = CreateVolumeItem(PC, Title);
 		if (Item) { Container->AddChild(Item); Count++; }
 	};
 
-	// ── 选项 (下拉框) ──
+	auto AddEditBox = [&](const wchar_t* Title, const wchar_t* Hint, const wchar_t* DefaultValue) {
+		auto* Item = CreateVolumeEditBoxItem(PC, Outer, Container, Title, Hint, DefaultValue);
+		if (Item) { Container->AddChild(Item); Count++; }
+	};
+
 	auto AddDropdown = [&](const wchar_t* Title, std::initializer_list<const wchar_t*> Options) {
 		auto* Item = CreateVideoItemWithOptions(PC, Title, Options);
 		if (Item) { Container->AddChild(Item); Count++; }
 	};
 
-	AddSlider(L"\u91D1\u94B1");               // 金钱
-	AddSlider(L"\u6B66\u5B66\u70B9");         // 武学点
-	AddSlider(L"\u7ECF\u8109\u70B9");         // 经脉点
-	AddSlider(L"\u95E8\u6D3E\u8D21\u732E");   // 门派贡献
-	AddSlider(L"\u7EE7\u627F\u70B9");         // 继承点
-	AddSlider(L"\u7B49\u7EA7");               // 等级
-	AddSlider(L"\u9493\u9C7C\u7B49\u7EA7");   // 钓鱼等级
+	AddSlider(L"\u91D1\u94B1");
+	AddEditBox(L"\u6B66\u5B66\u70B9", L"\u8F93\u5165\u6570\u503C", L"100");
+	AddSlider(L"\u7ECF\u8109\u70B9");
+	AddSlider(L"\u95E8\u6D3E\u8D21\u732E");
+	AddSlider(L"\u7EE7\u627F\u70B9");
+	AddSlider(L"\u7B49\u7EA7");
+	AddSlider(L"\u9493\u9C7C\u7B49\u7EA7");
 
-	AddDropdown(L"\u989D\u5916\u5FC3\u6CD5\u680F",  // 额外心法栏
-		{ L"0", L"1", L"2" });
+	AddDropdown(L"\u989D\u5916\u5FC3\u6CD5\u680F", { L"0", L"1", L"2" });
+	AddDropdown(L"\u95E8\u6D3E",
+		{ L"\u65E0\u95E8\u6D3E", L"\u5C11\u6797", L"\u6B66\u5F53", L"\u5CE8\u7709",
+		  L"\u660E\u6559", L"\u4E10\u5E2E", L"\u5510\u95E8", L"\u5929\u5C71" });
 
-	AddDropdown(L"\u95E8\u6D3E",                     // 门派
-		{ L"\u65E0\u95E8\u6D3E",                     // 无门派
-		  L"\u5C11\u6797",                           // 少林
-		  L"\u6B66\u5F53",                           // 武当
-		  L"\u5CE8\u7709",                           // 峨眉
-		  L"\u660E\u6559",                           // 明教
-		  L"\u4E10\u5E2E",                           // 丐帮
-		  L"\u5510\u95E8",                           // 唐门
-		  L"\u5929\u5C71" });                        // 天山
+	AddSlider(L"\u6C14\u8840");
+	AddSlider(L"\u6C14\u8840\u4E0A\u9650");
+	AddSlider(L"\u771F\u6C14");
+	AddSlider(L"\u771F\u6C14\u4E0A\u9650");
+	AddSlider(L"\u7CBE\u529B");
+	AddSlider(L"\u7CBE\u529B\u4E0A\u9650");
+	AddSlider(L"\u529B\u9053");
+	AddSlider(L"\u6839\u9AA8");
+	AddSlider(L"\u8EAB\u6CD5");
+	AddSlider(L"\u5185\u529F");
+	AddSlider(L"\u653B\u51FB");
+	AddSlider(L"\u9632\u5FA1");
+	AddSlider(L"\u66B4\u51FB");
+	AddSlider(L"\u95EA\u907F");
+	AddSlider(L"\u547D\u4E2D");
 
-	// ── 属性 (滑块) ──
-	AddSlider(L"\u6C14\u8840");               // 气血
-	AddSlider(L"\u6C14\u8840\u4E0A\u9650");   // 气血上限
-	AddSlider(L"\u771F\u6C14");               // 真气
-	AddSlider(L"\u771F\u6C14\u4E0A\u9650");   // 真气上限
-	AddSlider(L"\u7CBE\u529B");               // 精力
-	AddSlider(L"\u7CBE\u529B\u4E0A\u9650");   // 精力上限
-	AddSlider(L"\u529B\u9053");               // 力道
-	AddSlider(L"\u6839\u9AA8");               // 根骨
-	AddSlider(L"\u8EAB\u6CD5");               // 身法
-	AddSlider(L"\u5185\u529F");               // 内功
-	AddSlider(L"\u653B\u51FB");               // 攻击
-	AddSlider(L"\u9632\u5FA1");               // 防御
-	AddSlider(L"\u66B4\u51FB");               // 暴击
-	AddSlider(L"\u95EA\u907F");               // 闪避
-	AddSlider(L"\u547D\u4E2D");               // 命中
-
-	// ── 精通经验 (滑块) ──
-	AddSlider(L"\u62F3\u638C\u7CBE\u901A");   // 拳掌精通
-	AddSlider(L"\u5251\u6CD5\u7CBE\u901A");   // 剑法精通
-	AddSlider(L"\u5200\u6CD5\u7CBE\u901A");   // 刀法精通
-	AddSlider(L"\u67AA\u68CD\u7CBE\u901A");   // 枪棍精通
-	AddSlider(L"\u6697\u5668\u7CBE\u901A");   // 暗器精通
+	AddSlider(L"\u62F3\u638C\u7CBE\u901A");
+	AddSlider(L"\u5251\u6CD5\u7CBE\u901A");
+	AddSlider(L"\u5200\u6CD5\u7CBE\u901A");
+	AddSlider(L"\u67AA\u68CD\u7CBE\u901A");
+	AddSlider(L"\u6697\u5668\u7CBE\u901A");
 
 	std::cout << "[SDK] Tab0 (Character): " << Count << " items added\n";
 }
 
-// ── Populate other tabs (stub functions for structure) ──
+// 鈹€鈹€ Populate other tabs (stub functions for structure) 鈹€鈹€
 void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	UPanelWidget* Container = GetOrCreateSlotContainer(CV, CV->VideoSlot, "Tab1(VideoSlot)");
@@ -146,16 +140,21 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	ClearItemBrowserState();
 	int Count = 0;
 
+	// 鈺愨晲鈺?鎶樺彔闈㈡澘 1: 鐗╁搧閫夐」 鈺愨晲鈺?
+	auto* OptionsPanel = CreateCollapsiblePanel(PC, L"\u7269\u54C1\u9009\u9879");
+	UPanelWidget* OptionsBox = OptionsPanel ? OptionsPanel->CT_Contents : nullptr;
+
 	auto AddToggle = [&](const wchar_t* Title) {
 		auto* Item = CreateToggleItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item && OptionsBox) { OptionsBox->AddChild(Item); Count++; }
+		else if (Item) { Container->AddChild(Item); Count++; }
 	};
 	auto AddSlider = [&](const wchar_t* Title) {
 		auto* Item = CreateVolumeItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item && OptionsBox) { OptionsBox->AddChild(Item); Count++; }
+		else if (Item) { Container->AddChild(Item); Count++; }
 	};
 
-	// ── Zone 1: Quick toggles ──
 	AddToggle(L"\u7269\u54C1\u4E0D\u51CF");
 	AddToggle(L"\u7269\u54C1\u83B7\u5F97\u52A0\u500D");
 	AddSlider(L"\u52A0\u500D\u500D\u6570");
@@ -169,13 +168,20 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddToggle(L"\u65E0\u89C6\u7269\u54C1\u4F7F\u7528\u6B21\u6570");
 	AddToggle(L"\u65E0\u89C6\u7269\u54C1\u4F7F\u7528\u8981\u6C42");
 
+	if (OptionsPanel) { Container->AddChild(OptionsPanel); Count++; }
+
+	// 鈺愨晲鈺?鎶樺彔闈㈡澘 2: 鐗╁搧娴忚鍣?鈺愨晲鈺?
+	auto* BrowserPanel = CreateCollapsiblePanel(PC, L"\u7269\u54C1\u6D4F\u89C8\u5668");
+	UPanelWidget* BrowserBox = BrowserPanel ? BrowserPanel->CT_Contents : nullptr;
+
 	BuildItemCache();
 
 	GItemCategoryDD = CreateVideoItemWithOptions(PC,
 		L"\u2550\u2550 \u7269\u54C1\u7BA1\u7406 \u2550\u2550",
 		{ L"\u5168\u90E8", L"\u6B66\u5668", L"\u9632\u5177", L"\u6D88\u8017\u54C1", L"\u5176\u4ED6" });
 	if (GItemCategoryDD) {
-		Container->AddChild(GItemCategoryDD);
+		if (BrowserBox) BrowserBox->AddChild(GItemCategoryDD);
+		else Container->AddChild(GItemCategoryDD);
 		Count++;
 	}
 	GItemLastCatIdx = 0;
@@ -202,7 +208,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			GItemQuantityRow->AddChildToHorizontalBox(GItemQuantityEdit);
 		}
 
-		Container->AddChild(GItemQuantityRow);
+		if (BrowserBox) BrowserBox->AddChild(GItemQuantityRow);
+		else Container->AddChild(GItemQuantityRow);
 		Count++;
 	}
 	GItemPagerRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
@@ -227,7 +234,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (NextLayout)
 			GItemPagerRow->AddChildToHorizontalBox(NextLayout);
 
-		Container->AddChild(GItemPagerRow);
+		if (BrowserBox) BrowserBox->AddChild(GItemPagerRow);
+		else Container->AddChild(GItemPagerRow);
 		Count++;
 	}
 
@@ -236,7 +244,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	{
 		GItemGridPanel->SetMinDesiredSlotWidth(64.0f);
 		GItemGridPanel->SetMinDesiredSlotHeight(64.0f);
-		Container->AddChild(GItemGridPanel);
+		if (BrowserBox) BrowserBox->AddChild(GItemGridPanel);
+		else Container->AddChild(GItemGridPanel);
 		Count++;
 
 		for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
@@ -263,6 +272,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		}
 	}
 
+	if (BrowserPanel) { Container->AddChild(BrowserPanel); Count++; }
+
 	GItemCurrentPage = 0;
 	FilterItems(0);
 	RefreshItemPage();
@@ -286,19 +297,19 @@ void PopulateTab_Battle(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (Item) { Container->AddChild(Item); Count++; }
 	};
 
-	AddToggle(L"\u4F24\u5BB3\u52A0\u500D");           // 伤害加倍
-	AddSlider(L"\u4F24\u5BB3\u500D\u7387");            // 伤害倍率
-	AddToggle(L"\u62DB\u5F0F\u65E0\u89C6\u51B7\u5374"); // 招式无视冷却
-	AddToggle(L"\u6218\u6597\u52A0\u901F");            // 战斗加速
-	AddSlider(L"\u6218\u6597\u52A0\u901F\u500D\u6570"); // 战斗加速倍数
-	AddToggle(L"\u4E0D\u9047\u654C");                  // 不遇敌
-	AddToggle(L"\u5168\u961F\u53CB\u53C2\u6218");      // 全队友参战
-	AddToggle(L"\u6218\u8D25\u89C6\u4E3A\u80DC\u5229"); // 战败视为胜利
-	AddToggle(L"\u5FC3\u6CD5\u586B\u88C5\u6700\u540E\u4E00\u683C"); // 心法填装最后一格
-	AddToggle(L"\u6218\u6597\u524D\u81EA\u52A8\u6062\u590D"); // 战斗前自动恢复
-	AddToggle(L"\u79FB\u52A8\u901F\u5EA6\u52A0\u500D"); // 移动速度加倍
-	AddSlider(L"\u79FB\u52A8\u500D\u7387");            // 移动倍率
-	AddToggle(L"\u53EA\u5BF9\u672C\u65B9\u751F\u6548"); // 只对本方生效
+	AddToggle(L"\u4F24\u5BB3\u52A0\u500D");           // 浼ゅ鍔犲€?
+	AddSlider(L"\u4F24\u5BB3\u500D\u7387");            // 浼ゅ鍊嶇巼
+	AddToggle(L"\u62DB\u5F0F\u65E0\u89C6\u51B7\u5374"); // 鎷涘紡鏃犺鍐峰嵈
+	AddToggle(L"\u6218\u6597\u52A0\u901F");            // 鎴樻枟鍔犻€?
+	AddSlider(L"\u6218\u6597\u52A0\u901F\u500D\u6570"); // 鎴樻枟鍔犻€熷€嶆暟
+	AddToggle(L"\u4E0D\u9047\u654C");                  // 涓嶉亣鏁?
+	AddToggle(L"\u5168\u961F\u53CB\u53C2\u6218");      // 鍏ㄩ槦鍙嬪弬鎴?
+	AddToggle(L"\u6218\u8D25\u89C6\u4E3A\u80DC\u5229"); // 鎴樿触瑙嗕负鑳滃埄
+	AddToggle(L"\u5FC3\u6CD5\u586B\u88C5\u6700\u540E\u4E00\u683C"); // 蹇冩硶濉鏈€鍚庝竴鏍?
+	AddToggle(L"\u6218\u6597\u524D\u81EA\u52A8\u6062\u590D"); // 鎴樻枟鍓嶈嚜鍔ㄦ仮澶?
+	AddToggle(L"\u79FB\u52A8\u901F\u5EA6\u52A0\u500D"); // 绉诲姩閫熷害鍔犲€?
+	AddSlider(L"\u79FB\u52A8\u500D\u7387");            // 绉诲姩鍊嶇巼
+	AddToggle(L"\u53EA\u5BF9\u672C\u65B9\u751F\u6548"); // 鍙鏈柟鐢熸晥
 
 	std::cout << "[SDK] Tab2 (Battle): " << Count << " items added\n";
 }
@@ -318,13 +329,13 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (Item) { Container->AddChild(Item); Count++; }
 	};
 
-	AddToggle(L"\u953B\u9020/\u5236\u8863/\u70BC\u4E39/\u70F9\u996A\u65E0\u89C6\u8981\u6C42"); // 锻造/制衣/炼丹/烹饪无视要求
-	AddToggle(L"\u8BBE\u7F6E\u4EA7\u51FA\u6570\u91CF"); // 设置产出数量
-	AddSlider(L"\u4EA7\u51FA\u6570\u91CF");            // 产出数量
-	AddToggle(L"\u91C7\u96C6\u4E00\u79D2\u51B7\u5374"); // 采集一秒冷却
-	AddToggle(L"\u9493\u9C7C\u53EA\u9493\u7A00\u6709\u7269"); // 钓鱼只钓稀有物
-	AddToggle(L"\u9493\u9C7C\u6536\u7B3F\u5FC5\u6709\u6536\u83B7"); // 钓鱼收杆必有收获
-	AddToggle(L"\u5BB6\u56ED\u968F\u65F6\u6536\u83B7"); // 家园随时收获
+	AddToggle(L"\u953B\u9020/\u5236\u8863/\u70BC\u4E39/\u70F9\u996A\u65E0\u89C6\u8981\u6C42"); // 閿婚€?鍒惰。/鐐间腹/鐑归オ鏃犺瑕佹眰
+	AddToggle(L"\u8BBE\u7F6E\u4EA7\u51FA\u6570\u91CF"); // 璁剧疆浜у嚭鏁伴噺
+	AddSlider(L"\u4EA7\u51FA\u6570\u91CF");            // 浜у嚭鏁伴噺
+	AddToggle(L"\u91C7\u96C6\u4E00\u79D2\u51B7\u5374"); // 閲囬泦涓€绉掑喎鍗?
+	AddToggle(L"\u9493\u9C7C\u53EA\u9493\u7A00\u6709\u7269"); // 閽撻奔鍙挀绋€鏈夌墿
+	AddToggle(L"\u9493\u9C7C\u6536\u7B3F\u5FC5\u6709\u6536\u83B7"); // 閽撻奔鏀舵潌蹇呮湁鏀惰幏
+	AddToggle(L"\u5BB6\u56ED\u968F\u65F6\u6536\u83B7"); // 瀹跺洯闅忔椂鏀惰幏
 
 	std::cout << "[SDK] Tab3 (Life): " << Count << " items added\n";
 }
@@ -340,14 +351,14 @@ void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (Item) { Container->AddChild(Item); Count++; }
 	};
 
-	AddToggle(L"\u9001\u793C\u5FC5\u5B9A\u559C\u6B22"); // 送礼必定喜欢
-	AddToggle(L"\u9080\u8BF7\u65E0\u89C6\u6761\u4EF6"); // 邀请无视条件
-	AddToggle(L"\u5207\u78CB\u65E0\u89C6\u597D\u611F"); // 切磋无视好感
-	AddToggle(L"\u8BF7\u6559\u65E0\u89C6\u8981\u6C42"); // 请教无视要求
-	AddToggle(L"\u5207\u78CB\u83B7\u5F97\u5BF9\u624B\u80CC\u5305"); // 切磋获得对手背包
-	AddToggle(L"NPC\u88C5\u5907\u53EF\u8131");         // NPC装备可脱
-	AddToggle(L"NPC\u65E0\u89C6\u6B66\u5668\u529F\u6CD5\u9650\u5236"); // NPC无视武器功法限制
-	AddToggle(L"\u5F3A\u5236\u663E\u793ANPC\u4E92\u52A8"); // 强制显示NPC互动
+	AddToggle(L"\u9001\u793C\u5FC5\u5B9A\u559C\u6B22"); // 閫佺ぜ蹇呭畾鍠滄
+	AddToggle(L"\u9080\u8BF7\u65E0\u89C6\u6761\u4EF6"); // 閭€璇锋棤瑙嗘潯浠?
+	AddToggle(L"\u5207\u78CB\u65E0\u89C6\u597D\u611F"); // 鍒囩鏃犺濂芥劅
+	AddToggle(L"\u8BF7\u6559\u65E0\u89C6\u8981\u6C42"); // 璇锋暀鏃犺瑕佹眰
+	AddToggle(L"\u5207\u78CB\u83B7\u5F97\u5BF9\u624B\u80CC\u5305"); // 鍒囩鑾峰緱瀵规墜鑳屽寘
+	AddToggle(L"NPC\u88C5\u5907\u53EF\u8131");         // NPC瑁呭鍙劚
+	AddToggle(L"NPC\u65E0\u89C6\u6B66\u5668\u529F\u6CD5\u9650\u5236"); // NPC鏃犺姝﹀櫒鍔熸硶闄愬埗
+	AddToggle(L"\u5F3A\u5236\u663E\u793ANPC\u4E92\u52A8"); // 寮哄埗鏄剧ずNPC浜掑姩
 
 	std::cout << "[SDK] Tab4 (Social): " << Count << " items added\n";
 }
@@ -371,27 +382,27 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (Item) { Container->AddChild(Item); Count++; }
 	};
 
-	AddToggle(L"\u7A7A\u683C\u8DF3\u8DC3");           // 空格跳跃
-	AddSlider(L"\u8DF3\u8DC3\u901F\u5EA6");            // 跳跃速度
-	AddToggle(L"\u65E0\u9650\u8DF3\u8DC3");            // 无限跳跃
-	AddToggle(L"\u5954\u8DD1/\u9A91\u9A6C\u52A0\u901F"); // 奔跑/骑马加速
-	AddSlider(L"\u52A0\u901F\u500D\u7387");            // 加速倍率
-	AddToggle(L"\u5750\u9A91\u66FF\u6362");            // 坐骑替换
-	AddDropdown(L"\u6307\u5B9A\u5750\u9A91",           // 指定坐骑
-		{ L"\u9ED1\u9A6C", L"\u767D\u9A6C",           // 黑马, 白马
-		  L"\u68D5\u9A6C", L"\u5C0F\u6BDB\u9A74" });  // 棕马, 小毛驴
-	AddToggle(L"\u4E00\u5468\u76EE\u53EF\u9009\u6781\u96BE"); // 一周目可选极难
-	AddToggle(L"\u4E00\u5468\u76EE\u53EF\u9009\u4F20\u627F"); // 一周目可选传承
-	AddToggle(L"\u627F\u541B\u4F20\u627F\u5305\u62EC\u6240\u6709"); // 承君传承包括所有
-	AddToggle(L"\u672A\u4EA4\u4E92\u9A7F\u7AD9\u53EF\u7528"); // 未交互驿站可用
-	AddToggle(L"\u6FC0\u6D3BGM\u547D\u4EE4\u884C");   // 激活GM命令行
-	AddToggle(L"\u89E3\u9501\u5168\u56FE\u9274");      // 解锁全图鉴
-	AddToggle(L"\u89E3\u9501\u5168\u6210\u5C31");      // 解锁全成就
+	AddToggle(L"\u7A7A\u683C\u8DF3\u8DC3");           // 绌烘牸璺宠穬
+	AddSlider(L"\u8DF3\u8DC3\u901F\u5EA6");            // 璺宠穬閫熷害
+	AddToggle(L"\u65E0\u9650\u8DF3\u8DC3");            // 鏃犻檺璺宠穬
+	AddToggle(L"\u5954\u8DD1/\u9A91\u9A6C\u52A0\u901F"); // 濂旇窇/楠戦┈鍔犻€?
+	AddSlider(L"\u52A0\u901F\u500D\u7387");            // 鍔犻€熷€嶇巼
+	AddToggle(L"\u5750\u9A91\u66FF\u6362");            // 鍧愰獞鏇挎崲
+	AddDropdown(L"\u6307\u5B9A\u5750\u9A91",           // 鎸囧畾鍧愰獞
+		{ L"\u9ED1\u9A6C", L"\u767D\u9A6C",           // 榛戦┈, 鐧介┈
+		  L"\u68D5\u9A6C", L"\u5C0F\u6BDB\u9A74" });  // 妫曢┈, 灏忔瘺椹?
+	AddToggle(L"\u4E00\u5468\u76EE\u53EF\u9009\u6781\u96BE"); // 涓€鍛ㄧ洰鍙€夋瀬闅?
+	AddToggle(L"\u4E00\u5468\u76EE\u53EF\u9009\u4F20\u627F"); // 涓€鍛ㄧ洰鍙€変紶鎵?
+	AddToggle(L"\u627F\u541B\u4F20\u627F\u5305\u62EC\u6240\u6709"); // 鎵垮悰浼犳壙鍖呮嫭鎵€鏈?
+	AddToggle(L"\u672A\u4EA4\u4E92\u9A7F\u7AD9\u53EF\u7528"); // 鏈氦浜掗┛绔欏彲鐢?
+	AddToggle(L"\u6FC0\u6D3BGM\u547D\u4EE4\u884C");   // 婵€娲籊M鍛戒护琛?
+	AddToggle(L"\u89E3\u9501\u5168\u56FE\u9274");      // 瑙ｉ攣鍏ㄥ浘閴?
+	AddToggle(L"\u89E3\u9501\u5168\u6210\u5C31");      // 瑙ｉ攣鍏ㄦ垚灏?
 
 	std::cout << "[SDK] Tab5 (System): " << Count << " items added\n";
 }
 
-// ═══ Dynamic Tab 6 - 队友 (Teammates) ═══
+// 鈺愨晲鈺?Dynamic Tab 6 - 闃熷弸 (Teammates) 鈺愨晲鈺?
 void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	if (!GDynTabContent6) return;
@@ -405,41 +416,41 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTeammateReplaceToggle = nullptr;
 	GTeammateReplaceDD = nullptr;
 
-	GTeammateFollowToggle = CreateToggleItem(PC, L"\u8BBE\u7F6E\u961F\u53CB\u8DDF\u968F\u6570\u91CF"); // 设置队友跟随数量
+	GTeammateFollowToggle = CreateToggleItem(PC, L"\u8BBE\u7F6E\u961F\u53CB\u8DDF\u968F\u6570\u91CF"); // 璁剧疆闃熷弸璺熼殢鏁伴噺
 	if (GTeammateFollowToggle) { GDynTabContent6->AddChild(GTeammateFollowToggle); Count++; }
 
-	GTeammateFollowCount = CreateVolumeItem(PC, L"\u8DDF\u968F\u6570\u91CF"); // 跟随数量
+	GTeammateFollowCount = CreateVolumeItem(PC, L"\u8DDF\u968F\u6570\u91CF"); // 璺熼殢鏁伴噺
 	if (GTeammateFollowCount) { GDynTabContent6->AddChild(GTeammateFollowCount); Count++; }
 
-	GTeammateAddDD = CreateVideoItemWithOptions(PC, L"\u6DFB\u52A0\u961F\u53CB", // 添加队友
-		{ L"\u8BF7\u9009\u62E9",                     // 请选择
-		  L"\u767E\u91CC\u4E1C\u98CE",               // 百里东风
-		  L"\u5C1A\u4E91\u6EAA",                     // 尚云溪
-		  L"\u53F6\u5343\u79CB",                     // 叶千秋
-		  L"\u8C22\u5C27",                           // 谢尧
-		  L"\u5510\u5A49\u5A49",                     // 唐婉婉
-		  L"\u5F90\u5C0F\u5C0F",                     // 徐小小
-		  L"\u5411\u5929\u7B11" });                  // 向天笑
+	GTeammateAddDD = CreateVideoItemWithOptions(PC, L"\u6DFB\u52A0\u961F\u53CB", // 娣诲姞闃熷弸
+		{ L"\u8BF7\u9009\u62E9",                     // 璇烽€夋嫨
+		  L"\u767E\u91CC\u4E1C\u98CE",               // 鐧鹃噷涓滈
+		  L"\u5C1A\u4E91\u6EAA",                     // 灏氫簯婧?
+		  L"\u53F6\u5343\u79CB",                     // 鍙跺崈绉?
+		  L"\u8C22\u5C27",                           // 璋㈠哀
+		  L"\u5510\u5A49\u5A49",                     // 鍞愬濠?
+		  L"\u5F90\u5C0F\u5C0F",                     // 寰愬皬灏?
+		  L"\u5411\u5929\u7B11" });                  // 鍚戝ぉ绗?
 	if (GTeammateAddDD) { GDynTabContent6->AddChild(GTeammateAddDD); Count++; }
 
-	GTeammateReplaceToggle = CreateToggleItem(PC, L"\u66FF\u6362\u6307\u5B9A\u961F\u53CB"); // 替换指定队友
+	GTeammateReplaceToggle = CreateToggleItem(PC, L"\u66FF\u6362\u6307\u5B9A\u961F\u53CB"); // 鏇挎崲鎸囧畾闃熷弸
 	if (GTeammateReplaceToggle) { GDynTabContent6->AddChild(GTeammateReplaceToggle); Count++; }
 
-	GTeammateReplaceDD = CreateVideoItemWithOptions(PC, L"\u6307\u5B9A\u961F\u53CB", // 指定队友
-		{ L"\u8BF7\u9009\u62E9",                     // 请选择
-		  L"\u767E\u91CC\u4E1C\u98CE",               // 百里东风
-		  L"\u5C1A\u4E91\u6EAA",                     // 尚云溪
-		  L"\u53F6\u5343\u79CB",                     // 叶千秋
-		  L"\u8C22\u5C27",                           // 谢尧
-		  L"\u5510\u5A49\u5A49",                     // 唐婉婉
-		  L"\u5F90\u5C0F\u5C0F",                     // 徐小小
-		  L"\u5411\u5929\u7B11" });                  // 向天笑
+	GTeammateReplaceDD = CreateVideoItemWithOptions(PC, L"\u6307\u5B9A\u961F\u53CB", // 鎸囧畾闃熷弸
+		{ L"\u8BF7\u9009\u62E9",                     // 璇烽€夋嫨
+		  L"\u767E\u91CC\u4E1C\u98CE",               // 鐧鹃噷涓滈
+		  L"\u5C1A\u4E91\u6EAA",                     // 灏氫簯婧?
+		  L"\u53F6\u5343\u79CB",                     // 鍙跺崈绉?
+		  L"\u8C22\u5C27",                           // 璋㈠哀
+		  L"\u5510\u5A49\u5A49",                     // 鍞愬濠?
+		  L"\u5F90\u5C0F\u5C0F",                     // 寰愬皬灏?
+		  L"\u5411\u5929\u7B11" });                  // 鍚戝ぉ绗?
 	if (GTeammateReplaceDD) { GDynTabContent6->AddChild(GTeammateReplaceDD); Count++; }
 
 	std::cout << "[SDK] Tab6 (Teammates): " << Count << " items added\n";
 }
 
-// ═══ Dynamic Tab 7 - 任务 (Quests) ═══
+// 鈺愨晲鈺?Dynamic Tab 7 - 浠诲姟 (Quests) 鈺愨晲鈺?
 void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	if (!GDynTabContent7) return;
@@ -449,17 +460,17 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GQuestToggle = nullptr;
 	GQuestTypeDD = nullptr;
 
-	GQuestToggle = CreateToggleItem(PC, L"\u63A5\u5230/\u5B8C\u6210\u4EFB\u52A1"); // 接到/完成任务
+	GQuestToggle = CreateToggleItem(PC, L"\u63A5\u5230/\u5B8C\u6210\u4EFB\u52A1"); // 鎺ュ埌/瀹屾垚浠诲姟
 	if (GQuestToggle) { GDynTabContent7->AddChild(GQuestToggle); Count++; }
 
-	GQuestTypeDD = CreateVideoItemWithOptions(PC, L"\u6267\u884C\u7C7B\u578B", // 执行类型
-		{ L"\u63A5\u5230", L"\u5B8C\u6210" }); // 接到, 完成
+	GQuestTypeDD = CreateVideoItemWithOptions(PC, L"\u6267\u884C\u7C7B\u578B", // 鎵ц绫诲瀷
+		{ L"\u63A5\u5230", L"\u5B8C\u6210" }); // 鎺ュ埌, 瀹屾垚
 	if (GQuestTypeDD) { GDynTabContent7->AddChild(GQuestTypeDD); Count++; }
 
 	std::cout << "[SDK] Tab7 (Quests): " << Count << " items added\n";
 }
 
-// ═══ Dynamic Tab 8 - 控件展示 (Controls Showcase) ═══
+// 鈺愨晲鈺?Dynamic Tab 8 - 鎺т欢灞曠ず (Controls Showcase) 鈺愨晲鈺?
 void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	if (!GDynTabContent8 || !CV || !PC) return;
@@ -483,8 +494,9 @@ void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	}
 }
 
-// ═══ Create Dynamic Tabs 6/7/8 ═══
+// 鈺愨晲鈺?Create Dynamic Tabs 6/7/8 鈺愨晲鈺?
 // Tab6 uses switcher index 6.
 // Tab7/Tab8 share switcher index 7 by hot-swapping the mounted panel,
 // avoiding SetActiveWidgetIndex(8) crashes in the original module logic.
+
 

@@ -8,7 +8,7 @@ std::atomic<bool> GIsUnloading = false;
 std::atomic<bool> GHooksRemoved = false;
 std::atomic<bool> GConsoleClosed = false;
 
-UButton* GCachedBtnExit = nullptr;
+UNeoUIButtonBase* GCachedBtnExit = nullptr;
 std::vector<UObject*> GRootedObjects;
 UWidget* GOriginalLanPanel = nullptr;
 UWidget* GOriginalInputMappingPanel = nullptr;
@@ -36,6 +36,10 @@ UButton* GItemSlotButtons[ITEMS_PER_PAGE] = {};
 UImage* GItemSlotImages[ITEMS_PER_PAGE] = {};
 int32 GItemSlotItemIndices[ITEMS_PER_PAGE] = {};
 bool GItemSlotWasPressed[ITEMS_PER_PAGE] = {};
+std::vector<UBPVE_JHConfigVolumeItem2_C*> GVolumeItems;
+std::vector<float> GVolumeLastValues;
+std::vector<bool> GVolumeMinusWasPressed;
+std::vector<bool> GVolumePlusWasPressed;
 
 UBP_JHConfigTabBtn_C* GDynTabBtn6 = nullptr;
 UBP_JHConfigTabBtn_C* GDynTabBtn7 = nullptr;

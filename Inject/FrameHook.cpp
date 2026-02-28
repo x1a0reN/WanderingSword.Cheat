@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <iostream>
+#include <cmath>
 
 #include "CheatState.hpp"
 #include "FrameHook.hpp"
@@ -25,10 +26,37 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		ToggleInternalWidget();
 	HomeWasDown = HomeDown;
 
-	// Detect BTN_Exit click (edge-triggered)
+	// Detect BTN_Exit click (edge-triggered).
+	// Only poll while panel is visible and pointer is valid to avoid unreachable UObject asserts.
 	static bool ExitWasPressed = false;
-	bool ExitPressed = GCachedBtnExit && GCachedBtnExit->IsPressed();
-	if (ExitWasPressed && !ExitPressed && InternalWidgetVisible)
+	bool ExitPressed = false;
+	const bool CanCheckExit =
+		InternalWidgetVisible &&
+		InternalWidget &&
+		InternalWidget->IsInViewport() &&
+		InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass());
+
+	if (CanCheckExit)
+	{
+		auto* CV = static_cast<UBPMV_ConfigView2_C*>(InternalWidget);
+		GCachedBtnExit = CV ? CV->BTN_Exit : nullptr;
+
+		if (GCachedBtnExit)
+		{
+			auto* ExitObj = static_cast<UObject*>(GCachedBtnExit);
+			if (UKismetSystemLibrary::IsValid(ExitObj))
+				ExitPressed = GCachedBtnExit->IsPressed();
+			else
+				GCachedBtnExit = nullptr;
+		}
+	}
+	else
+	{
+		GCachedBtnExit = nullptr;
+		ExitWasPressed = false;
+	}
+
+	if (ExitWasPressed && !ExitPressed && CanCheckExit)
 	{
 		APlayerController* PC = GetFirstLocalPlayerController();
 		if (PC)
@@ -36,9 +64,90 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	ExitWasPressed = ExitPressed;
 
-		// ── Item browser per-frame polling ──
+	// ── Item browser per-frame polling ──
 	if (InternalWidgetVisible)
 	{
+		if (GVolumeLastValues.size() != GVolumeItems.size())
+			GVolumeLastValues.resize(GVolumeItems.size(), 0.0f);
+		if (GVolumeMinusWasPressed.size() != GVolumeItems.size())
+			GVolumeMinusWasPressed.resize(GVolumeItems.size(), false);
+		if (GVolumePlusWasPressed.size() != GVolumeItems.size())
+			GVolumePlusWasPressed.resize(GVolumeItems.size(), false);
+
+		for (size_t i = 0; i < GVolumeItems.size(); ++i)
+		{
+			auto* Item = GVolumeItems[i];
+			if (!Item || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item)))
+				continue;
+
+			auto* Slider = Item->VolumeSlider;
+			if (!Slider || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Slider)))
+				continue;
+
+			bool MinusPressed = false;
+			bool PlusPressed = false;
+			if (Item->BTN_Minus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Minus)))
+				MinusPressed = Item->BTN_Minus->IsPressed();
+			if (Item->BTN_Plus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Plus)))
+				PlusPressed = Item->BTN_Plus->IsPressed();
+
+			const bool MinusClicked = GVolumeMinusWasPressed[i] && !MinusPressed;
+			const bool PlusClicked = GVolumePlusWasPressed[i] && !PlusPressed;
+
+			float CurValue = Slider->GetValue();
+			bool bValueChanged = std::fabs(CurValue - GVolumeLastValues[i]) > 0.0001f;
+
+			if (MinusClicked || PlusClicked)
+			{
+				float Step = Slider->StepSize;
+				if (Step <= 0.0001f)
+					Step = 0.01f;
+
+				float NewValue = CurValue + (PlusClicked ? Step : 0.0f) - (MinusClicked ? Step : 0.0f);
+				float MinValue = Slider->MinValue;
+				float MaxValue = Slider->MaxValue;
+				if (MaxValue < MinValue)
+				{
+					const float Tmp = MinValue;
+					MinValue = MaxValue;
+					MaxValue = Tmp;
+				}
+
+				if (NewValue < MinValue) NewValue = MinValue;
+				if (NewValue > MaxValue) NewValue = MaxValue;
+
+				if (std::fabs(NewValue - CurValue) > 0.0001f)
+				{
+					Slider->SetValue(NewValue);
+					CurValue = NewValue;
+					bValueChanged = true;
+				}
+			}
+
+			if (bValueChanged)
+			{
+				CurValue = Slider->GetValue();
+				if (Item->TXT_CurrentValue)
+				{
+					float MinValue = Slider->MinValue;
+					float MaxValue = Slider->MaxValue;
+					float Norm = CurValue;
+					if (MaxValue > MinValue)
+						Norm = (CurValue - MinValue) / (MaxValue - MinValue);
+					if (Norm < 0.0f) Norm = 0.0f;
+					if (Norm > 1.0f) Norm = 1.0f;
+					const int32 DisplayValue = static_cast<int32>(Norm * 100.0f + 0.5f);
+					wchar_t Buf[16] = {};
+					swprintf_s(Buf, 16, L"%d", DisplayValue);
+					Item->TXT_CurrentValue->SetText(MakeText(Buf));
+				}
+			}
+
+			GVolumeLastValues[i] = CurValue;
+			GVolumeMinusWasPressed[i] = MinusPressed;
+			GVolumePlusWasPressed[i] = PlusPressed;
+		}
+
 		static DWORD LastItemCacheRetryTick = 0;
 		if (!GItemCacheBuilt && (GItemCategoryDD || GItemGridPanel))
 		{

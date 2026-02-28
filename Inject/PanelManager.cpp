@@ -28,6 +28,10 @@ void ClearRuntimeWidgetState()
 	GOriginalLanPanel = nullptr;
 	GOriginalInputMappingPanel = nullptr;
 	GOriginalResetButton = nullptr;
+	GVolumeItems.clear();
+	GVolumeLastValues.clear();
+	GVolumeMinusWasPressed.clear();
+	GVolumePlusWasPressed.clear();
 
 	GCachedBtnExit = nullptr;
 }
@@ -325,6 +329,7 @@ void HideInternalWidget(APlayerController* PlayerController)
 		if (InternalWidget->IsInViewport())
 			InternalWidget->RemoveFromParent();
 	}
+	GCachedBtnExit = nullptr;
 
 	if (PlayerController)
 	{
@@ -339,6 +344,7 @@ void DestroyInternalWidget(APlayerController* PlayerController)
 {
 	if (InternalWidget && InternalWidget->IsInViewport())
 		InternalWidget->RemoveFromParent();
+	GCachedBtnExit = nullptr;
 
 	ClearAllGCRoots();
 	InternalWidget = nullptr;
@@ -435,3 +441,4 @@ void ShowOriginalTab(UBPMV_ConfigView2_C* CV)
 	if (GDynTabContent7) GDynTabContent7->SetVisibility(ESlateVisibility::Collapsed);
 	if (GDynTabContent8) GDynTabContent8->SetVisibility(ESlateVisibility::Collapsed);
 }
+

@@ -58,7 +58,7 @@ extern std::atomic<bool> GConsoleClosed;         // 控制台已关闭
 
 // ── 面板 UI 引用 ──
 
-extern UButton* GCachedBtnExit;                  // 缓存的关闭按钮 (每帧检测点击)
+extern UNeoUIButtonBase* GCachedBtnExit;         // 缓存的关闭按钮 (每帧检测点击)
 extern std::vector<UObject*> GRootedObjects;     // 已标记 GC Root 的对象列表
 extern UWidget* GOriginalLanPanel;               // 保留的原生语言面板
 extern UWidget* GOriginalInputMappingPanel;      // 保留的原生键位面板
@@ -88,6 +88,10 @@ extern UButton* GItemSlotButtons[ITEMS_PER_PAGE]; // 24 个物品槽按钮
 extern UImage* GItemSlotImages[ITEMS_PER_PAGE];   // 24 个物品槽图标
 extern int32 GItemSlotItemIndices[ITEMS_PER_PAGE]; // 每个槽位对应的物品索引 (-1=空)
 extern bool GItemSlotWasPressed[ITEMS_PER_PAGE];  // 物品槽上帧按下状态 (边沿触发)
+extern std::vector<UBPVE_JHConfigVolumeItem2_C*> GVolumeItems; // 滑块控件缓存（用于文本同步）
+extern std::vector<float> GVolumeLastValues;      // 滑块上帧数值
+extern std::vector<bool> GVolumeMinusWasPressed;   // "-" 按钮上帧按下状态
+extern std::vector<bool> GVolumePlusWasPressed;    // "+" 按钮上帧按下状态
 
 // ── 动态 Tab (6/7/8) ──
 
