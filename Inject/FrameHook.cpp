@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <iostream>
 
 #include "CheatState.hpp"
@@ -78,12 +78,15 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 		GItemAddQuantity = GetItemAddQuantityFromEdit();
 
-		auto GetInnerButton = [](UJHCommon_Btn_Free_C* Btn) -> UButton* {
-			if (!Btn || !Btn->JHGPCBtn) return nullptr;
-			return static_cast<UJHNeoUIGamepadConfirmButton*>(Btn->JHGPCBtn)->BtnMain;
+		auto GetClickableButton = [](UJHCommon_Btn_Free_C* W) -> UButton* {
+			if (!W) return nullptr;
+			if (W->Btn) return W->Btn;
+			if (W->JHGPCBtn)
+				return static_cast<UJHNeoUIGamepadConfirmButton*>(W->JHGPCBtn)->BtnMain;
+			return nullptr;
 		};
 
-		UButton* PrevInner = GetInnerButton(GItemPrevPageBtn);
+		UButton* PrevInner = GetClickableButton(GItemPrevPageBtn);
 		bool PrevPressed = PrevInner && PrevInner->IsPressed();
 		if (GItemPrevWasPressed && !PrevPressed && GItemCurrentPage > 0)
 		{
@@ -92,7 +95,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 		GItemPrevWasPressed = PrevPressed;
 
-		UButton* NextInner = GetInnerButton(GItemNextPageBtn);
+		UButton* NextInner = GetClickableButton(GItemNextPageBtn);
 		bool NextPressed = NextInner && NextInner->IsPressed();
 		if (GItemNextWasPressed && !NextPressed && (GItemCurrentPage + 1) < GItemTotalPages)
 		{

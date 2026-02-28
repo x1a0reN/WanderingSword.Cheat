@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <iostream>
 #include <algorithm>
 #include <cstring>
@@ -231,10 +231,20 @@ void RefreshItemPage()
 		swprintf_s(Buf, 16, L"%d/%d", GItemCurrentPage + 1, GItemTotalPages);
 		GItemPageLabel->SetText(MakeText(Buf));
 	}
-	if (GItemPrevPageBtn)
-		GItemPrevPageBtn->SetIsEnabled(GItemCurrentPage > 0);
-	if (GItemNextPageBtn)
-		GItemNextPageBtn->SetIsEnabled((GItemCurrentPage + 1) < GItemTotalPages);
+	auto SetBtnEnabled = [](UJHCommon_Btn_Free_C* W, bool bEnabled) {
+		if (!W) return;
+		W->SetIsEnabled(bEnabled);
+		if (bEnabled)
+			W->GotoNormalStatus();
+		else
+			W->GotoDisableStatus();
+		if (W->Btn)
+			W->Btn->SetIsEnabled(bEnabled);
+		if (W->JHGPCBtn)
+			W->JHGPCBtn->SetIsEnabled(bEnabled);
+	};
+	SetBtnEnabled(GItemPrevPageBtn, GItemCurrentPage > 0);
+	SetBtnEnabled(GItemNextPageBtn, (GItemCurrentPage + 1) < GItemTotalPages);
 }
 
 // Clear item browser widget state (called when panel closes)
