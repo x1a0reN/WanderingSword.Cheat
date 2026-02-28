@@ -749,6 +749,7 @@ void RefreshItemPage()
 		auto* Img = GItemSlotImages[i];
 		auto* Border = GItemSlotQualityBorders[i];
 		auto* EntryWidget = GItemSlotEntryWidgets[i];
+		UImage* MainBorder = nullptr;
 
 		if (Btn && !IsSafeLiveObject(static_cast<UObject*>(Btn)))
 		{
@@ -769,6 +770,17 @@ void RefreshItemPage()
 		{
 			GItemSlotEntryWidgets[i] = nullptr;
 			EntryWidget = nullptr;
+		}
+
+		if (EntryWidget && EntryWidget->IsA(UJHNeoUIItemEntry::StaticClass()))
+		{
+			auto* Entry = static_cast<UJHNeoUIItemEntry*>(EntryWidget);
+			if (Entry->ItemDisplay && Entry->ItemDisplay->CMP && Entry->ItemDisplay->CMP->IMG_Border)
+			{
+				auto* CandidateMainBorder = static_cast<UImage*>(Entry->ItemDisplay->CMP->IMG_Border);
+				if (CandidateMainBorder && IsSafeLiveObject(static_cast<UObject*>(CandidateMainBorder)))
+					MainBorder = CandidateMainBorder;
+			}
 		}
 
 		if (!Btn || !IsSafeLiveObject(static_cast<UObject*>(Btn)))
@@ -813,9 +825,18 @@ void RefreshItemPage()
 					Img->SetVisibility(ESlateVisibility::Collapsed);
 				}
 			}
+
+			const int32 SafeQuality = SanitizeItemQuality(CI.Quality);
+			if (MainBorder)
+			{
+				const FLinearColor MainBorderColor =
+					UItemFuncLib::GetColorByQuality(static_cast<EItemQuality>(SafeQuality));
+				MainBorder->SetColorAndOpacity(MainBorderColor);
+				MainBorder->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+			}
+
 			if (Border)
 			{
-				const int32 SafeQuality = SanitizeItemQuality(CI.Quality);
 				UTexture2D* QTex = GetItemQualityBorderTexture(static_cast<uint8>(SafeQuality));
 				if (QTex && IsSafeLiveObject(static_cast<UObject*>(QTex)))
 				{
@@ -826,20 +847,6 @@ void RefreshItemPage()
 				else
 				{
 					Border->SetVisibility(ESlateVisibility::Collapsed);
-				}
-
-				// 保留品质边框，隐藏主边框，避免默认模板色覆盖。
-				if (EntryWidget && EntryWidget->IsA(UJHNeoUIItemEntry::StaticClass()))
-				{
-					auto* Entry = static_cast<UJHNeoUIItemEntry*>(EntryWidget);
-					if (Entry->ItemDisplay && Entry->ItemDisplay->CMP && Entry->ItemDisplay->CMP->IMG_Border)
-					{
-						auto* MainBorder = static_cast<UImage*>(Entry->ItemDisplay->CMP->IMG_Border);
-						if (MainBorder && IsSafeLiveObject(static_cast<UObject*>(MainBorder)))
-						{
-							MainBorder->SetVisibility(ESlateVisibility::Collapsed);
-						}
-					}
 				}
 			}
 		}
@@ -857,6 +864,8 @@ void RefreshItemPage()
 				Img->SetVisibility(ESlateVisibility::Collapsed);
 			if (Border)
 				Border->SetVisibility(ESlateVisibility::Collapsed);
+			if (MainBorder)
+				MainBorder->SetVisibility(ESlateVisibility::Collapsed);
 		}
 
 		GItemSlotWasPressed[i] = false;
@@ -892,8 +901,8 @@ void PollItemBrowserHoverTips()
 	static DWORD sLastHoverSeenTick = 0;
 
 	const DWORD NowTick = GetTickCount();
-	const bool Heartbeat = (NowTick - sLastHeartbeatTick >= 1000);
-	if (kVerboseItemHoverLogs && Heartbeat)
+	const bool Heartbeat = kVerboseItemHoverLogs && (NowTick - sLastHeartbeatTick >= 1000);
+	if (Heartbeat)
 		sLastHeartbeatTick = NowTick;
 
 	int32 ValidBtnCount = 0;
@@ -1004,75 +1013,6 @@ void PollItemBrowserHoverTips()
 			HoveredSlot = i;
 			sLastHoverSeenTick = NowTick;
 			break;
-		}
-	}
-
-	if (Heartbeat)
-	{
-		const FVector2D MouseAbs = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
-		UObject* WorldCtx = nullptr;
-		if (UWorld* World = UWorld::GetWorld())
-			WorldCtx = static_cast<UObject*>(World);
-		const FVector2D MouseVP = WorldCtx
-			? UWidgetLayoutLibrary::GetMousePositionOnViewport(WorldCtx)
-			: FVector2D{};
-
-		std::cout << "[SDK] ItemHoverHeartbeat: slots=" << ITEMS_PER_PAGE
-			<< " validBtn=" << ValidBtnCount
-			<< " validEntry=" << ValidEntryCount
-			<< " candidate=" << CandidateSlotCount
-			<< " enabled=" << EnabledSlotCount
-			<< " hoverByBtn=" << HoverByBtnCount
-			<< " hoverByEntry=" << HoverByEntryCount
-			<< " hoverByGpcWrap=" << HoverByGpcWrapperCount
-			<< " hoverByGpcMain=" << HoverByGpcMainCount
-			<< " hoverByDispElem=" << HoverByDisplayElemCount
-			<< " hoverByDispCmp=" << HoverByDisplayCmpCount
-			<< " hoverByDispCanvas=" << HoverByDisplayCanvasCount
-			<< " hoverByDispImg=" << HoverByDisplayImageCount
-			<< " hoverByGridFallback=" << HoverByGridFallbackCount
-			<< " hoveredSlot=" << HoveredSlot
-			<< " mouseAbs=(" << MouseAbs.X << "," << MouseAbs.Y << ")"
-			<< " mouseVP=(" << MouseVP.X << "," << MouseVP.Y << ")"
-			<< " grid=" << (void*)GItemGridPanel << "\n";
-
-		UWidget* ProbeWidget = nullptr;
-		auto* ProbeEntry = (IsSafeLiveObject(static_cast<UObject*>(GItemSlotEntryWidgets[0])) &&
-			GItemSlotEntryWidgets[0]->IsA(UBPEntry_Item_C::StaticClass()))
-			? static_cast<UBPEntry_Item_C*>(GItemSlotEntryWidgets[0])
-			: nullptr;
-
-		if (ProbeEntry && ProbeEntry->ItemDisplay && ProbeEntry->ItemDisplay->CMP)
-		{
-			auto* Cmp = ProbeEntry->ItemDisplay->CMP;
-			if (IsSafeLiveObject(static_cast<UObject*>(Cmp->CT_Main)))
-				ProbeWidget = static_cast<UWidget*>(Cmp->CT_Main);
-			else if (IsSafeLiveObject(static_cast<UObject*>(Cmp->IMG_SolidBG)))
-				ProbeWidget = static_cast<UWidget*>(Cmp->IMG_SolidBG);
-			else if (IsSafeLiveObject(static_cast<UObject*>(Cmp->IMG_Item)))
-				ProbeWidget = static_cast<UWidget*>(Cmp->IMG_Item);
-		}
-		if (!ProbeWidget && IsSafeLiveObject(static_cast<UObject*>(GItemSlotEntryWidgets[0])))
-			ProbeWidget = static_cast<UWidget*>(GItemSlotEntryWidgets[0]);
-		else if (!ProbeWidget && IsSafeLiveObject(static_cast<UObject*>(GItemSlotButtons[0])))
-			ProbeWidget = static_cast<UWidget*>(GItemSlotButtons[0]);
-
-		if (ProbeWidget && WorldCtx)
-		{
-			const FGeometry ProbeGeo = ProbeWidget->GetCachedGeometry();
-			const FVector2D ProbeSize = USlateBlueprintLibrary::GetLocalSize(ProbeGeo);
-			FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
-			USlateBlueprintLibrary::LocalToViewport(WorldCtx, ProbeGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
-			USlateBlueprintLibrary::LocalToViewport(WorldCtx, ProbeGeo, ProbeSize, &PixelBR, &ViewBR);
-			const bool UnderAbs = USlateBlueprintLibrary::IsUnderLocation(ProbeGeo, MouseAbs);
-			std::cout << "[SDK] ItemHoverProbeRect: widget=" << (void*)ProbeWidget
-				<< " vis=" << VisName(ProbeWidget->GetVisibility())
-				<< " size=(" << ProbeSize.X << "," << ProbeSize.Y << ")"
-				<< " viewTL=(" << ViewTL.X << "," << ViewTL.Y << ")"
-				<< " viewBR=(" << ViewBR.X << "," << ViewBR.Y << ")"
-				<< " pixelTL=(" << PixelTL.X << "," << PixelTL.Y << ")"
-				<< " pixelBR=(" << PixelBR.X << "," << PixelBR.Y << ")"
-				<< " underAbs=" << (UnderAbs ? 1 : 0) << "\n";
 		}
 	}
 
@@ -1191,16 +1131,6 @@ void PollItemBrowserHoverTips()
 	}
 
 	auto* Subsystem = GetJHNeoUISubsystem();
-	if (!Subsystem)
-	{
-		if (sLastFailCode != 2)
-		{
-			std::cout << "[SDK] ItemHoverProbe: subsystem null\n";
-			sLastFailCode = 2;
-		}
-		HideCurrentItemTips();
-		return;
-	}
 
 	// Hover target changed: build a fresh game-native tips widget.
 	const bool NeedRebuildTips =
@@ -1213,92 +1143,9 @@ void PollItemBrowserHoverTips()
 		HideCurrentItemTips();
 
 		const CachedItem& CI = GAllItems[ItemIdx];
-		GItemHoverTempSpec = UItemFuncLib::MakeItemInfoSpec(CI.DefId, 1, EItemRandPoolType::Normal);
-		if (!GItemHoverTempSpec)
-		{
-			if (sLastFailCode != 4)
-			{
-				std::cout << "[SDK] ItemHoverProbe: MakeItemInfoSpec failed defId=" << CI.DefId << "\n";
-				sLastFailCode = 4;
-			}
-			return;
-		}
-
-		MarkAsGCRoot(static_cast<UObject*>(GItemHoverTempSpec));
-
 		GItemHoverTipsWidget = nullptr;
-		auto TryAdoptTipsWidget = [&](UJHNeoUITipsVEBase* Candidate, const char* SourceTag) -> bool
-		{
-			if (!Candidate || !IsSafeLiveObject(static_cast<UObject*>(Candidate)))
-				return false;
-
-			if (UWorld* World = UWorld::GetWorld())
-			{
-				if (APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0))
-					Candidate->SetOwningPlayer(PC);
-			}
-			if (!Candidate->IsInViewport())
-			{
-				Candidate->AddToViewport(kItemTipZOrder);
-				if (!Candidate->IsInViewport())
-					Candidate->AddToPlayerScreen(kItemTipZOrder);
-			}
-
-			Candidate->SetRenderOpacity(1.0f);
-			Candidate->SetVisibility(ESlateVisibility::HitTestInvisible);
-			Candidate->AnchorTop_Left();
-			Candidate->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
-			Candidate->SetDesiredSizeInViewport(FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight });
-
-			if (kVerboseItemHoverLogs)
-			{
-				std::cout << "[SDK] ItemHoverProbe: tip source=" << SourceTag
-					<< " inViewport=" << (Candidate->IsInViewport() ? 1 : 0) << "\n";
-			}
-
-			if (!Candidate->IsInViewport())
-				return false;
-
-			GItemHoverTipsWidget = Candidate;
-			return true;
-		};
-
-		// 鍘熺敓璺緞 1锛氳儗鍖呬笓鐢?VM锛堝彲鑳戒緷璧?comparison 璧勬簮閾撅級
-		if (UObject* BackpackTipVMObj = GetBackpackItemTipVMObject())
-		{
-			auto* BackpackTipVM = static_cast<UJHNeoUIC_Backpack_ItemTipVM*>(BackpackTipVMObj);
-			if ((!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget))))
-			{
-				auto* Candidate = BackpackTipVM->ShowBackpackItem(
-					GItemHoverTempSpec,
-					false, // enableCompare
-					false, // CompareToNPC
-					false  // IsFromBuyback
-				);
-				TryAdoptTipsWidget(Candidate, "BackpackItemTipVM.ShowBackpackItem");
-			}
-		}
-
-		// 鍘熺敓璺緞 2锛欳onsole TipModule 鎺ュ彛
-		UObject* TipModuleObj = GetConsoleTipModuleObject();
-		if ((!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget))) &&
-			TipModuleObj)
-		{
-			auto* TipModule = reinterpret_cast<IJHNeoUIC_TipModule*>(TipModuleObj);
-			auto* Candidate = TipModule->ShowItem(GItemHoverTempSpec);
-			if (!TryAdoptTipsWidget(Candidate, "Tips_Console.ShowItem"))
-			{
-				Candidate = TipModule->ShowBackpackItem(
-					GItemHoverTempSpec,
-					false, // enableCompare
-					false, // CompareToNPC
-					false  // IsFromBuyback
-				);
-				TryAdoptTipsWidget(Candidate, "Tips_Console.ShowBackpackItem");
-			}
-		}
-
-		// 鑷畾涔夎矾寰勶細鐩存帴鍒涘缓娓告垙鑷畾涔?Tip 缁勪欢骞舵墜鍔ㄥ～鍏?		if ((!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget))))
+		// 仅使用自建 StandaloneGameTip，不再调用游戏原生 Tip VM 接口。
+		if (!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)))
 		{
 			const bool StandaloneOK = UpdateStandaloneItemTipContent(CI);
 			if (StandaloneOK && IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget)))
@@ -1316,8 +1163,7 @@ void PollItemBrowserHoverTips()
 		{
 			if (sLastFailCode != 5)
 			{
-				std::cout << "[SDK] ItemHoverProbe: all tip sources failed defId=" << CI.DefId
-					<< " (BackpackTipVM / Tips_Console / StandaloneGameTip)\n";
+				std::cout << "[SDK] ItemHoverProbe: StandaloneGameTip failed defId=" << CI.DefId << "\n";
 				sLastFailCode = 5;
 			}
 			HideCurrentItemTips();
@@ -1335,16 +1181,72 @@ void PollItemBrowserHoverTips()
 
 	// Keep the tips anchored to the currently hovered backpack entry widget.
 	auto* Anchor = GItemSlotEntryWidgets[HoveredSlot];
-	if (IsSafeLiveObject(static_cast<UObject*>(Anchor)))
+	const bool IsStandaloneTip =
+		(GStandaloneItemTipWidget &&
+		 GItemHoverTipsWidget == static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget));
+	if (!IsStandaloneTip && Subsystem && IsSafeLiveObject(static_cast<UObject*>(Anchor)))
 		Subsystem->UpdateItemTipsPosition(Anchor, GItemHoverTipsWidget, false);
-	if (UWorld* World = UWorld::GetWorld())
+
+	UObject* ViewportContext = nullptr;
+	if (IsSafeLiveObject(static_cast<UObject*>(Anchor)))
+		ViewportContext = static_cast<UObject*>(Anchor);
+	else if (IsSafeLiveObject(static_cast<UObject*>(InternalWidget)))
+		ViewportContext = static_cast<UObject*>(InternalWidget);
+	else if (UWorld* World = UWorld::GetWorld())
+		ViewportContext = static_cast<UObject*>(World);
+
+	if (ViewportContext)
 	{
-		const FVector2D MouseVP = UWidgetLayoutLibrary::GetMousePositionOnViewport(static_cast<UObject*>(World));
+		APlayerController* PC = nullptr;
+		if (UWorld* World = UWorld::GetWorld())
+			PC = UGameplayStatics::GetPlayerController(World, 0);
+
+		FVector2D MouseVP{};
+		bool GotMouseVP = false;
+		if (PC)
+		{
+			float MouseX = 0.0f;
+			float MouseY = 0.0f;
+			GotMouseVP = UWidgetLayoutLibrary::GetMousePositionScaledByDPI(PC, &MouseX, &MouseY);
+			if (GotMouseVP)
+				MouseVP = FVector2D{ MouseX, MouseY };
+		}
+		if (!GotMouseVP)
+			MouseVP = UWidgetLayoutLibrary::GetMousePositionOnViewport(ViewportContext);
+
 		FVector2D TipSize = USlateBlueprintLibrary::GetLocalSize(GItemHoverTipsWidget->GetCachedGeometry());
 		if (TipSize.X < 1.0f || TipSize.Y < 1.0f)
 			TipSize = FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight };
 
-		const FVector2D ViewportSize = UWidgetLayoutLibrary::GetViewportSize(static_cast<UObject*>(World));
+		FVector2D ViewportSize = UWidgetLayoutLibrary::GetViewportSize(ViewportContext);
+		if (ViewportSize.X < 64.0f || ViewportSize.Y < 64.0f)
+		{
+			if (UWorld* World = UWorld::GetWorld())
+				ViewportSize = UWidgetLayoutLibrary::GetViewportSize(static_cast<UObject*>(World));
+		}
+		if (ViewportSize.X < 64.0f || ViewportSize.Y < 64.0f)
+			ViewportSize = FVector2D{ 1920.0f, 1080.0f };
+
+		const bool MouseOutOfViewportRange =
+			(MouseVP.X < -64.0f || MouseVP.Y < -64.0f ||
+			 MouseVP.X > (ViewportSize.X + 64.0f) ||
+			 MouseVP.Y > (ViewportSize.Y + 64.0f));
+		if (MouseOutOfViewportRange && IsSafeLiveObject(static_cast<UObject*>(Anchor)))
+		{
+			const FGeometry AnchorGeo = Anchor->GetCachedGeometry();
+			const FVector2D AnchorSize = USlateBlueprintLibrary::GetLocalSize(AnchorGeo);
+			if (AnchorSize.X > 1.0f && AnchorSize.Y > 1.0f)
+			{
+				FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+				USlateBlueprintLibrary::LocalToViewport(
+					ViewportContext, AnchorGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+				USlateBlueprintLibrary::LocalToViewport(
+					ViewportContext, AnchorGeo, AnchorSize, &PixelBR, &ViewBR);
+				MouseVP.X = (ViewTL.X + ViewBR.X) * 0.5f;
+				MouseVP.Y = (ViewTL.Y + ViewBR.Y) * 0.5f;
+			}
+		}
+
 		float TipX = MouseVP.X + kItemTipMouseOffset;
 		float TipY = MouseVP.Y + kItemTipMouseOffset;
 
@@ -1361,7 +1263,7 @@ void PollItemBrowserHoverTips()
 			TipY = ViewportSize.Y - TipSize.Y - kItemTipViewportMargin;
 
 		const FVector2D TipPos{ TipX, TipY };
-		GItemHoverTipsWidget->SetGlobalPos(TipPos);
+		GItemHoverTipsWidget->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
 		GItemHoverTipsWidget->SetPositionInViewport(TipPos, false);
 	}
 

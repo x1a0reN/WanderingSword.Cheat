@@ -11,7 +11,18 @@
 
 namespace
 {
-	constexpr bool kVerboseFrameLogs = false;
+	struct PostRenderInFlightScope final
+	{
+		PostRenderInFlightScope()
+		{
+			GPostRenderInFlight.fetch_add(1, std::memory_order_acq_rel);
+		}
+
+		~PostRenderInFlightScope()
+		{
+			GPostRenderInFlight.fetch_sub(1, std::memory_order_acq_rel);
+		}
+	};
 
 	bool IsPointerInLiveObjectArray(UObject* Obj)
 	{
@@ -51,6 +62,8 @@ namespace
 
 void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 {
+	PostRenderInFlightScope InFlightScope;
+
 	// Call original first to preserve normal rendering
 	if (OriginalGVCPostRender)
 		OriginalGVCPostRender(This, Canvas);
@@ -126,18 +139,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 	}
 	const bool IsItemsTabActive = (ActiveNativeTabIndex == 1);
-	{
-		static int32 sLastActiveTabIndex = -999;
-		if (kVerboseFrameLogs && ActiveNativeTabIndex != sLastActiveTabIndex)
-		{
-			std::cout << "[SDK] ActiveNativeTabIndex: " << ActiveNativeTabIndex << "\n";
-			sLastActiveTabIndex = ActiveNativeTabIndex;
-		}
-		else if (!kVerboseFrameLogs && ActiveNativeTabIndex != sLastActiveTabIndex)
-		{
-			sLastActiveTabIndex = ActiveNativeTabIndex;
-		}
-	}
 
 	// Detect BTN_Exit click (edge-triggered).
 	// Only poll while panel is visible and pointer is valid to avoid unreachable UObject asserts.
@@ -373,21 +374,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		LiveInternalWidget &&
 		HoverGridValid;
 
-	if (kVerboseFrameLogs)
-	{
-		static DWORD sHoverGateLastLogTick = 0;
-		const DWORD NowTick = GetTickCount();
-		if (NowTick - sHoverGateLastLogTick >= 1000)
-		{
-			sHoverGateLastLogTick = NowTick;
-			std::cout << "[SDK] HoverPollGate: visible=" << (InternalWidgetVisible ? 1 : 0)
-				<< " live=" << (LiveInternalWidget ? 1 : 0)
-				<< " grid=" << (void*)GItemGridPanel
-				<< " gridValid=" << (HoverGridValid ? 1 : 0)
-				<< " canPoll=" << (CanPollHover ? 1 : 0) << "\n";
-		}
-	}
-
 	if (CanPollHover)
 		PollItemBrowserHoverTips();
 
@@ -448,15 +434,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		APlayerController* PC = GetFirstLocalPlayerController();
 		HideInternalWidget(PC);
 		std::cout << "[SDK] Widget closed externally, cached instance kept\n";
-	}
-
-	// Throttle output to once per second to avoid flooding the console
-	static DWORD LastPrint = 0;
-	DWORD Now = GetTickCount();
-	if (kVerboseFrameLogs && (Now - LastPrint > 1000))
-	{
-		std::cout << "[SDK] GVC PostRender called\n";
-		LastPrint = Now;
 	}
 }
 

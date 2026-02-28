@@ -8,6 +8,7 @@ std::atomic<bool> GIsUnloading = false;
 std::atomic<bool> GUnloadCleanupDone = false;
 std::atomic<bool> GHooksRemoved = false;
 std::atomic<bool> GConsoleClosed = false;
+std::atomic<int32> GPostRenderInFlight = 0;
 
 UNeoUIButtonBase* GCachedBtnExit = nullptr;
 std::vector<UObject*> GRootedObjects;

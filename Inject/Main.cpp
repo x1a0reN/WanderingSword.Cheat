@@ -71,34 +71,86 @@ DWORD MainThread(HMODULE Module)
 		std::cout << "[SDK] GVCPostRenderIdx not detected (-1), hook skipped\n";
 	}
 
+	constexpr DWORD kCleanupTimeoutMs = 2500;
+	constexpr DWORD kInFlightTimeoutMs = 1500;
+
 	while (true)
 	{
-		if (GetAsyncKeyState(VK_DELETE) & 1)
-			break;
-
-		Sleep(100);
-	}
-
-	std::cout << "[SDK] Unloading...\n";
-	GUnloadCleanupDone.store(false, std::memory_order_release);
-	GIsUnloading.store(true, std::memory_order_release);
-
-	DWORD WaitStart = GetTickCount();
-	while (!GUnloadCleanupDone.load(std::memory_order_acquire))
-	{
-		if (GetTickCount() - WaitStart > 2500)
+		if ((GetAsyncKeyState(VK_DELETE) & 1) == 0)
 		{
-			std::cout << "[SDK] UnloadCleanup: timeout, continue force unhook\n";
-			break;
+			Sleep(100);
+			continue;
 		}
-		Sleep(10);
+
+		std::cout << "[SDK] Unloading...\n";
+		GUnloadCleanupDone.store(false, std::memory_order_release);
+		GIsUnloading.store(true, std::memory_order_release);
+
+		// Phase 1: cleanup must be completed on game thread.
+		bool CleanupDone = false;
+		DWORD WaitStart = GetTickCount();
+		while (!(CleanupDone = GUnloadCleanupDone.load(std::memory_order_acquire)))
+		{
+			if (GetTickCount() - WaitStart > kCleanupTimeoutMs)
+				break;
+			Sleep(10);
+		}
+		if (!CleanupDone)
+		{
+			GIsUnloading.store(false, std::memory_order_release);
+			GUnloadCleanupDone.store(false, std::memory_order_release);
+			std::cout << "[SDK] Unload refused (fail-closed): cleanup timeout, DLL kept loaded\n";
+			continue;
+		}
+
+		// Phase 2: ensure no PostRender call is currently in-flight before unhook.
+		bool PreUnhookDrained = false;
+		WaitStart = GetTickCount();
+		while (!(PreUnhookDrained = (GPostRenderInFlight.load(std::memory_order_acquire) == 0)))
+		{
+			if (GetTickCount() - WaitStart > kInFlightTimeoutMs)
+				break;
+			Sleep(1);
+		}
+		if (!PreUnhookDrained)
+		{
+			GIsUnloading.store(false, std::memory_order_release);
+			std::cout << "[SDK] Unload refused (fail-closed): in-flight timeout before unhook, DLL kept loaded\n";
+			continue;
+		}
+
+		RemoveAllHooks();
+
+		// Phase 3: after unhook, there still must be zero in-flight calls.
+		bool PostUnhookDrained = false;
+		WaitStart = GetTickCount();
+		while (!(PostUnhookDrained = (GPostRenderInFlight.load(std::memory_order_acquire) == 0)))
+		{
+			if (GetTickCount() - WaitStart > kInFlightTimeoutMs)
+				break;
+			Sleep(1);
+		}
+		if (!PostUnhookDrained)
+		{
+			GIsUnloading.store(false, std::memory_order_release);
+			std::cout << "[SDK] Unload refused (fail-closed): in-flight timeout after unhook, DLL kept loaded\n";
+			continue;
+		}
+
+		// Hard gate: both conditions must be satisfied, otherwise never unload.
+		if (!GUnloadCleanupDone.load(std::memory_order_acquire) ||
+			GPostRenderInFlight.load(std::memory_order_acquire) != 0)
+		{
+			GIsUnloading.store(false, std::memory_order_release);
+			std::cout << "[SDK] Unload refused (fail-closed): final gate check failed, DLL kept loaded\n";
+			continue;
+		}
+
+		SetUnhandledExceptionFilter(nullptr);
+		CloseConsoleSafely();
+		FreeLibraryAndExitThread(Module, 0);
+		return 0;
 	}
-
-	RemoveAllHooks();
-	CloseConsoleSafely();
-
-	FreeLibraryAndExitThread(Module, 0);
-	return 0;
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
