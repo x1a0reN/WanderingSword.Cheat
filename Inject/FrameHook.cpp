@@ -6,6 +6,7 @@
 #include "FrameHook.hpp"
 #include "ItemBrowser.hpp"
 #include "PanelManager.hpp"
+#include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
 
 void __fastcall HookedGVCPostRender(void* This, void* Canvas)
@@ -67,6 +68,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	// ── Item browser per-frame polling ──
 	if (InternalWidgetVisible)
 	{
+		PollCollapsiblePanelsInput();
+
 		if (GVolumeLastValues.size() != GVolumeItems.size())
 			GVolumeLastValues.resize(GVolumeItems.size(), 0.0f);
 		if (GVolumeMinusWasPressed.size() != GVolumeItems.size())

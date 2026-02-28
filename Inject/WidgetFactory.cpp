@@ -1,11 +1,21 @@
 #include <Windows.h>
 #include <algorithm>
 #include <iostream>
+#include <vector>
+#include <unordered_map>
 
 #include "WidgetFactory.hpp"
 #include "GCManager.hpp"
 #include "WidgetUtils.hpp"
 #include "SDK/VE_JHVideoPanel2_classes.hpp"
+
+namespace
+{
+	std::vector<UVE_JHVideoPanel2_C*> GCollapsiblePanels;
+	std::unordered_map<UVE_JHVideoPanel2_C*, bool> GCollapsibleStates;
+	bool GCollapsibleLmbWasDown = false;
+	UVE_JHVideoPanel2_C* GCollapsiblePressedPanel = nullptr;
+}
 void HideTabIcon(UJHNeoUIConfigV2TabBtn* TabBtn)
 {
 	if (!TabBtn)
@@ -641,5 +651,117 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 	          << " contents=" << (void*)Panel->CT_Contents
 	          << " slotContents=" << (void*)Panel->SlotContents
 	          << " collapsed=" << (Panel->IsCollapsed ? 1 : 0) << "\n";
+
+	if (std::find(GCollapsiblePanels.begin(), GCollapsiblePanels.end(), Panel) == GCollapsiblePanels.end())
+		GCollapsiblePanels.push_back(Panel);
+	GCollapsibleStates[Panel] = Panel->IsCollapsed;
+
 	return Panel;
+}
+
+void PollCollapsiblePanelsInput()
+{
+	const bool LmbDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+	const bool PressedEdge = LmbDown && !GCollapsibleLmbWasDown;
+	const bool ReleasedEdge = !LmbDown && GCollapsibleLmbWasDown;
+
+	// 清理无效引用，避免后续访问僵尸对象
+	GCollapsiblePanels.erase(
+		std::remove_if(
+			GCollapsiblePanels.begin(),
+			GCollapsiblePanels.end(),
+			[](UVE_JHVideoPanel2_C* P)
+			{
+				return !P || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(P));
+			}),
+		GCollapsiblePanels.end());
+
+	// 清理状态表中已失效或已不在活动列表内的面板
+	for (auto It = GCollapsibleStates.begin(); It != GCollapsibleStates.end(); )
+	{
+		auto* P = It->first;
+		const bool bValid = P && UKismetSystemLibrary::IsValid(static_cast<UObject*>(P));
+		const bool bTracked = std::find(GCollapsiblePanels.begin(), GCollapsiblePanels.end(), P) != GCollapsiblePanels.end();
+		if (!bValid || !bTracked)
+			It = GCollapsibleStates.erase(It);
+		else
+			++It;
+	}
+
+	if (GCollapsiblePressedPanel &&
+		!UKismetSystemLibrary::IsValid(static_cast<UObject*>(GCollapsiblePressedPanel)))
+	{
+		GCollapsiblePressedPanel = nullptr;
+	}
+
+	const FVector2D MouseAbs = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
+
+	auto IsPointOverWidget = [&](UWidget* W) -> bool
+	{
+		if (!W || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(W)))
+			return false;
+
+		// NeoUI 某些控件 IsHovered() 不稳定，这里改用几何命中检测作为主判定。
+		const FGeometry Geo = W->GetCachedGeometry();
+		if (USlateBlueprintLibrary::IsUnderLocation(Geo, MouseAbs))
+			return true;
+
+		return W->IsHovered();
+	};
+
+	auto IsPointOverPanelTitle = [&](UVE_JHVideoPanel2_C* Panel) -> bool
+	{
+		if (!Panel || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Panel)))
+			return false;
+		return IsPointOverWidget(static_cast<UWidget*>(Panel->IMG_TitleBG)) ||
+			IsPointOverWidget(static_cast<UWidget*>(Panel->txt));
+	};
+
+	auto TogglePanel = [&](UVE_JHVideoPanel2_C* Panel)
+	{
+		if (!Panel || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Panel)))
+			return;
+
+		bool CurrentCollapsed = Panel->IsCollapsed;
+		const auto It = GCollapsibleStates.find(Panel);
+		if (It != GCollapsibleStates.end())
+			CurrentCollapsed = It->second;
+
+		const bool NextCollapsed = !CurrentCollapsed;
+		GCollapsibleStates[Panel] = NextCollapsed;
+		Panel->IsCollapsed = NextCollapsed;
+
+		if (Panel->CT_Contents &&
+			UKismetSystemLibrary::IsValid(static_cast<UObject*>(Panel->CT_Contents)))
+		{
+			Panel->CT_Contents->SetVisibility(
+				NextCollapsed ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		}
+		std::cout << "[SDK] CollapsibleToggle: panel=" << (void*)Panel
+		          << " prev=" << (CurrentCollapsed ? 1 : 0)
+		          << " collapsed=" << (NextCollapsed ? 1 : 0) << "\n";
+	};
+
+	// 单击语义：按下时记住目标标题，抬起且仍在同一标题上时触发一次切换
+	if (PressedEdge)
+	{
+		GCollapsiblePressedPanel = nullptr;
+		for (auto* Panel : GCollapsiblePanels)
+		{
+			if (IsPointOverPanelTitle(Panel))
+			{
+				GCollapsiblePressedPanel = Panel;
+				break;
+			}
+		}
+	}
+
+	if (ReleasedEdge)
+	{
+		if (GCollapsiblePressedPanel && IsPointOverPanelTitle(GCollapsiblePressedPanel))
+			TogglePanel(GCollapsiblePressedPanel);
+		GCollapsiblePressedPanel = nullptr;
+	}
+
+	GCollapsibleLmbWasDown = LmbDown;
 }

@@ -51,3 +51,6 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(
 	APlayerController* PC,
 	const wchar_t* Title,
 	bool bStartCollapsed = false);
+
+// 每帧轮询折叠面板标题点击，手动切换展开/收起
+void PollCollapsiblePanelsInput();
