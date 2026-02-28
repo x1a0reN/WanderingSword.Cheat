@@ -1,0 +1,114 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="SDK">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Inject\Core">
+      <UniqueIdentifier>{9B86E5A4-2F8D-4EB9-9D52-E5A5B5C827CF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Inject\UI">
+      <UniqueIdentifier>{25C00EA8-0347-4D14-9870-682111685E14}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Inject\Runtime">
+      <UniqueIdentifier>{81532D58-C774-4B7D-8E0A-95E7239A338A}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="CheatState.cpp">
+      <Filter>Inject\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Logging.cpp">
+      <Filter>Inject\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="GCManager.cpp">
+      <Filter>Inject\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="WidgetUtils.cpp">
+      <Filter>Inject\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="WidgetFactory.cpp">
+      <Filter>Inject\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="ItemBrowser.cpp">
+      <Filter>Inject\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="TabContent.cpp">
+      <Filter>Inject\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="PanelManager.cpp">
+      <Filter>Inject\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="FrameHook.cpp">
+      <Filter>Inject\Runtime</Filter>
+    </ClCompile>
+    <ClCompile Include="Main.cpp">
+      <Filter>Inject\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\Basic.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\CoreUObject_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\Engine_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\UMG_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\NeoUI_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\JHCommon_Btn_Free_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\JH_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\BPMV_ConfigView2_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\BP_JHConfigTabBtn_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\BPVE_JHConfigVideoItem2_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SDK\BPVE_JHConfigVolumeItem2_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CheatState.hpp">
+      <Filter>Inject\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Logging.hpp">
+      <Filter>Inject\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="GCManager.hpp">
+      <Filter>Inject\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="WidgetUtils.hpp">
+      <Filter>Inject\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="WidgetFactory.hpp">
+      <Filter>Inject\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="ItemBrowser.hpp">
+      <Filter>Inject\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="TabContent.hpp">
+      <Filter>Inject\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="PanelManager.hpp">
+      <Filter>Inject\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="FrameHook.hpp">
+      <Filter>Inject\Runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="..\VTHook.hpp">
+      <Filter>Inject\Core</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

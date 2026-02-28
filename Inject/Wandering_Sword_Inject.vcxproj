@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{1402A553-AFC9-4691-9402-AFC9E691C9E6}</ProjectGuid>
+    <RootNamespace>Wandering_Sword</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="CheatState.cpp" />
+    <ClCompile Include="Logging.cpp" />
+    <ClCompile Include="GCManager.cpp" />
+    <ClCompile Include="WidgetUtils.cpp" />
+    <ClCompile Include="WidgetFactory.cpp" />
+    <ClCompile Include="ItemBrowser.cpp" />
+    <ClCompile Include="TabContent.cpp" />
+    <ClCompile Include="PanelManager.cpp" />
+    <ClCompile Include="FrameHook.cpp" />
+    <ClCompile Include="Main.cpp" />
+    <ClCompile Include="..\SDK\Basic.cpp" />
+    <ClCompile Include="..\SDK\CoreUObject_functions.cpp" />
+    <ClCompile Include="..\SDK\Engine_functions.cpp" />
+    <ClCompile Include="..\SDK\UMG_functions.cpp" />
+    <ClCompile Include="..\SDK\NeoUI_functions.cpp" />
+    <ClCompile Include="..\SDK\JH_functions.cpp" />
+    <ClCompile Include="..\SDK\BPMV_ConfigView2_functions.cpp" />
+    <ClCompile Include="..\SDK\BP_JHConfigTabBtn_functions.cpp" />
+    <ClCompile Include="..\SDK\JHCommon_Btn_Free_functions.cpp" />
+    <ClCompile Include="..\SDK\BPVE_JHConfigVideoItem2_functions.cpp" />
+    <ClCompile Include="..\SDK\BPVE_JHConfigVolumeItem2_functions.cpp" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <ClInclude Include="CheatState.hpp" />
+    <ClInclude Include="Logging.hpp" />
+    <ClInclude Include="GCManager.hpp" />
+    <ClInclude Include="WidgetUtils.hpp" />
+    <ClInclude Include="WidgetFactory.hpp" />
+    <ClInclude Include="ItemBrowser.hpp" />
+    <ClInclude Include="TabContent.hpp" />
+    <ClInclude Include="PanelManager.hpp" />
+    <ClInclude Include="FrameHook.hpp" />
+    <ClInclude Include="..\VTHook.hpp" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+</Project>
