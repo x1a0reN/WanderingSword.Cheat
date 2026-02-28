@@ -1,0 +1,19 @@
+# SDK (Dumper-7 generated headers)
+SDK/
+
+# Build outputs
+Inject/x64/
+Proxy/x64/
+
+# Visual Studio
+.vs/
+Inject/.vs/
+Inject/Wanderin.*/
+Proxy/Wanderin.*/
+*.vcxproj.user
+
+# Claude
+.claude/
+
+# Cheat Engine tables
+*.CT

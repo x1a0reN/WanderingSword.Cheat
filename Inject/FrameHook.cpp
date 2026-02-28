@@ -78,7 +78,13 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 		GItemAddQuantity = GetItemAddQuantityFromEdit();
 
-		bool PrevPressed = GItemPrevPageBtn && GItemPrevPageBtn->IsPressed();
+		auto GetInnerButton = [](UJHCommon_Btn_Free_C* Btn) -> UButton* {
+			if (!Btn || !Btn->JHGPCBtn) return nullptr;
+			return static_cast<UJHNeoUIGamepadConfirmButton*>(Btn->JHGPCBtn)->BtnMain;
+		};
+
+		UButton* PrevInner = GetInnerButton(GItemPrevPageBtn);
+		bool PrevPressed = PrevInner && PrevInner->IsPressed();
 		if (GItemPrevWasPressed && !PrevPressed && GItemCurrentPage > 0)
 		{
 			GItemCurrentPage--;
@@ -86,7 +92,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 		GItemPrevWasPressed = PrevPressed;
 
-		bool NextPressed = GItemNextPageBtn && GItemNextPageBtn->IsPressed();
+		UButton* NextInner = GetInnerButton(GItemNextPageBtn);
+		bool NextPressed = NextInner && NextInner->IsPressed();
 		if (GItemNextWasPressed && !NextPressed && (GItemCurrentPage + 1) < GItemTotalPages)
 		{
 			GItemCurrentPage++;
@@ -119,73 +126,45 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	if (InternalWidgetVisible && InternalWidget && InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
 	{
 		auto* CV = static_cast<UBPMV_ConfigView2_C*>(InternalWidget);
-		auto* Switcher = CV->CT_Contents;
 
-		if (Switcher)
+		// Native tabs fully handle themselves via AutoFocusForMouseEntering →
+		// HandleMainBtn() → EVT_SyncTabIndex(). We only manage dynamic tab
+		// content visibility (VBoxes outside the Switcher) and active state.
+		static int32 sActiveDynTab = -1;
+
+		int32 dynHoverIdx = -1;
+		if      (GDynTabBtn6 && GDynTabBtn6->IsHovered()) dynHoverIdx = 6;
+		else if (GDynTabBtn7 && GDynTabBtn7->IsHovered()) dynHoverIdx = 7;
+		else if (GDynTabBtn8 && GDynTabBtn8->IsHovered()) dynHoverIdx = 8;
+
+		if (dynHoverIdx >= 6 && dynHoverIdx != sActiveDynTab)
 		{
-			auto DeactivateOriginalTabs = [&]()
-			{
-				if (CV->BTN_Sound)   CV->BTN_Sound->EVT_UpdateActiveStatus(false);
-				if (CV->BTN_Video)   CV->BTN_Video->EVT_UpdateActiveStatus(false);
-				if (CV->BTN_Keys)    CV->BTN_Keys->EVT_UpdateActiveStatus(false);
-				if (CV->BTN_Lan)     CV->BTN_Lan->EVT_UpdateActiveStatus(false);
-				if (CV->BTN_Others)  CV->BTN_Others->EVT_UpdateActiveStatus(false);
-				if (CV->BTN_Gamepad) CV->BTN_Gamepad->EVT_UpdateActiveStatus(false);
-			};
-			auto SetDynamicActive = [&](int32 ActiveIdx)
-			{
-				auto SafeSetActive = [](UBP_JHConfigTabBtn_C* Btn, bool Active) {
-					if (!Btn) return;
-					if (Btn->JHGPCBtn_ActiveBG)
-						Btn->JHGPCBtn_ActiveBG->SetVisibility(
-							Active ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-				};
-				SafeSetActive(GDynTabBtn6, ActiveIdx == 6);
-				SafeSetActive(GDynTabBtn7, ActiveIdx == 7);
-				SafeSetActive(GDynTabBtn8, ActiveIdx == 8);
-			};
-			// Detect if user clicked an original tab (0-5) via switcher index change
-			int32 curIdx = Switcher->GetActiveWidgetIndex();
-			if (curIdx != GLastSwitcherIndex && curIdx >= 0 && curIdx <= 5)
+			// Entering a (different) dynamic tab — show its content
+			ShowDynamicTab(CV, dynHoverIdx);
+			if (GDynTabBtn6) GDynTabBtn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
+			if (GDynTabBtn7) GDynTabBtn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
+			if (GDynTabBtn8) GDynTabBtn8->EVT_UpdateActiveStatus(dynHoverIdx == 8);
+			sActiveDynTab = dynHoverIdx;
+		}
+		else if (sActiveDynTab >= 6 && dynHoverIdx == -1)
+		{
+			// Only restore original content when a NATIVE tab is hovered.
+			// Moving mouse to content area or empty space keeps dynamic tab active
+			// — same behavior as native tabs.
+			bool nativeHovered = (CV->BTN_Sound   && CV->BTN_Sound->IsHovered())
+			                  || (CV->BTN_Video   && CV->BTN_Video->IsHovered())
+			                  || (CV->BTN_Keys    && CV->BTN_Keys->IsHovered())
+			                  || (CV->BTN_Lan     && CV->BTN_Lan->IsHovered())
+			                  || (CV->BTN_Others  && CV->BTN_Others->IsHovered())
+			                  || (CV->BTN_Gamepad && CV->BTN_Gamepad->IsHovered());
+			if (nativeHovered)
 			{
 				ShowOriginalTab(CV);
-				SetDynamicActive(-1);
+				if (GDynTabBtn6) GDynTabBtn6->EVT_UpdateActiveStatus(false);
+				if (GDynTabBtn7) GDynTabBtn7->EVT_UpdateActiveStatus(false);
+				if (GDynTabBtn8) GDynTabBtn8->EVT_UpdateActiveStatus(false);
+				sActiveDynTab = -1;
 			}
-			GLastSwitcherIndex = curIdx;
-
-			// Dynamic tab click detection via IsHovered() + Win32 mouse state.
-			// BtnMain->IsPressed() is broken because SanitizeWidgetTree clears
-			// button bindings and sets IsFocusable=false, preventing Slate press
-			// state. IsHovered() is geometry-based and unaffected by sanitization.
-			static bool sDynMouseWasDown = false;
-			bool DynMouseDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-			bool DynMouseReleased = sDynMouseWasDown && !DynMouseDown;
-
-			if (DynMouseReleased)
-			{
-				if (GDynTabBtn6 && GDynTabBtn6->IsHovered())
-				{
-					ShowDynamicTab(CV, 6);
-					DeactivateOriginalTabs();
-					SetDynamicActive(6);
-					std::cout << "[SDK] Switched to Tab6 (Teammates)\n";
-				}
-				else if (GDynTabBtn7 && GDynTabBtn7->IsHovered())
-				{
-					ShowDynamicTab(CV, 7);
-					DeactivateOriginalTabs();
-					SetDynamicActive(7);
-					std::cout << "[SDK] Switched to Tab7 (Quests)\n";
-				}
-				else if (GDynTabBtn8 && GDynTabBtn8->IsHovered())
-				{
-					ShowDynamicTab(CV, 8);
-					DeactivateOriginalTabs();
-					SetDynamicActive(8);
-					std::cout << "[SDK] Switched to Tab8 (Controls)\n";
-				}
-			}
-			sDynMouseWasDown = DynMouseDown;
 		}
 	}
 

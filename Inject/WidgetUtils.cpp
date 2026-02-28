@@ -58,6 +58,14 @@ void ClearSliderBindings(USlider* Slider)
 	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8)); // OnValueChanged
 }
 
+// Only clear the game-effect delegate, keep UI interaction delegates intact.
+void ClearSliderGameBinding(USlider* Slider)
+{
+	if (!Slider) return;
+	auto base = reinterpret_cast<uintptr_t>(Slider);
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8)); // OnValueChanged only
+}
+
 // Clear all blueprint event bindings from a UButton (or UNeoUIButtonBase)
 // UButton::OnClicked at 0x03C8, OnPressed at 0x03D8, OnReleased at 0x03E8
 void ClearButtonBindings(UWidget* Btn)
@@ -79,6 +87,14 @@ void ClearComboBoxBindings(UComboBoxString* CB)
 	auto base = reinterpret_cast<uintptr_t>(CB);
 	ClearDelegate(reinterpret_cast<void*>(base + 0x0D90)); // OnSelectionChanged
 	ClearDelegate(reinterpret_cast<void*>(base + 0x0DA0)); // OnOpening
+}
+
+// Only clear the game-effect delegate, keep dropdown UI working.
+void ClearComboBoxGameBinding(UComboBoxString* CB)
+{
+	if (!CB) return;
+	auto base = reinterpret_cast<uintptr_t>(CB);
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0D90)); // OnSelectionChanged only
 }
 
 // Clear all blueprint event bindings from a UEditableTextBox
@@ -305,7 +321,6 @@ UWidget* CreateRawWidget(UClass* WidgetClass, UObject* Outer)
 	if (Obj)
 	{
 		MarkAsGCRoot(Obj); // Prevent GC from reclaiming
-		SanitizeWidgetTree(static_cast<UWidget*>(Obj), false);
 		std::cout << "[SDK] CreateRawWidget: created widget at " << (void*)Obj << " (GC rooted)\n";
 	}
 	else

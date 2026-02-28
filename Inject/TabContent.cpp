@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 
 #include "TabContent.hpp"
 #include "GCManager.hpp"
@@ -142,29 +142,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	UPanelWidget* Container = GetOrCreateSlotContainer(CV, CV->VideoSlot, "Tab1(VideoSlot)");
 	if (!Container) return;
 
-	// Temporary diagnostic route: render the Controls showcase in Tab1.
-	// This helps verify whether crashes are tied to Tab8 slot/switching logic.
-	if (kTempMoveControlsShowcaseToTab1)
-	{
-		ClearItemBrowserState();
-		auto* Tab1VBox = Container->IsA(UVerticalBox::StaticClass())
-			? static_cast<UVerticalBox*>(Container)
-			: nullptr;
-		if (!Tab1VBox)
-		{
-			std::cout << "[SDK] Tab1 fallback failed: container is not UVerticalBox\n";
-			return;
-		}
-
-		std::cout << "[SDK] Tab1: temporary Controls showcase mode enabled\n";
-		UVerticalBox* SavedTab8 = GDynTabContent8;
-		GDynTabContent8 = Tab1VBox;
-		PopulateTab_Controls(CV, PC);
-		GDynTabContent8 = SavedTab8;
-		std::cout << "[SDK] Tab1: Controls showcase populated for crash test\n";
-		return;
-	}
-
 	Container->ClearChildren();
 	ClearItemBrowserState();
 	int Count = 0;
@@ -231,19 +208,11 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GItemPagerRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
 	if (GItemPagerRow)
 	{
-		GItemPrevPageBtn = static_cast<UButton*>(CreateRawWidget(UButton::StaticClass(), Outer));
-		if (GItemPrevPageBtn)
-		{
-			ClearButtonBindings(GItemPrevPageBtn);
-			GItemPrevPageBtn->IsFocusable = false;
-			auto* PrevTxt = static_cast<UTextBlock*>(CreateRawWidget(UTextBlock::StaticClass(), Outer));
-			if (PrevTxt)
-			{
-				PrevTxt->SetText(MakeText(L"\u4E0A\u4E00\u9875"));
-				GItemPrevPageBtn->SetContent(PrevTxt);
-			}
-			GItemPagerRow->AddChildToHorizontalBox(GItemPrevPageBtn);
-		}
+		UWidget* PrevLayout = nullptr;
+		GItemPrevPageBtn = CreateGameStyleButton(PC, L"\u4E0A\u4E00\u9875", "ItemPrevPage",
+			0.0f, 0.0f, &PrevLayout);
+		if (PrevLayout)
+			GItemPagerRow->AddChildToHorizontalBox(PrevLayout);
 
 		GItemPageLabel = static_cast<UTextBlock*>(CreateRawWidget(UTextBlock::StaticClass(), Outer));
 		if (GItemPageLabel)
@@ -252,19 +221,11 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			GItemPagerRow->AddChildToHorizontalBox(GItemPageLabel);
 		}
 
-		GItemNextPageBtn = static_cast<UButton*>(CreateRawWidget(UButton::StaticClass(), Outer));
-		if (GItemNextPageBtn)
-		{
-			ClearButtonBindings(GItemNextPageBtn);
-			GItemNextPageBtn->IsFocusable = false;
-			auto* NextTxt = static_cast<UTextBlock*>(CreateRawWidget(UTextBlock::StaticClass(), Outer));
-			if (NextTxt)
-			{
-				NextTxt->SetText(MakeText(L"\u4E0B\u4E00\u9875"));
-				GItemNextPageBtn->SetContent(NextTxt);
-			}
-			GItemPagerRow->AddChildToHorizontalBox(GItemNextPageBtn);
-		}
+		UWidget* NextLayout = nullptr;
+		GItemNextPageBtn = CreateGameStyleButton(PC, L"\u4E0B\u4E00\u9875", "ItemNextPage",
+			0.0f, 0.0f, &NextLayout);
+		if (NextLayout)
+			GItemPagerRow->AddChildToHorizontalBox(NextLayout);
 
 		Container->AddChild(GItemPagerRow);
 		Count++;
@@ -283,8 +244,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			auto* Btn = static_cast<UButton*>(CreateRawWidget(UButton::StaticClass(), Outer));
 			if (!Btn)
 				continue;
-			ClearButtonBindings(Btn);
-			Btn->IsFocusable = false;
 
 			auto* Img = static_cast<UImage*>(CreateRawWidget(UImage::StaticClass(), Outer));
 			if (Img)
@@ -510,43 +469,17 @@ void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree)
 		: static_cast<UObject*>(CV);
-	UWidget* ResetBtn = CreateShowcaseResetButton(CV, Outer, PC);
-	if (ResetBtn)
+	UWidget* BtnLayout = nullptr;
+	auto* ResetBtn = CreateGameStyleButton(PC, L"\u4E0B\u4E00\u9875", "Tab8Showcase",
+		0.0f, 0.0f, &BtnLayout);
+	if (BtnLayout)
 	{
-		auto* SizeHost = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
-		if (SizeHost)
-		{
-			SizeHost->SetWidthOverride(160.0f);
-			SizeHost->SetHeightOverride(56.0f);
-			SizeHost->SetMinDesiredWidth(160.0f);
-			SizeHost->SetMinDesiredHeight(56.0f);
-			UPanelSlot* InnerSlot = SizeHost->AddChild(ResetBtn);
-			UPanelSlot* OuterSlot = GDynTabContent8->AddChild(SizeHost);
-			ResetBtn->ForceLayoutPrepass();
-			SizeHost->ForceLayoutPrepass();
-			GDynTabContent8->ForceLayoutPrepass();
-			std::cout << "[SDK] Tab8 attach(sizehost): innerSlot=" << (void*)InnerSlot
-			          << " outerSlot=" << (void*)OuterSlot
-			          << " btnParent=" << (void*)ResetBtn->GetParent()
-			          << " sizeHostParent=" << (void*)SizeHost->GetParent()
-			          << " btnVis=" << ToVisName(ResetBtn->GetVisibility())
-			          << "\n";
-		}
-		else
-		{
-			UPanelSlot* Slot = GDynTabContent8->AddChild(ResetBtn);
-			ResetBtn->ForceLayoutPrepass();
-			GDynTabContent8->ForceLayoutPrepass();
-			std::cout << "[SDK] Tab8 attach(direct): slot=" << (void*)Slot
-			          << " btnParent=" << (void*)ResetBtn->GetParent()
-			          << " btnVis=" << ToVisName(ResetBtn->GetVisibility())
-			          << "\n";
-		}
-		std::cout << "[SDK] Tab8 (Controls): single reused reset button added\n";
+		GDynTabContent8->AddChild(BtnLayout);
+		std::cout << "[SDK] Tab8 (Controls): showcase button added\n";
 	}
 	else
 	{
-		std::cout << "[SDK] Tab8 (Controls): failed to reuse reset button\n";
+		std::cout << "[SDK] Tab8 (Controls): failed to create showcase button\n";
 	}
 }
 

@@ -16,7 +16,6 @@ void ClearRuntimeWidgetState()
 	GDynTabContent6 = nullptr;
 	GDynTabContent7 = nullptr;
 	GDynTabContent8 = nullptr;
-	GLastSwitcherIndex = 0;
 
 	GTeammateFollowToggle = nullptr;
 	GTeammateFollowCount = nullptr;
@@ -29,7 +28,6 @@ void ClearRuntimeWidgetState()
 	GOriginalLanPanel = nullptr;
 	GOriginalInputMappingPanel = nullptr;
 	GOriginalResetButton = nullptr;
-	GNativeGameResetButton = nullptr;
 
 	GCachedBtnExit = nullptr;
 }
@@ -155,7 +153,6 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GDynTabContent6 = nullptr;
 	GDynTabContent7 = nullptr;
 	GDynTabContent8 = nullptr;
-	GLastSwitcherIndex = 0;
 
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(
 		reinterpret_cast<uintptr_t>(CV) + 0x01D8);

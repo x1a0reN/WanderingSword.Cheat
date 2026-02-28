@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <iostream>
 
 #include "WidgetFactory.hpp"
@@ -43,16 +43,15 @@ void PatchTabBtnRuntimeContext(UJHNeoUIConfigV2TabBtn* TabBtn, UBPMV_ConfigView2
 	*reinterpret_cast<void**>(
 		reinterpret_cast<uintptr_t>(TabBtn) + kConfigTabBtnParentCtxOffset) = ParentCtx;
 
-	// Keep hover path simple for custom/injected tab buttons.
-	TabBtn->AutoFocusForMouseEntering = false;
+	// Enable hover-to-switch: NeoUI focus system calls HandleMainBtn() on mouse enter,
+	// which triggers EVT_SyncTabIndex(TabIndex) — same as native tabs.
+	TabBtn->AutoFocusForMouseEntering = true;
 
-	// Defensive clamp: showcase/demo button should not hold out-of-range index.
-	if (CV->CT_Contents)
-	{
-		const int32 MaxTabIndex = CV->CT_Contents->GetNumWidgets() - 1;
-		if (TabBtn->TabIndex < 0 || TabBtn->TabIndex > MaxTabIndex)
-			TabBtn->TabIndex = 0;
-	}
+	// NOTE: Do NOT clamp TabIndex to Switcher range.
+	// Dynamic tabs use index 6/7/8 which are out of Switcher range — that's intentional.
+	// EVT_SyncTabIndex(6+) will silently fail on SetActiveWidgetIndex (no crash),
+	// but it correctly deactivates all native tabs via EVT_UpdateActiveStatus.
+	// FrameHook handles the content switch for dynamic tabs.
 
 	if (TabBtn->BTN_Normal)
 		TabBtn->RegisterMainInteractiveWidget(TabBtn->BTN_Normal);
@@ -79,7 +78,6 @@ UBP_JHConfigTabBtn_C* CreateTabButton(APlayerController* PC)
 	{
 		MarkAsGCRoot(Tab);
 		Tab->Construct();
-		SanitizeWidgetTree(Tab, false);
 	}
 	return Tab;
 }
@@ -89,106 +87,26 @@ UBP_JHConfigTabBtn_C* CreateTabButton(APlayerController* PC)
 // Prevents UE4 garbage collector from reclaiming dynamically created widgets
 
 
-static UJHCommon_Btn_Free_C* FindNativeGameResetButton()
-{
-	// Prefer cached native button if still valid.
-	if (GNativeGameResetButton
-		&& GNativeGameResetButton != GOriginalResetButton
-		&& GNativeGameResetButton->GetParent()
-		&& GNativeGameResetButton->IsVisible())
-	{
-		std::cout << "[SDK] ReuseResetBtnInstance(cache): btn=" << (void*)GNativeGameResetButton
-		          << " parent=" << (void*)GNativeGameResetButton->GetParent()
-		          << " vis=" << ToVisName(GNativeGameResetButton->GetVisibility())
-		          << " opacity=" << GNativeGameResetButton->GetRenderOpacity() << "\n";
-		return GNativeGameResetButton;
-	}
-
-	UClass* ConfigViewClass = UBPMV_ConfigView2_C::StaticClass();
-	if (!ConfigViewClass)
-		return nullptr;
-
-	auto* ObjArray = UObject::GObjects.GetTypedPtr();
-	if (!ObjArray)
-		return nullptr;
-
-	UJHCommon_Btn_Free_C* Best = nullptr;
-	int Logged = 0;
-	int32 Num = ObjArray->Num();
-	for (int32 i = 0; i < Num; i++)
-	{
-		UObject* Obj = ObjArray->GetByIndex(i);
-		if (!Obj || Obj == InternalWidget || !Obj->IsA(ConfigViewClass))
-			continue;
-
-		auto* CV = static_cast<UBPMV_ConfigView2_C*>(Obj);
-		if (!CV || !CV->Btn_Revert2)
-			continue;
-		if (CV->Btn_Revert2 == GOriginalResetButton)
-			continue;
-
-		auto* Btn = CV->Btn_Revert2;
-		auto* Parent = Btn->GetParent();
-		const bool bViewport = CV->IsInViewport();
-		const bool bVisible = Btn->IsVisible();
-
-		if (Logged < 8)
-		{
-			std::cout << "[SDK] RevertCandidate: CV=" << (void*)CV
-			          << " inViewport=" << (bViewport ? 1 : 0)
-			          << " btn=" << (void*)Btn
-			          << " parent=" << (void*)Parent
-			          << " vis=" << ToVisName(Btn->GetVisibility())
-			          << " opacity=" << Btn->GetRenderOpacity()
-			          << "\n";
-			Logged++;
-		}
-
-		// Accept only a live native settings panel instance.
-		if (bViewport && Parent && bVisible)
-		{
-			Best = Btn;
-			break;
-		}
-	}
-
-	if (Best)
-	{
-		GNativeGameResetButton = Best;
-		MarkAsGCRoot(GNativeGameResetButton);
-	}
-	else
-	{
-		std::cout << "[SDK] ReuseResetBtnInstance: no native viewport candidate matched\n";
-	}
-
-	return Best;
-}
 UJHCommon_Btn_Free_C* CreateGameStyleButton(
 	APlayerController* PC,
-	UJHCommon_Btn_Free_C* ReuseSource,
 	const wchar_t* LabelText,
-	const char* LogTag)
+	const char* LogTag,
+	float Width,
+	float Height,
+	UWidget** OutLayoutWidget)
 {
-	UJHCommon_Btn_Free_C* Btn = ReuseSource;
+	if (!PC)
+		return nullptr;
+
+	auto* Btn = static_cast<UJHCommon_Btn_Free_C*>(
+		UWidgetBlueprintLibrary::Create(PC, UJHCommon_Btn_Free_C::StaticClass(), PC));
 	if (!Btn)
 	{
-		if (!PC)
-			return nullptr;
-		Btn = static_cast<UJHCommon_Btn_Free_C*>(
-			UWidgetBlueprintLibrary::Create(PC, UJHCommon_Btn_Free_C::StaticClass(), PC));
-		if (!Btn)
-		{
-			std::cout << "[SDK] " << (LogTag ? LogTag : "CreateGameStyleButton")
-			          << ": fallback create failed\n";
-			return nullptr;
-		}
-		MarkAsGCRoot(Btn);
+		std::cout << "[SDK] " << (LogTag ? LogTag : "CreateGameStyleButton")
+		          << ": create failed\n";
+		return nullptr;
 	}
-	else
-	{
-		ReuseDetachedWidget(Btn);
-	}
+	MarkAsGCRoot(Btn);
 
 	Btn->SetVisibility(ESlateVisibility::Visible);
 	Btn->SetIsEnabled(true);
@@ -199,8 +117,6 @@ UJHCommon_Btn_Free_C* CreateGameStyleButton(
 
 	if (LabelText && LabelText[0])
 	{
-		// JHCommon_Btn_Free_C display text comes from NeoUI1Btn1TxtComp fields.
-		// Writing only ChangeIFAData can be overridden back to default text ("确认").
 		FText Label = MakeText(LabelText);
 		Btn->TXT_Title = Label;
 		Btn->UpdateTitle(Label);
@@ -217,12 +133,27 @@ UJHCommon_Btn_Free_C* CreateGameStyleButton(
 	if (Btn->JHGPCBtn_ActiveBG)
 		Btn->JHGPCBtn_ActiveBG->SetVisibility(ESlateVisibility::Collapsed);
 
+	float W = (Width  > 0.0f) ? Width  : 160.0f;
+	float H = (Height > 0.0f) ? Height : 56.0f;
+
+	UWidget* LayoutWidget = Btn;
+	auto* Box = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), PC));
+	if (Box)
+	{
+		MarkAsGCRoot(Box);
+		Box->SetWidthOverride(W);
+		Box->SetHeightOverride(H);
+		Box->SetContent(Btn);
+		Box->SetVisibility(ESlateVisibility::Visible);
+		LayoutWidget = Box;
+	}
+
+	if (OutLayoutWidget)
+		*OutLayoutWidget = LayoutWidget;
+
 	Btn->ForceLayoutPrepass();
 	std::cout << "[SDK] " << (LogTag ? LogTag : "CreateGameStyleButton")
-	          << ": ok btn=" << (void*)Btn
-	          << " vis=" << ToVisName(Btn->GetVisibility())
-	          << " parent=" << (void*)Btn->GetParent()
-	          << "\n";
+	          << ": ok btn=" << (void*)Btn << "\n";
 	return Btn;
 }
 UWidget* CreateShowcaseResetButton(UBPMV_ConfigView2_C* CV, UObject* Outer, APlayerController* PC)
@@ -230,22 +161,7 @@ UWidget* CreateShowcaseResetButton(UBPMV_ConfigView2_C* CV, UObject* Outer, APla
 	if (!CV || !Outer || !PC)
 		return nullptr;
 
-	UJHCommon_Btn_Free_C* Source = FindNativeGameResetButton();
-	if (Source)
-	{
-		std::cout << "[SDK] ReuseResetBtnInstance(pre): btn=" << (void*)Source
-		          << " parent=" << (void*)Source->GetParent()
-		          << " vis=" << ToVisName(Source->GetVisibility())
-		          << " opacity=" << Source->GetRenderOpacity() << "\n";
-		if (auto* Reused = CreateGameStyleButton(PC, Source, L"\u4E0B\u4E00\u9875", "CreateGameStyleButton(reuse-reset)"))
-			return Reused;
-	}
-
-	auto* Fresh = CreateGameStyleButton(PC, nullptr, L"\u4E0B\u4E00\u9875", "CreateGameStyleButton(fallback-reset)");
-	if (!Fresh)
-		return nullptr;
-	std::cout << "[SDK] ReuseResetBtnInstance(fallback fresh): " << (void*)Fresh << "\n";
-	return Fresh;
+	return CreateGameStyleButton(PC, L"\u4E0B\u4E00\u9875", "CreateShowcaseResetButton");
 }
 UWidget* CreateShowcaseConfigTabBtn(UBPMV_ConfigView2_C* CV, UObject* Outer)
 {
@@ -341,16 +257,15 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItem(APlayerController* PC, const wchar_t
 	// Call Construct() directly — BPVE_JHConfigVideoItem2_functions.cpp is now compiled
 	Item->Construct();
 
-	// Clear original blueprint bindings — prevents dropdown from changing game settings
-	ClearComboBoxBindings(Item->CB_Main);
+	// Only clear the game-effect delegate — keeps dropdown UI fully functional
+	ClearComboBoxGameBinding(Item->CB_Main);
 
 	if (Item->TXT_Title)
 		Item->TXT_Title->SetText(MakeText(Title));
 	if (Item->IMG_Icon)
 		Item->IMG_Icon->SetVisibility(ESlateVisibility::Collapsed);
-	SanitizeWidgetTree(Item, false);
 
-	std::cout << "[SDK] CreateVideoItem: created OK (bindings cleared)\n";
+	std::cout << "[SDK] CreateVideoItem: created OK (game binding cleared)\n";
 	return Item;
 }
 
@@ -408,18 +323,16 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 
 	Item->Construct();
 
-	// Clear original blueprint bindings — prevents slider from changing game volume etc.
-	ClearSliderBindings(Item->VolumeSlider);
-	ClearButtonBindings(Item->BTN_Minus);
-	ClearButtonBindings(Item->BTN_Plus);
+	// Only clear the game-effect delegate — keeps slider drag, +/- buttons,
+	// and value text display fully functional
+	ClearSliderGameBinding(Item->VolumeSlider);
 
 	if (Item->TXT_Title)
 		Item->TXT_Title->SetText(MakeText(Title));
 	if (Item->IMG_Icon)
 		Item->IMG_Icon->SetVisibility(ESlateVisibility::Collapsed);
-	SanitizeWidgetTree(Item, false);
 
-	std::cout << "[SDK] CreateVolumeItem: created OK (bindings cleared)\n";
+	std::cout << "[SDK] CreateVolumeItem: created OK (game binding cleared)\n";
 	return Item;
 }
 

@@ -13,7 +13,6 @@ std::vector<UObject*> GRootedObjects;
 UWidget* GOriginalLanPanel = nullptr;
 UWidget* GOriginalInputMappingPanel = nullptr;
 UJHCommon_Btn_Free_C* GOriginalResetButton = nullptr;
-UJHCommon_Btn_Free_C* GNativeGameResetButton = nullptr;
 
 std::vector<CachedItem> GAllItems;
 std::vector<int32> GFilteredIndices;
@@ -24,8 +23,8 @@ int32 GItemTotalPages = 0;
 UBPVE_JHConfigVideoItem2_C* GItemCategoryDD = nullptr;
 int32 GItemLastCatIdx = -1;
 UHorizontalBox* GItemPagerRow = nullptr;
-UButton* GItemPrevPageBtn = nullptr;
-UButton* GItemNextPageBtn = nullptr;
+UJHCommon_Btn_Free_C* GItemPrevPageBtn = nullptr;
+UJHCommon_Btn_Free_C* GItemNextPageBtn = nullptr;
 UTextBlock* GItemPageLabel = nullptr;
 bool GItemPrevWasPressed = false;
 bool GItemNextWasPressed = false;
@@ -45,7 +44,6 @@ UVerticalBox* GDynTabContent6 = nullptr;
 UVerticalBox* GDynTabContent7 = nullptr;
 UVerticalBox* GDynTabContent8 = nullptr;
 
-int32 GLastSwitcherIndex = 0;
 
 UBPVE_JHConfigVideoItem2_C* GTeammateFollowToggle = nullptr;
 UBPVE_JHConfigVolumeItem2_C* GTeammateFollowCount = nullptr;
