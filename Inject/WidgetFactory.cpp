@@ -401,6 +401,7 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 
 	Edit->SetHintText(MakeText(Hint));
 	Edit->SetText(MakeText(DefaultValue));
+	Edit->SetJustification(ETextJustify::Right);
 	Edit->MinimumDesiredWidth = 320.0f;
 	Edit->SelectAllTextWhenFocused = true;
 	Edit->ClearKeyboardFocusOnCommit = false;
@@ -547,12 +548,12 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 		if (AddedSlot && AddedSlot->IsA(UHorizontalBoxSlot::StaticClass()))
 		{
 			auto* HSlot = static_cast<UHorizontalBoxSlot*>(AddedSlot);
-			HSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+			HSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
 			HSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
-			FSlateChildSize FillSize{};
-			FillSize.Value = 1.0f;
-			FillSize.SizeRule = ESlateSizeRule::Fill;
-			HSlot->SetSize(FillSize);
+			FSlateChildSize AutoSize{};
+			AutoSize.Value = 0.0f;
+			AutoSize.SizeRule = ESlateSizeRule::Automatic;
+			HSlot->SetSize(AutoSize);
 			FMargin Padding{};
 			Padding.Left = 8.0f;
 			Padding.Top = 0.0f;
@@ -605,12 +606,40 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 	}
 	MarkAsGCRoot(Panel);
 
+	// 先执行 Construct，确保蓝图子控件(txt/CT_Contents/SlotContents)已创建
+	Panel->Construct();
+
+	const FText TitleText = MakeText(Title ? Title : L"");
+	Panel->TXT_Title = TitleText;
+	Panel->UpdateTitle(TitleText);
 	if (Panel->txt)
-		Panel->txt->SetText(MakeText(Title));
+		Panel->txt->SetText(TitleText);
 
 	Panel->IsCollapsed = bStartCollapsed;
+	if (Panel->CT_Contents)
+	{
+		Panel->CT_Contents->SetVisibility(
+			bStartCollapsed ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+	else if (Panel->SlotContents)
+	{
+		// 兜底：若蓝图没有正确赋值 CT_Contents，则手动创建并挂到 NamedSlot
+		auto* FallbackContents = static_cast<UNeoUIVerticalBox*>(
+			CreateRawWidget(UNeoUIVerticalBox::StaticClass(), Panel));
+		if (FallbackContents)
+		{
+			Panel->SlotContents->SetContent(FallbackContents);
+			Panel->CT_Contents = FallbackContents;
+			Panel->CT_Contents->SetVisibility(
+				bStartCollapsed ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		}
+	}
 
 	std::cout << "[SDK] CreateCollapsiblePanel: created OK, title="
-	          << (Title ? "set" : "null") << "\n";
+	          << (Title ? "set" : "null")
+	          << " txt=" << (void*)Panel->txt
+	          << " contents=" << (void*)Panel->CT_Contents
+	          << " slotContents=" << (void*)Panel->SlotContents
+	          << " collapsed=" << (Panel->IsCollapsed ? 1 : 0) << "\n";
 	return Panel;
 }
