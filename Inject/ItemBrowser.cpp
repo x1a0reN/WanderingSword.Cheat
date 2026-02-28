@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <iostream>
 #include <algorithm>
 #include <cstring>
@@ -220,9 +220,18 @@ namespace
 
 		Created->SetRenderOpacity(1.0f);
 		Created->SetVisibility(ESlateVisibility::HitTestInvisible);
-		Created->AnchorTop_Left();
+		Created->BP_AnchorTop_Left();
 		Created->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
 		Created->SetDesiredSizeInViewport(FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight });
+
+		if (Created->RootCanvas && Created->RootCanvas->Slot)
+		{
+			auto* RcSlot = static_cast<UCanvasPanelSlot*>(Created->RootCanvas->Slot);
+			FVector2D OldPos = RcSlot->GetPosition();
+			std::cout << "[SDK] ItemTip RootCanvas slot pos before reset: ("
+			          << OldPos.X << "," << OldPos.Y << ")\n";
+			RcSlot->SetPosition(FVector2D{ 0.0f, 0.0f });
+		}
 
 		MarkAsGCRoot(static_cast<UObject*>(Created));
 		GStandaloneItemTipWidget = Created;
@@ -279,9 +288,15 @@ namespace
 
 		Tip->SetRenderOpacity(1.0f);
 		Tip->SetVisibility(ESlateVisibility::HitTestInvisible);
-		Tip->AnchorTop_Left();
+		Tip->BP_AnchorTop_Left();
 		Tip->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
 		Tip->SetDesiredSizeInViewport(FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight });
+
+		if (Tip->RootCanvas && Tip->RootCanvas->Slot)
+		{
+			auto* RcSlot = static_cast<UCanvasPanelSlot*>(Tip->RootCanvas->Slot);
+			RcSlot->SetPosition(FVector2D{ 0.0f, 0.0f });
+		}
 
 		if (!Tip->IsInViewport())
 		{
@@ -1187,19 +1202,11 @@ void PollItemBrowserHoverTips()
 	if (!IsStandaloneTip && Subsystem && IsSafeLiveObject(static_cast<UObject*>(Anchor)))
 		Subsystem->UpdateItemTipsPosition(Anchor, GItemHoverTipsWidget, false);
 
-	UObject* ViewportContext = nullptr;
-	if (IsSafeLiveObject(static_cast<UObject*>(Anchor)))
-		ViewportContext = static_cast<UObject*>(Anchor);
-	else if (IsSafeLiveObject(static_cast<UObject*>(InternalWidget)))
-		ViewportContext = static_cast<UObject*>(InternalWidget);
-	else if (UWorld* World = UWorld::GetWorld())
-		ViewportContext = static_cast<UObject*>(World);
-
-	if (ViewportContext)
+	if (UWorld* World = UWorld::GetWorld())
 	{
+		UObject* ViewportContext = static_cast<UObject*>(World);
 		APlayerController* PC = nullptr;
-		if (UWorld* World = UWorld::GetWorld())
-			PC = UGameplayStatics::GetPlayerController(World, 0);
+		PC = UGameplayStatics::GetPlayerController(World, 0);
 
 		FVector2D MouseVP{};
 		bool GotMouseVP = false;
@@ -1214,9 +1221,18 @@ void PollItemBrowserHoverTips()
 		if (!GotMouseVP)
 			MouseVP = UWidgetLayoutLibrary::GetMousePositionOnViewport(ViewportContext);
 
-		FVector2D TipSize = USlateBlueprintLibrary::GetLocalSize(GItemHoverTipsWidget->GetCachedGeometry());
-		if (TipSize.X < 1.0f || TipSize.Y < 1.0f)
+		FVector2D TipSize{};
+		if (IsStandaloneTip)
+		{
+			// UBPVE_JHTips_Item_C 根可能是整屏容器，Standalone 固定用卡片尺寸参与定位。
 			TipSize = FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight };
+		}
+		else
+		{
+			TipSize = USlateBlueprintLibrary::GetLocalSize(GItemHoverTipsWidget->GetCachedGeometry());
+			if (TipSize.X < 1.0f || TipSize.Y < 1.0f)
+				TipSize = FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight };
+		}
 
 		FVector2D ViewportSize = UWidgetLayoutLibrary::GetViewportSize(ViewportContext);
 		if (ViewportSize.X < 64.0f || ViewportSize.Y < 64.0f)
@@ -1226,6 +1242,13 @@ void PollItemBrowserHoverTips()
 		}
 		if (ViewportSize.X < 64.0f || ViewportSize.Y < 64.0f)
 			ViewportSize = FVector2D{ 1920.0f, 1080.0f };
+
+		const float VPScale = UWidgetLayoutLibrary::GetViewportScale(ViewportContext);
+		if (VPScale > 0.01f)
+		{
+			ViewportSize.X /= VPScale;
+			ViewportSize.Y /= VPScale;
+		}
 
 		const bool MouseOutOfViewportRange =
 			(MouseVP.X < -64.0f || MouseVP.Y < -64.0f ||
@@ -1249,18 +1272,6 @@ void PollItemBrowserHoverTips()
 
 		float TipX = MouseVP.X + kItemTipMouseOffset;
 		float TipY = MouseVP.Y + kItemTipMouseOffset;
-
-		if (TipX + TipSize.X + kItemTipViewportMargin > ViewportSize.X)
-			TipX = ViewportSize.X - TipSize.X - kItemTipViewportMargin;
-		if (TipX < kItemTipViewportMargin)
-			TipX = kItemTipViewportMargin;
-
-		if (TipY + TipSize.Y + kItemTipViewportMargin > ViewportSize.Y)
-			TipY = MouseVP.Y - TipSize.Y - kItemTipMouseOffset;
-		if (TipY < kItemTipViewportMargin)
-			TipY = kItemTipViewportMargin;
-		if (TipY + TipSize.Y + kItemTipViewportMargin > ViewportSize.Y)
-			TipY = ViewportSize.Y - TipSize.Y - kItemTipViewportMargin;
 
 		const FVector2D TipPos{ TipX, TipY };
 		GItemHoverTipsWidget->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
