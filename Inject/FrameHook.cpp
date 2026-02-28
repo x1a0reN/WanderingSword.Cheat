@@ -1,4 +1,4 @@
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <iostream>
 #include <cmath>
 
@@ -9,6 +9,46 @@
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
 
+namespace
+{
+	constexpr bool kVerboseFrameLogs = false;
+
+	bool IsPointerInLiveObjectArray(UObject* Obj)
+	{
+		if (!Obj)
+			return false;
+
+		auto* ObjArray = UObject::GObjects.GetTypedPtr();
+		if (!ObjArray)
+			return false;
+
+		const int32 Num = ObjArray->Num();
+		for (int32 i = 0; i < Num; ++i)
+		{
+			if (ObjArray->GetByIndex(i) == Obj)
+				return true;
+		}
+		return false;
+	}
+
+	bool EnsureLiveInternalWidgetForFrame()
+	{
+		if (!InternalWidget)
+			return false;
+
+		auto* Obj = static_cast<UObject*>(InternalWidget);
+		if (Obj && IsPointerInLiveObjectArray(Obj) && UKismetSystemLibrary::IsValid(Obj))
+			return true;
+
+		std::cout << "[SDK] FrameHook: stale internal widget pointer detected, reset state\n";
+		InternalWidget = nullptr;
+		InternalWidgetVisible = false;
+		GCachedBtnExit = nullptr;
+		ClearRuntimeWidgetState();
+		return false;
+	}
+}
+
 void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 {
 	// Call original first to preserve normal rendering
@@ -16,16 +56,88 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		OriginalGVCPostRender(This, Canvas);
 
 	if (GIsUnloading.load(std::memory_order_relaxed))
+	{
+		if (!GUnloadCleanupDone.exchange(true, std::memory_order_acq_rel))
+		{
+			APlayerController* PC = GetFirstLocalPlayerController();
+			DestroyInternalWidget(PC);
+			std::cout << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
+		}
 		return;
+	}
+
+	// World/level transition guard:
+	// avoid DestroyInternalWidget/ShowInternalWidget in PostRender during unstable frames.
+	static UWorld* LastWorld = nullptr;
+	static ULevel* LastLevel = nullptr;
+	static int32 TransitionGuardFrames = 0;
+	UWorld* CurrentWorld = UWorld::GetWorld();
+	ULevel* CurrentLevel = CurrentWorld ? CurrentWorld->PersistentLevel : nullptr;
+	if (CurrentWorld != LastWorld || CurrentLevel != LastLevel)
+	{
+		if (LastWorld != nullptr)
+		{
+			const bool HadWidget = (InternalWidget != nullptr) || InternalWidgetVisible;
+			std::cout << "[SDK] WorldTransition: oldWorld=" << (void*)LastWorld
+				<< " newWorld=" << (void*)CurrentWorld
+				<< " oldLevel=" << (void*)LastLevel
+				<< " newLevel=" << (void*)CurrentLevel
+				<< " hadWidget=" << (HadWidget ? 1 : 0)
+				<< " -> invalidate runtime state only\n";
+
+			InternalWidget = nullptr;
+			InternalWidgetVisible = false;
+			GCachedBtnExit = nullptr;
+			ClearRuntimeWidgetState();
+			TransitionGuardFrames = 120;
+		}
+		LastWorld = CurrentWorld;
+		LastLevel = CurrentLevel;
+	}
+	const bool InTransitionGuard = (TransitionGuardFrames > 0);
+	if (TransitionGuardFrames > 0)
+		--TransitionGuardFrames;
 
 	EnsureMouseCursorVisible();
 
 	// Edge-trigger HOME so one press toggles once
 	static bool HomeWasDown = false;
 	const bool HomeDown = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
-	if (HomeDown && !HomeWasDown)
+	if (!InTransitionGuard && HomeDown && !HomeWasDown)
 		ToggleInternalWidget();
 	HomeWasDown = HomeDown;
+
+	if (InTransitionGuard)
+		return;
+
+	const bool HasLiveInternalWidget = EnsureLiveInternalWidgetForFrame();
+	UUserWidget* LiveInternalWidget = HasLiveInternalWidget ? InternalWidget : nullptr;
+	UBPMV_ConfigView2_C* LiveConfigView = nullptr;
+	int32 ActiveNativeTabIndex = -1;
+	if (InternalWidgetVisible &&
+		LiveInternalWidget &&
+		LiveInternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
+	{
+		LiveConfigView = static_cast<UBPMV_ConfigView2_C*>(LiveInternalWidget);
+		if (LiveConfigView->CT_Contents &&
+			UKismetSystemLibrary::IsValid(static_cast<UObject*>(LiveConfigView->CT_Contents)))
+		{
+			ActiveNativeTabIndex = LiveConfigView->CT_Contents->GetActiveWidgetIndex();
+		}
+	}
+	const bool IsItemsTabActive = (ActiveNativeTabIndex == 1);
+	{
+		static int32 sLastActiveTabIndex = -999;
+		if (kVerboseFrameLogs && ActiveNativeTabIndex != sLastActiveTabIndex)
+		{
+			std::cout << "[SDK] ActiveNativeTabIndex: " << ActiveNativeTabIndex << "\n";
+			sLastActiveTabIndex = ActiveNativeTabIndex;
+		}
+		else if (!kVerboseFrameLogs && ActiveNativeTabIndex != sLastActiveTabIndex)
+		{
+			sLastActiveTabIndex = ActiveNativeTabIndex;
+		}
+	}
 
 	// Detect BTN_Exit click (edge-triggered).
 	// Only poll while panel is visible and pointer is valid to avoid unreachable UObject asserts.
@@ -33,13 +145,13 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	bool ExitPressed = false;
 	const bool CanCheckExit =
 		InternalWidgetVisible &&
-		InternalWidget &&
-		InternalWidget->IsInViewport() &&
-		InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass());
+		LiveInternalWidget &&
+		LiveInternalWidget->IsInViewport() &&
+		LiveInternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass());
 
 	if (CanCheckExit)
 	{
-		auto* CV = static_cast<UBPMV_ConfigView2_C*>(InternalWidget);
+		auto* CV = static_cast<UBPMV_ConfigView2_C*>(LiveInternalWidget);
 		GCachedBtnExit = CV ? CV->BTN_Exit : nullptr;
 
 		if (GCachedBtnExit)
@@ -65,8 +177,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	ExitWasPressed = ExitPressed;
 
-	// ── Item browser per-frame polling ──
-	if (InternalWidgetVisible)
+	// 鈹€鈹€ Item browser per-frame polling 鈹€鈹€
+	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
 		PollCollapsiblePanelsInput();
 
@@ -199,7 +311,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		};
 
 		UButton* PrevInner = GetClickableButton(GItemPrevPageBtn);
-		bool PrevPressed = PrevInner && PrevInner->IsPressed();
+		bool PrevPressed = PrevInner &&
+			UKismetSystemLibrary::IsValid(static_cast<UObject*>(PrevInner)) &&
+			PrevInner->IsPressed();
 		if (GItemPrevWasPressed && !PrevPressed && GItemCurrentPage > 0)
 		{
 			GItemCurrentPage--;
@@ -208,7 +322,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		GItemPrevWasPressed = PrevPressed;
 
 		UButton* NextInner = GetClickableButton(GItemNextPageBtn);
-		bool NextPressed = NextInner && NextInner->IsPressed();
+		bool NextPressed = NextInner &&
+			UKismetSystemLibrary::IsValid(static_cast<UObject*>(NextInner)) &&
+			NextInner->IsPressed();
 		if (GItemNextWasPressed && !NextPressed && (GItemCurrentPage + 1) < GItemTotalPages)
 		{
 			GItemCurrentPage++;
@@ -219,7 +335,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
 		{
 			auto* Btn = GItemSlotButtons[i];
-			if (!Btn)
+			if (!Btn || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Btn)))
 				continue;
 
 			bool Pressed = Btn->IsPressed();
@@ -236,55 +352,98 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			GItemSlotWasPressed[i] = Pressed;
 		}
 	}
-
-	// ── Dynamic tab button click detection ──
-	if (InternalWidgetVisible && InternalWidget && InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
+	else
 	{
-		auto* CV = static_cast<UBPMV_ConfigView2_C*>(InternalWidget);
+		GItemPrevWasPressed = false;
+		GItemNextWasPressed = false;
+		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+			GItemSlotWasPressed[i] = false;
+	}
 
-		// Native tabs fully handle themselves via AutoFocusForMouseEntering →
-		// HandleMainBtn() → EVT_SyncTabIndex(). We only manage dynamic tab
+	// Hover tips polling should not be hard-gated by native tab index only.
+	// In some transitions/sync states, CT_Contents index may be stale while item grid is visible.
+	bool HoverGridValid = false;
+	if (GItemGridPanel)
+	{
+		auto* GridObj = static_cast<UObject*>(GItemGridPanel);
+		HoverGridValid = IsPointerInLiveObjectArray(GridObj) && UKismetSystemLibrary::IsValid(GridObj);
+	}
+	const bool CanPollHover =
+		InternalWidgetVisible &&
+		LiveInternalWidget &&
+		HoverGridValid;
+
+	if (kVerboseFrameLogs)
+	{
+		static DWORD sHoverGateLastLogTick = 0;
+		const DWORD NowTick = GetTickCount();
+		if (NowTick - sHoverGateLastLogTick >= 1000)
+		{
+			sHoverGateLastLogTick = NowTick;
+			std::cout << "[SDK] HoverPollGate: visible=" << (InternalWidgetVisible ? 1 : 0)
+				<< " live=" << (LiveInternalWidget ? 1 : 0)
+				<< " grid=" << (void*)GItemGridPanel
+				<< " gridValid=" << (HoverGridValid ? 1 : 0)
+				<< " canPoll=" << (CanPollHover ? 1 : 0) << "\n";
+		}
+	}
+
+	if (CanPollHover)
+		PollItemBrowserHoverTips();
+
+	// 鈹€鈹€ Dynamic tab button click detection 鈹€鈹€
+	if (InternalWidgetVisible && LiveConfigView)
+	{
+		auto* CV = LiveConfigView;
+		auto IsLiveTabBtn = [](UBP_JHConfigTabBtn_C* Btn) -> bool
+		{
+			return Btn && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Btn));
+		};
+
+		// Native tabs fully handle themselves via AutoFocusForMouseEntering 鈫?
+		// HandleMainBtn() 鈫?EVT_SyncTabIndex(). We only manage dynamic tab
 		// content visibility (VBoxes outside the Switcher) and active state.
 		static int32 sActiveDynTab = -1;
 
 		int32 dynHoverIdx = -1;
-		if      (GDynTabBtn6 && GDynTabBtn6->IsHovered()) dynHoverIdx = 6;
-		else if (GDynTabBtn7 && GDynTabBtn7->IsHovered()) dynHoverIdx = 7;
-		else if (GDynTabBtn8 && GDynTabBtn8->IsHovered()) dynHoverIdx = 8;
+		if      (IsLiveTabBtn(GDynTabBtn6) && GDynTabBtn6->IsHovered()) dynHoverIdx = 6;
+		else if (IsLiveTabBtn(GDynTabBtn7) && GDynTabBtn7->IsHovered()) dynHoverIdx = 7;
+		else if (IsLiveTabBtn(GDynTabBtn8) && GDynTabBtn8->IsHovered()) dynHoverIdx = 8;
 
 		if (dynHoverIdx >= 6 && dynHoverIdx != sActiveDynTab)
 		{
-			// Entering a (different) dynamic tab — show its content
+			// Entering a (different) dynamic tab 鈥?show its content
 			ShowDynamicTab(CV, dynHoverIdx);
-			if (GDynTabBtn6) GDynTabBtn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
-			if (GDynTabBtn7) GDynTabBtn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
-			if (GDynTabBtn8) GDynTabBtn8->EVT_UpdateActiveStatus(dynHoverIdx == 8);
+			if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
+			if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
+			if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(dynHoverIdx == 8);
 			sActiveDynTab = dynHoverIdx;
 		}
 		else if (sActiveDynTab >= 6 && dynHoverIdx == -1)
 		{
 			// Only restore original content when a NATIVE tab is hovered.
 			// Moving mouse to content area or empty space keeps dynamic tab active
-			// — same behavior as native tabs.
-			bool nativeHovered = (CV->BTN_Sound   && CV->BTN_Sound->IsHovered())
-			                  || (CV->BTN_Video   && CV->BTN_Video->IsHovered())
-			                  || (CV->BTN_Keys    && CV->BTN_Keys->IsHovered())
-			                  || (CV->BTN_Lan     && CV->BTN_Lan->IsHovered())
-			                  || (CV->BTN_Others  && CV->BTN_Others->IsHovered())
-			                  || (CV->BTN_Gamepad && CV->BTN_Gamepad->IsHovered());
+			// 鈥?same behavior as native tabs.
+			bool nativeHovered =
+				(CV->BTN_Sound && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Sound)) && CV->BTN_Sound->IsHovered()) ||
+				(CV->BTN_Video && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Video)) && CV->BTN_Video->IsHovered()) ||
+				(CV->BTN_Keys && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Keys)) && CV->BTN_Keys->IsHovered()) ||
+				(CV->BTN_Lan && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Lan)) && CV->BTN_Lan->IsHovered()) ||
+				(CV->BTN_Others && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Others)) && CV->BTN_Others->IsHovered()) ||
+				(CV->BTN_Gamepad && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Gamepad)) && CV->BTN_Gamepad->IsHovered());
 			if (nativeHovered)
 			{
 				ShowOriginalTab(CV);
-				if (GDynTabBtn6) GDynTabBtn6->EVT_UpdateActiveStatus(false);
-				if (GDynTabBtn7) GDynTabBtn7->EVT_UpdateActiveStatus(false);
-				if (GDynTabBtn8) GDynTabBtn8->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(false);
 				sActiveDynTab = -1;
 			}
 		}
 	}
 
 	// Detect if blueprint logic closed the widget externally
-	if (InternalWidgetVisible && InternalWidget && !InternalWidget->IsInViewport())
+	if (InternalWidgetVisible && LiveInternalWidget && !LiveInternalWidget->IsInViewport())
 	{
 		APlayerController* PC = GetFirstLocalPlayerController();
 		HideInternalWidget(PC);
@@ -294,7 +453,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	// Throttle output to once per second to avoid flooding the console
 	static DWORD LastPrint = 0;
 	DWORD Now = GetTickCount();
-	if (Now - LastPrint > 1000)
+	if (kVerboseFrameLogs && (Now - LastPrint > 1000))
 	{
 		std::cout << "[SDK] GVC PostRender called\n";
 		LastPrint = Now;

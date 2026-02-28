@@ -2,10 +2,33 @@
 #include <algorithm>
 
 #include "GCManager.hpp"
+
+namespace
+{
+	bool IsPointerInLiveObjectArray(UObject* Obj)
+	{
+		if (!Obj)
+			return false;
+
+		auto* ObjArray = UObject::GObjects.GetTypedPtr();
+		if (!ObjArray)
+			return false;
+
+		const int32 Num = ObjArray->Num();
+		for (int32 i = 0; i < Num; ++i)
+		{
+			if (ObjArray->GetByIndex(i) == Obj)
+				return true;
+		}
+		return false;
+	}
+}
+
 void MarkAsGCRoot(UObject* Obj)
 {
-	if (!Obj)
+	if (!Obj || !IsPointerInLiveObjectArray(Obj))
 		return;
+
 	auto* FlagsPtr = reinterpret_cast<int32*>(reinterpret_cast<uintptr_t>(Obj) + 0x0008);
 	*FlagsPtr |= 0x80; // RF_MarkAsRootSet
 	if (std::find(GRootedObjects.begin(), GRootedObjects.end(), Obj) == GRootedObjects.end())
@@ -15,8 +38,13 @@ void ClearGCRoot(UObject* Obj)
 {
 	if (!Obj)
 		return;
-	auto* FlagsPtr = reinterpret_cast<int32*>(reinterpret_cast<uintptr_t>(Obj) + 0x0008);
-	*FlagsPtr &= ~0x80; // clear RF_MarkAsRootSet
+
+	if (IsPointerInLiveObjectArray(Obj))
+	{
+		auto* FlagsPtr = reinterpret_cast<int32*>(reinterpret_cast<uintptr_t>(Obj) + 0x0008);
+		*FlagsPtr &= ~0x80; // clear RF_MarkAsRootSet
+	}
+
 	auto it = std::remove(GRootedObjects.begin(), GRootedObjects.end(), Obj);
 	if (it != GRootedObjects.end())
 		GRootedObjects.erase(it, GRootedObjects.end());

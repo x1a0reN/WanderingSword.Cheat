@@ -15,6 +15,24 @@ namespace
 	std::unordered_map<UVE_JHVideoPanel2_C*, bool> GCollapsibleStates;
 	bool GCollapsibleLmbWasDown = false;
 	UVE_JHVideoPanel2_C* GCollapsiblePressedPanel = nullptr;
+
+	bool IsSafeLiveObject(UObject* Obj)
+	{
+		if (!Obj)
+			return false;
+
+		auto* ObjArray = UObject::GObjects.GetTypedPtr();
+		if (!ObjArray)
+			return false;
+
+		const int32 Num = ObjArray->Num();
+		for (int32 i = 0; i < Num; ++i)
+		{
+			if (ObjArray->GetByIndex(i) == Obj)
+				return UKismetSystemLibrary::IsValid(Obj);
+		}
+		return false;
+	}
 }
 void HideTabIcon(UJHNeoUIConfigV2TabBtn* TabBtn)
 {
@@ -672,7 +690,7 @@ void PollCollapsiblePanelsInput()
 			GCollapsiblePanels.end(),
 			[](UVE_JHVideoPanel2_C* P)
 			{
-				return !P || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(P));
+				return !IsSafeLiveObject(static_cast<UObject*>(P));
 			}),
 		GCollapsiblePanels.end());
 
@@ -680,7 +698,7 @@ void PollCollapsiblePanelsInput()
 	for (auto It = GCollapsibleStates.begin(); It != GCollapsibleStates.end(); )
 	{
 		auto* P = It->first;
-		const bool bValid = P && UKismetSystemLibrary::IsValid(static_cast<UObject*>(P));
+		const bool bValid = IsSafeLiveObject(static_cast<UObject*>(P));
 		const bool bTracked = std::find(GCollapsiblePanels.begin(), GCollapsiblePanels.end(), P) != GCollapsiblePanels.end();
 		if (!bValid || !bTracked)
 			It = GCollapsibleStates.erase(It);
@@ -689,7 +707,7 @@ void PollCollapsiblePanelsInput()
 	}
 
 	if (GCollapsiblePressedPanel &&
-		!UKismetSystemLibrary::IsValid(static_cast<UObject*>(GCollapsiblePressedPanel)))
+		!IsSafeLiveObject(static_cast<UObject*>(GCollapsiblePressedPanel)))
 	{
 		GCollapsiblePressedPanel = nullptr;
 	}
@@ -698,7 +716,7 @@ void PollCollapsiblePanelsInput()
 
 	auto IsPointOverWidget = [&](UWidget* W) -> bool
 	{
-		if (!W || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(W)))
+		if (!IsSafeLiveObject(static_cast<UObject*>(W)))
 			return false;
 
 		// NeoUI 某些控件 IsHovered() 不稳定，这里改用几何命中检测作为主判定。
@@ -711,7 +729,7 @@ void PollCollapsiblePanelsInput()
 
 	auto IsPointOverPanelTitle = [&](UVE_JHVideoPanel2_C* Panel) -> bool
 	{
-		if (!Panel || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Panel)))
+		if (!IsSafeLiveObject(static_cast<UObject*>(Panel)))
 			return false;
 		return IsPointOverWidget(static_cast<UWidget*>(Panel->IMG_TitleBG)) ||
 			IsPointOverWidget(static_cast<UWidget*>(Panel->txt));
@@ -719,7 +737,7 @@ void PollCollapsiblePanelsInput()
 
 	auto TogglePanel = [&](UVE_JHVideoPanel2_C* Panel)
 	{
-		if (!Panel || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Panel)))
+		if (!IsSafeLiveObject(static_cast<UObject*>(Panel)))
 			return;
 
 		bool CurrentCollapsed = Panel->IsCollapsed;
@@ -732,11 +750,15 @@ void PollCollapsiblePanelsInput()
 		Panel->IsCollapsed = NextCollapsed;
 
 		if (Panel->CT_Contents &&
-			UKismetSystemLibrary::IsValid(static_cast<UObject*>(Panel->CT_Contents)))
+			IsSafeLiveObject(static_cast<UObject*>(Panel->CT_Contents)))
 		{
 			Panel->CT_Contents->SetVisibility(
 				NextCollapsed ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+			Panel->CT_Contents->ForceLayoutPrepass();
 		}
+		Panel->ForceLayoutPrepass();
+		if (auto* Parent = Panel->GetParent())
+			Parent->ForceLayoutPrepass();
 		std::cout << "[SDK] CollapsibleToggle: panel=" << (void*)Panel
 		          << " prev=" << (CurrentCollapsed ? 1 : 0)
 		          << " collapsed=" << (NextCollapsed ? 1 : 0) << "\n";

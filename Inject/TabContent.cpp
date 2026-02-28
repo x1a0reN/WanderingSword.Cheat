@@ -4,6 +4,7 @@
 #include "ItemBrowser.hpp"
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
+#include "SDK/BPEntry_Item_classes.hpp"
 UPanelWidget* GetOrCreateSlotContainer(UBPMV_ConfigView2_C* CV, UNeoUINamedSlot* Slot, const char* SlotName)
 {
 	if (!Slot)
@@ -168,7 +169,25 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddToggle(L"无视物品使用次数");
 	AddToggle(L"无视物品使用要求");
 
-	if (OptionsPanel) { Container->AddChild(OptionsPanel); Count++; }
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = Container->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Left = 0.0f;
+			Pad.Top = TopGap;
+			Pad.Right = 0.0f;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	};
+
+	AddPanelWithFixedGap(OptionsPanel, 0.0f, 14.0f);
 
 	
 	auto* BrowserPanel = CreateCollapsiblePanel(PC, L"物品浏览器");
@@ -242,37 +261,94 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GItemGridPanel = static_cast<UUniformGridPanel*>(CreateRawWidget(UUniformGridPanel::StaticClass(), Outer));
 	if (GItemGridPanel)
 	{
-		GItemGridPanel->SetMinDesiredSlotWidth(64.0f);
-		GItemGridPanel->SetMinDesiredSlotHeight(64.0f);
+		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+		{
+			GItemSlotButtons[i] = nullptr;
+			GItemSlotImages[i] = nullptr;
+			GItemSlotQualityBorders[i] = nullptr;
+			GItemSlotEntryWidgets[i] = nullptr;
+			GItemSlotItemIndices[i] = -1;
+			GItemSlotWasPressed[i] = false;
+		}
+
+		GItemGridPanel->SetMinDesiredSlotWidth(68.0f);
+		GItemGridPanel->SetMinDesiredSlotHeight(68.0f);
+		GItemGridPanel->SetSlotPadding(FMargin{ 3.0f, 3.0f, 3.0f, 3.0f });
 		if (BrowserBox) BrowserBox->AddChild(GItemGridPanel);
 		else Container->AddChild(GItemGridPanel);
 		Count++;
 
 		for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
 		{
-			auto* Btn = static_cast<UButton*>(CreateRawWidget(UButton::StaticClass(), Outer));
-			if (!Btn)
-				continue;
+			UButton* Btn = nullptr;
+			UImage* Img = nullptr;
+			UImage* QualityBorder = nullptr;
+			UUserWidget* EntryWidget = nullptr;
 
-			auto* Img = static_cast<UImage*>(CreateRawWidget(UImage::StaticClass(), Outer));
-			if (Img)
+			auto* Entry = static_cast<UBPEntry_Item_C*>(
+				UWidgetBlueprintLibrary::Create(PC, UBPEntry_Item_C::StaticClass(), PC));
+			if (Entry)
 			{
-				Img->SetVisibility(ESlateVisibility::Collapsed);
-				Btn->SetContent(Img);
+				MarkAsGCRoot(Entry);
+				EntryWidget = Entry;
+
+				if (Entry->ItemDisplay && Entry->ItemDisplay->CMP)
+				{
+					auto* Display = Entry->ItemDisplay->CMP;
+					Img = static_cast<UImage*>(Display->IMG_Item);
+					QualityBorder = static_cast<UImage*>(Display->IMG_QualityBorder);
+
+					if (Display->IMG_SolidBG)
+					{
+						Display->IMG_SolidBG->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+						Display->IMG_SolidBG->SetColorAndOpacity(FLinearColor{ 0.0f, 0.0f, 0.0f, 0.85f });
+					}
+					if (Display->TXT_Count)
+						Display->TXT_Count->SetVisibility(ESlateVisibility::Collapsed);
+				}
+
+				if (Entry->BTN_JHItem && Entry->BTN_JHItem->BtnMain)
+					Btn = static_cast<UButton*>(Entry->BTN_JHItem->BtnMain);
+			}
+
+			// Fallback to a plain slot only if backpack-style widget creation fails.
+			if (!EntryWidget || !Btn || !Img)
+			{
+				auto* FallbackBtn = static_cast<UButton*>(CreateRawWidget(UButton::StaticClass(), Outer));
+				auto* FallbackImg = static_cast<UImage*>(CreateRawWidget(UImage::StaticClass(), Outer));
+				if (!FallbackBtn || !FallbackImg)
+				{
+					GItemSlotButtons[i] = nullptr;
+					GItemSlotImages[i] = nullptr;
+					GItemSlotQualityBorders[i] = nullptr;
+					GItemSlotEntryWidgets[i] = nullptr;
+					GItemSlotItemIndices[i] = -1;
+					GItemSlotWasPressed[i] = false;
+					continue;
+				}
+				FallbackImg->SetVisibility(ESlateVisibility::Collapsed);
+				FallbackBtn->SetContent(FallbackImg);
+				Btn = FallbackBtn;
+				Img = FallbackImg;
+				EntryWidget = nullptr;
 			}
 
 			int32 Row = i / ITEM_GRID_COLS;
 			int32 Col = i % ITEM_GRID_COLS;
-			GItemGridPanel->AddChildToUniformGrid(Btn, Row, Col);
+			GItemGridPanel->AddChildToUniformGrid(
+				EntryWidget ? static_cast<UWidget*>(EntryWidget) : static_cast<UWidget*>(Btn),
+				Row, Col);
 
 			GItemSlotButtons[i] = Btn;
 			GItemSlotImages[i] = Img;
+			GItemSlotQualityBorders[i] = QualityBorder;
+			GItemSlotEntryWidgets[i] = EntryWidget;
 			GItemSlotItemIndices[i] = -1;
 			GItemSlotWasPressed[i] = false;
 		}
 	}
 
-	if (BrowserPanel) { Container->AddChild(BrowserPanel); Count++; }
+	AddPanelWithFixedGap(BrowserPanel, 0.0f, 8.0f);
 
 	GItemCurrentPage = 0;
 	FilterItems(0);

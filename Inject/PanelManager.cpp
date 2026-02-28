@@ -1,4 +1,5 @@
 ﻿#include <iostream>
+#include <algorithm>
 
 #include "PanelManager.hpp"
 #include "GCManager.hpp"
@@ -6,6 +7,92 @@
 #include "TabContent.hpp"
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
+
+namespace
+{
+	APlayerController* GInternalWidgetOwnerPC = nullptr;
+	UGameInstance* GInternalWidgetOwnerGI = nullptr;
+
+	bool IsPointerInLiveObjectArray(UObject* Obj)
+	{
+		if (!Obj)
+			return false;
+
+		auto* ObjArray = UObject::GObjects.GetTypedPtr();
+		if (!ObjArray)
+			return false;
+
+		const int32 Num = ObjArray->Num();
+		for (int32 i = 0; i < Num; ++i)
+		{
+			if (ObjArray->GetByIndex(i) == Obj)
+				return true;
+		}
+		return false;
+	}
+
+	bool IsValidUObject(UObject* Obj)
+	{
+		if (!Obj)
+			return false;
+		if (!IsPointerInLiveObjectArray(Obj))
+			return false;
+		return UKismetSystemLibrary::IsValid(Obj);
+	}
+
+	bool IsValidPlayerController(APlayerController* PC)
+	{
+		return IsValidUObject(static_cast<UObject*>(PC));
+	}
+
+	bool ShouldRecreateInternalWidget(APlayerController* CurrentPC)
+	{
+		if (!InternalWidget)
+			return false;
+
+		auto* WidgetObj = static_cast<UObject*>(InternalWidget);
+		if (!IsValidUObject(WidgetObj))
+			return true;
+
+		if (!IsValidPlayerController(CurrentPC))
+			return true;
+
+		if (GInternalWidgetOwnerPC && GInternalWidgetOwnerPC != CurrentPC)
+			return true;
+
+		UGameInstance* CurrentGI = UGameplayStatics::GetGameInstance(CurrentPC);
+		if (GInternalWidgetOwnerGI && GInternalWidgetOwnerGI != CurrentGI)
+			return true;
+
+		return false;
+	}
+
+	void ReleaseInternalWidgetForRecreate(const char* Reason)
+	{
+		if (!InternalWidget)
+			return;
+
+		std::cout << "[SDK] ShowInternalWidget: recreate old widget, reason=" << (Reason ? Reason : "unknown") << "\n";
+
+		if (IsValidUObject(static_cast<UObject*>(InternalWidget)))
+		{
+			if (InternalWidget->IsInViewport())
+				InternalWidget->RemoveFromParent();
+			ClearGCRoot(InternalWidget);
+		}
+		else
+		{
+			GRootedObjects.erase(
+				std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(InternalWidget)),
+				GRootedObjects.end());
+		}
+		InternalWidget = nullptr;
+		InternalWidgetVisible = false;
+		GInternalWidgetOwnerPC = nullptr;
+		GInternalWidgetOwnerGI = nullptr;
+		ClearRuntimeWidgetState();
+	}
+}
 void ClearRuntimeWidgetState()
 {
 	ClearItemBrowserState();
@@ -237,12 +324,15 @@ APlayerController* GetFirstLocalPlayerController()
 		return nullptr;
 
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0))
-		return PC;
+	{
+		if (IsValidPlayerController(PC))
+			return PC;
+	}
 
 	if (World->OwningGameInstance && World->OwningGameInstance->LocalPlayers.Num() > 0)
 	{
 		ULocalPlayer* LP = World->OwningGameInstance->LocalPlayers[0];
-		if (LP && LP->PlayerController)
+		if (LP && IsValidPlayerController(LP->PlayerController))
 			return LP->PlayerController;
 	}
 
@@ -252,7 +342,7 @@ APlayerController* GetFirstLocalPlayerController()
 		if (OW && OW->OwningGameInstance && OW->OwningGameInstance->LocalPlayers.Num() > 0)
 		{
 			ULocalPlayer* LP = OW->OwningGameInstance->LocalPlayers[0];
-			if (LP && LP->PlayerController)
+			if (LP && IsValidPlayerController(LP->PlayerController))
 				return LP->PlayerController;
 		}
 	}
@@ -319,19 +409,28 @@ UUserWidget* CreateInternalWidgetInstance(APlayerController* PlayerController)
 void EnsureMouseCursorVisible()
 {
 	APlayerController* PlayerController = GetFirstLocalPlayerController();
-	if (PlayerController && !PlayerController->bShowMouseCursor)
+	if (IsValidPlayerController(PlayerController) && !PlayerController->bShowMouseCursor)
 		PlayerController->bShowMouseCursor = true;
 }
 void HideInternalWidget(APlayerController* PlayerController)
 {
-	if (InternalWidget)
+	if (InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)))
 	{
 		if (InternalWidget->IsInViewport())
 			InternalWidget->RemoveFromParent();
 	}
+	else if (InternalWidget)
+	{
+		GRootedObjects.erase(
+			std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(InternalWidget)),
+			GRootedObjects.end());
+		InternalWidget = nullptr;
+		GInternalWidgetOwnerPC = nullptr;
+		GInternalWidgetOwnerGI = nullptr;
+	}
 	GCachedBtnExit = nullptr;
 
-	if (PlayerController)
+	if (IsValidPlayerController(PlayerController))
 	{
 		UGameplayStatics::SetGamePaused(PlayerController, false);
 		PlayerController->bShowMouseCursor = true;
@@ -342,15 +441,17 @@ void HideInternalWidget(APlayerController* PlayerController)
 }
 void DestroyInternalWidget(APlayerController* PlayerController)
 {
-	if (InternalWidget && InternalWidget->IsInViewport())
+	if (InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)) && InternalWidget->IsInViewport())
 		InternalWidget->RemoveFromParent();
 	GCachedBtnExit = nullptr;
 
 	ClearAllGCRoots();
 	InternalWidget = nullptr;
 	ClearRuntimeWidgetState();
+	GInternalWidgetOwnerPC = nullptr;
+	GInternalWidgetOwnerGI = nullptr;
 
-	if (PlayerController)
+	if (IsValidPlayerController(PlayerController))
 	{
 		UGameplayStatics::SetGamePaused(PlayerController, false);
 		PlayerController->bShowMouseCursor = true;
@@ -361,6 +462,20 @@ void DestroyInternalWidget(APlayerController* PlayerController)
 }
 void ShowInternalWidget(APlayerController* PlayerController)
 {
+	if (!IsValidPlayerController(PlayerController))
+	{
+		std::cout << "[SDK] ShowInternalWidget: invalid player controller\n";
+		return;
+	}
+
+	if (ShouldRecreateInternalWidget(PlayerController))
+	{
+		const char* reason = "owner/world mismatch or stale pointer";
+		if (InternalWidget && !IsValidUObject(static_cast<UObject*>(InternalWidget)))
+			reason = "internal widget invalid";
+		ReleaseInternalWidgetForRecreate(reason);
+	}
+
 	bool bCreatedNow = false;
 	if (!InternalWidget)
 	{
@@ -370,6 +485,17 @@ void ShowInternalWidget(APlayerController* PlayerController)
 		MarkAsGCRoot(InternalWidget);
 		bCreatedNow = true;
 	}
+
+	if (!IsValidUObject(static_cast<UObject*>(InternalWidget)))
+	{
+		std::cout << "[SDK] ShowInternalWidget: internal widget invalid after create\n";
+		ReleaseInternalWidgetForRecreate("invalid after create");
+		return;
+	}
+
+	GInternalWidgetOwnerPC = PlayerController;
+	GInternalWidgetOwnerGI = UGameplayStatics::GetGameInstance(PlayerController);
+	InternalWidget->SetOwningPlayer(PlayerController);
 
 	if (!InternalWidget->IsInViewport())
 		InternalWidget->AddToViewport(10000);
@@ -382,6 +508,13 @@ void ShowInternalWidget(APlayerController* PlayerController)
 		ApplyConfigView2TextPatch(InternalWidget, PlayerController);
 		InternalWidget->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
 		InternalWidget->SetRenderScale(FVector2D{ kInternalPanelScale, kInternalPanelScale });
+	}
+
+	if (!IsValidPlayerController(PlayerController) ||
+		!IsValidUObject(static_cast<UObject*>(InternalWidget)))
+	{
+		std::cout << "[SDK] ShowInternalWidget: aborted before SetInputMode, invalid runtime objects\n";
+		return;
 	}
 
 	InternalWidget->SetKeyboardFocus();
@@ -399,6 +532,20 @@ void ToggleInternalWidget()
 	{
 		std::cout << "[SDK] Home: player controller not ready\n";
 		return;
+	}
+
+	if (InternalWidget && !IsValidUObject(static_cast<UObject*>(InternalWidget)))
+	{
+		std::cout << "[SDK] ToggleInternalWidget: stale internal widget detected, force recreate\n";
+		GRootedObjects.erase(
+			std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(InternalWidget)),
+			GRootedObjects.end());
+		InternalWidget = nullptr;
+		InternalWidgetVisible = false;
+		GCachedBtnExit = nullptr;
+		GInternalWidgetOwnerPC = nullptr;
+		GInternalWidgetOwnerGI = nullptr;
+		ClearRuntimeWidgetState();
 	}
 
 	// Use real widget state instead of our boolean flag
@@ -441,4 +588,6 @@ void ShowOriginalTab(UBPMV_ConfigView2_C* CV)
 	if (GDynTabContent7) GDynTabContent7->SetVisibility(ESlateVisibility::Collapsed);
 	if (GDynTabContent8) GDynTabContent8->SetVisibility(ESlateVisibility::Collapsed);
 }
+
+
 

@@ -80,10 +80,20 @@ DWORD MainThread(HMODULE Module)
 	}
 
 	std::cout << "[SDK] Unloading...\n";
+	GUnloadCleanupDone.store(false, std::memory_order_release);
 	GIsUnloading.store(true, std::memory_order_release);
 
-	APlayerController* PC = GetFirstLocalPlayerController();
-	DestroyInternalWidget(PC);
+	DWORD WaitStart = GetTickCount();
+	while (!GUnloadCleanupDone.load(std::memory_order_acquire))
+	{
+		if (GetTickCount() - WaitStart > 2500)
+		{
+			std::cout << "[SDK] UnloadCleanup: timeout, continue force unhook\n";
+			break;
+		}
+		Sleep(10);
+	}
+
 	RemoveAllHooks();
 	CloseConsoleSafely();
 
