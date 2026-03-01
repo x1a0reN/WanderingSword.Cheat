@@ -213,15 +213,15 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			SearchEdit->SetHintText(MakeText(L"\u8F93\u5165\u4EE5\u641C\u7D22..."));
 			SearchEdit->SetText(MakeText(L""));
 			SearchEdit->SetJustification(ETextJustify::Left);
-			SearchEdit->MinimumDesiredWidth = 320.0f;
+			SearchEdit->MinimumDesiredWidth = 380.0f;
 			SearchEdit->SelectAllTextWhenFocused = true;
 			SearchEdit->ClearKeyboardFocusOnCommit = false;
-			SearchEdit->Font.Size = 22;
-			SearchEdit->WidgetStyle.Font.Size = 22;
+			SearchEdit->Font.Size = 16;
+			SearchEdit->WidgetStyle.Font.Size = 16;
 			SearchEdit->WidgetStyle.Padding.Left = 10.0f;
-			SearchEdit->WidgetStyle.Padding.Top = 8.0f;
+			SearchEdit->WidgetStyle.Padding.Top = 3.0f;
 			SearchEdit->WidgetStyle.Padding.Right = 10.0f;
-			SearchEdit->WidgetStyle.Padding.Bottom = 8.0f;
+			SearchEdit->WidgetStyle.Padding.Bottom = 3.0f;
 			ClearEditableTextBindings(SearchEdit);
 
 			auto MakeSlateColor = [](float R, float G, float B, float A) -> FSlateColor
@@ -246,11 +246,12 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			auto* SearchSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
 			if (SearchSize)
 			{
-				SearchSize->SetWidthOverride(340.0f);
-				SearchSize->SetHeightOverride(50.0f);
+				SearchSize->SetWidthOverride(310.0f);
+				SearchSize->SetHeightOverride(64.0f);
 				SearchSize->SetContent(SearchWidget);
 				SearchWidget = SearchSize;
 			}
+			SearchWidget->SetRenderTranslation(FVector2D{ 0.0f, -0.75f });
 
 			if (GItemCategoryDD->TXT_Title)
 			{
@@ -275,7 +276,17 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 						SearchPanelSlot = HParent->AddChildToHorizontalBox(SearchWidget);
 						if (bReaddCombo)
 						{
-							auto* ComboSlot = HParent->AddChildToHorizontalBox(GItemCategoryDD->CB_Main);
+							UWidget* ComboWidget = GItemCategoryDD->CB_Main;
+							auto* ComboSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
+							if (ComboSize && GItemCategoryDD->CB_Main)
+							{
+								ComboSize->SetWidthOverride(260.0f);
+								ComboSize->SetHeightOverride(40.0f);
+								ComboSize->SetContent(GItemCategoryDD->CB_Main);
+								ComboWidget = ComboSize;
+							}
+
+							auto* ComboSlot = HParent->AddChildToHorizontalBox(ComboWidget);
 							if (ComboSlot)
 							{
 								FSlateChildSize AutoSize{};
@@ -284,12 +295,71 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 								ComboSlot->SetSize(AutoSize);
 								ComboSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
 								ComboSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+								FMargin ComboPad{};
+								ComboPad.Right = 4.0f;
+								ComboSlot->SetPadding(ComboPad);
 							}
+							ComboWidget->SetRenderTranslation(FVector2D{ 2.0f, 0.0f });
 						}
 					}
 					else
 					{
-						SearchPanelSlot = TitleParent->AddChild(SearchWidget);
+						// 非 Horizontal 容器（常见是 Canvas）时，重建一层横向容器承载搜索框和下拉框，
+						// 避免原蓝图左侧标题区域固定宽度导致搜索框宽度不生效。
+						auto* ReplaceRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
+						if (ReplaceRow)
+						{
+							TitleParent->RemoveChild(GItemCategoryDD->TXT_Title);
+							if (GItemCategoryDD->CB_Main && GItemCategoryDD->CB_Main->GetParent() == TitleParent)
+								TitleParent->RemoveChild(GItemCategoryDD->CB_Main);
+
+							auto* NewSearchSlot = ReplaceRow->AddChildToHorizontalBox(SearchWidget);
+							if (NewSearchSlot)
+							{
+								FSlateChildSize Fill{};
+								Fill.SizeRule = ESlateSizeRule::Fill;
+								Fill.Value = 1.0f;
+								NewSearchSlot->SetSize(Fill);
+								NewSearchSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+								NewSearchSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+								FMargin SearchPad{};
+								SearchPad.Right = 10.0f;
+								NewSearchSlot->SetPadding(SearchPad);
+							}
+
+							if (GItemCategoryDD->CB_Main)
+							{
+								UWidget* ComboWidget = GItemCategoryDD->CB_Main;
+								auto* ComboSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
+								if (ComboSize)
+								{
+									ComboSize->SetWidthOverride(300.0f);
+									ComboSize->SetHeightOverride(40.0f);
+									ComboSize->SetContent(GItemCategoryDD->CB_Main);
+									ComboWidget = ComboSize;
+								}
+
+								auto* NewComboSlot = ReplaceRow->AddChildToHorizontalBox(ComboWidget);
+								if (NewComboSlot)
+								{
+									FSlateChildSize AutoSize{};
+									AutoSize.SizeRule = ESlateSizeRule::Automatic;
+									NewComboSlot->SetSize(AutoSize);
+									NewComboSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
+									NewComboSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+									FMargin ComboPad{};
+									ComboPad.Right = 4.0f;
+									NewComboSlot->SetPadding(ComboPad);
+								}
+								ComboWidget->SetRenderTranslation(FVector2D{ 2.0f, 0.0f });
+							}
+
+							SearchPanelSlot = TitleParent->AddChild(ReplaceRow);
+						}
+						else
+						{
+							SearchPanelSlot = TitleParent->AddChild(SearchWidget);
+						}
 					}
 
 					if (SearchPanelSlot && SearchPanelSlot->IsA(UHorizontalBoxSlot::StaticClass()))
@@ -301,6 +371,28 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 						SearchHSlot->SetSize(Fill);
 						SearchHSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
 						SearchHSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+						FMargin SearchPad{};
+						SearchPad.Left = 0.0f;
+						SearchPad.Top = 0.0f;
+						SearchPad.Right = 10.0f;
+						SearchPad.Bottom = 0.0f;
+						SearchHSlot->SetPadding(SearchPad);
+					}
+					else if (SearchPanelSlot && SearchPanelSlot->IsA(UCanvasPanelSlot::StaticClass()))
+					{
+						auto* SearchCSlot = static_cast<UCanvasPanelSlot*>(SearchPanelSlot);
+						SearchCSlot->SetAutoSize(false);
+						FAnchors Anchors{};
+						Anchors.Minimum = FVector2D{ 0.0f, 0.0f };
+						Anchors.Maximum = FVector2D{ 1.0f, 1.0f };
+						SearchCSlot->SetAnchors(Anchors);
+						FMargin Offsets{};
+						Offsets.Left = 0.0f;
+						Offsets.Top = 0.0f;
+						Offsets.Right = 0.0f;
+						Offsets.Bottom = 0.0f;
+						SearchCSlot->SetOffsets(Offsets);
+						SearchCSlot->SetAlignment(FVector2D{ 0.0f, 0.0f });
 					}
 				}
 			}
@@ -370,8 +462,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		}
 
 		GItemGridPanel->SetMinDesiredSlotWidth(68.0f);
-		GItemGridPanel->SetMinDesiredSlotHeight(68.0f);
-		GItemGridPanel->SetSlotPadding(FMargin{ 3.0f, 10.0f, 3.0f, 10.0f });
+		GItemGridPanel->SetMinDesiredSlotHeight(84.0f);
+		GItemGridPanel->SetSlotPadding(FMargin{ 3.0f, 6.0f, 3.0f, 6.0f });
 		if (BrowserBox) BrowserBox->AddChild(GItemGridPanel);
 		else Container->AddChild(GItemGridPanel);
 		Count++;
