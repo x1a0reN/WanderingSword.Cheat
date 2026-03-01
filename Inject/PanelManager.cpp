@@ -10,6 +10,8 @@
 
 namespace
 {
+	constexpr bool kEnableUIInitLog = false;
+
 	APlayerController* GInternalWidgetOwnerPC = nullptr;
 	UGameInstance* GInternalWidgetOwnerGI = nullptr;
 
@@ -109,31 +111,40 @@ void InitializeConfigView2BySDK(UBPMV_ConfigView2_C* ConfigView)
 	if (!ConfigView)
 		return;
 
-	std::cout << "[SDK] Init: calling EVT_VisualConstructOnce...\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] Init: calling EVT_VisualConstructOnce...\n";
 	ConfigView->EVT_VisualConstructOnce();
 
-	std::cout << "[SDK] Init: calling EVT_SetupSubModuleSlots...\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] Init: calling EVT_SetupSubModuleSlots...\n";
 	ConfigView->EVT_SetupSubModuleSlots();
 
 	// Diagnostic: check slot state after setup
-	std::cout << "[SDK] Init: VolumeSlot=" << (void*)ConfigView->VolumeSlot
-	          << " children=" << (ConfigView->VolumeSlot ? ConfigView->VolumeSlot->GetChildrenCount() : -1) << "\n";
-	std::cout << "[SDK] Init: VideoSlot=" << (void*)ConfigView->VideoSlot
-	          << " children=" << (ConfigView->VideoSlot ? ConfigView->VideoSlot->GetChildrenCount() : -1) << "\n";
-	std::cout << "[SDK] Init: CT_Contents=" << (void*)ConfigView->CT_Contents << "\n";
-	std::cout << "[SDK] Init: SB_Global=" << (void*)ConfigView->SB_Global
-	          << " VB_Global=" << (void*)ConfigView->VB_Global << "\n";
+	if (kEnableUIInitLog)
+	{
+		std::cout << "[SDK] Init: VolumeSlot=" << (void*)ConfigView->VolumeSlot
+		          << " children=" << (ConfigView->VolumeSlot ? ConfigView->VolumeSlot->GetChildrenCount() : -1) << "\n";
+		std::cout << "[SDK] Init: VideoSlot=" << (void*)ConfigView->VideoSlot
+		          << " children=" << (ConfigView->VideoSlot ? ConfigView->VideoSlot->GetChildrenCount() : -1) << "\n";
+		std::cout << "[SDK] Init: CT_Contents=" << (void*)ConfigView->CT_Contents << "\n";
+		std::cout << "[SDK] Init: SB_Global=" << (void*)ConfigView->SB_Global
+		          << " VB_Global=" << (void*)ConfigView->VB_Global << "\n";
+	}
 
-	std::cout << "[SDK] Init: calling EVT_SyncTabIndex(0)...\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] Init: calling EVT_SyncTabIndex(0)...\n";
 	ConfigView->EVT_SyncTabIndex(0);
 
-	std::cout << "[SDK] Init: calling EVT_SyncWithGlobalInputMode...\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] Init: calling EVT_SyncWithGlobalInputMode...\n";
 	ConfigView->EVT_SyncWithGlobalInputMode();
 
-	std::cout << "[SDK] Init: calling EVT_VisualShow...\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] Init: calling EVT_VisualShow...\n";
 	ConfigView->EVT_VisualShow();
 
-	std::cout << "[SDK] BPMV_ConfigView2_C initialized by SDK events (safe mode)\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] BPMV_ConfigView2_C initialized by SDK events (safe mode)\n";
 }
 void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 {
@@ -203,7 +214,8 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 	if (GDynTabBtn8)
 		GDynTabBtn8->EVT_UpdateActiveStatus(false);
 
-	std::cout << "[SDK] ConfigView2 patched: 9 tabs populated\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] ConfigView2 patched: 9 tabs populated\n";
 }
 
 // ── Tab content population ──
@@ -236,7 +248,8 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		PatchTabBtnRuntimeContext(GDynTabBtn6, CV, "DynTab6");
 		if (CV->CT_TabBtns)
 			CV->CT_TabBtns->AddChild(GDynTabBtn6);
-		std::cout << "[SDK] DynTab6 button created\n";
+		if (kEnableUIInitLog)
+			std::cout << "[SDK] DynTab6 button created\n";
 	}
 
 	GDynTabBtn7 = CreateTabButton(PC);
@@ -246,7 +259,8 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		PatchTabBtnRuntimeContext(GDynTabBtn7, CV, "DynTab7");
 		if (CV->CT_TabBtns)
 			CV->CT_TabBtns->AddChild(GDynTabBtn7);
-		std::cout << "[SDK] DynTab7 button created\n";
+		if (kEnableUIInitLog)
+			std::cout << "[SDK] DynTab7 button created\n";
 	}
 
 	GDynTabBtn8 = CreateTabButton(PC);
@@ -256,12 +270,14 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		PatchTabBtnRuntimeContext(GDynTabBtn8, CV, "DynTab8");
 		if (CV->CT_TabBtns)
 			CV->CT_TabBtns->AddChild(GDynTabBtn8);
-		std::cout << "[SDK] DynTab8 button created\n";
+		if (kEnableUIInitLog)
+			std::cout << "[SDK] DynTab8 button created\n";
 	}
 
 	// ── Create content containers (mounted to Switcher's parent, not Switcher itself) ──
 	UPanelWidget* SwitcherParent = CV->CT_Contents ? CV->CT_Contents->GetParent() : nullptr;
-	std::cout << "[SDK] DynTab: SwitcherParent=" << (void*)SwitcherParent << "\n";
+	if (kEnableUIInitLog)
+		std::cout << "[SDK] DynTab: SwitcherParent=" << (void*)SwitcherParent << "\n";
 
 	GDynTabContent6 = static_cast<UVerticalBox*>(
 		CreateRawWidget(UVerticalBox::StaticClass(), Outer));
@@ -269,7 +285,8 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	{
 		SwitcherParent->AddChild(GDynTabContent6);
 		GDynTabContent6->SetVisibility(ESlateVisibility::Collapsed);
-		std::cout << "[SDK] DynTab6 content added to SwitcherParent (Collapsed)\n";
+		if (kEnableUIInitLog)
+			std::cout << "[SDK] DynTab6 content added to SwitcherParent (Collapsed)\n";
 	}
 
 	GDynTabContent7 = static_cast<UVerticalBox*>(
@@ -278,7 +295,8 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	{
 		SwitcherParent->AddChild(GDynTabContent7);
 		GDynTabContent7->SetVisibility(ESlateVisibility::Collapsed);
-		std::cout << "[SDK] DynTab7 content added to SwitcherParent (Collapsed)\n";
+		if (kEnableUIInitLog)
+			std::cout << "[SDK] DynTab7 content added to SwitcherParent (Collapsed)\n";
 	}
 
 	GDynTabContent8 = static_cast<UVerticalBox*>(
@@ -287,7 +305,8 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	{
 		SwitcherParent->AddChild(GDynTabContent8);
 		GDynTabContent8->SetVisibility(ESlateVisibility::Collapsed);
-		std::cout << "[SDK] DynTab8 content added to SwitcherParent (Collapsed)\n";
+		if (kEnableUIInitLog)
+			std::cout << "[SDK] DynTab8 content added to SwitcherParent (Collapsed)\n";
 	}
 
 	// ── Populate content ──

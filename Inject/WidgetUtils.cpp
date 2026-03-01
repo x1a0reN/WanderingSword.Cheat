@@ -6,6 +6,11 @@
 #include "WidgetUtils.hpp"
 #include "GCManager.hpp"
 
+namespace
+{
+	constexpr bool kEnableUICreateLog = false;
+}
+
 bool IsPointerInLiveObjectArray(UObject* Obj)
 {
 	if (!Obj)
@@ -360,10 +365,13 @@ UWidget* CreateRawWidget(UClass* WidgetClass, UObject* Outer)
 	if (Obj)
 	{
 		MarkAsGCRoot(Obj); // Prevent GC from reclaiming
-		std::cout << "[SDK] CreateRawWidget: created widget at " << (void*)Obj << " (GC rooted)\n";
+		if (kEnableUICreateLog)
+			std::cout << "[SDK] CreateRawWidget: created widget at " << (void*)Obj << " (GC rooted)\n";
 	}
-	else
+	else if (kEnableUICreateLog)
+	{
 		std::cout << "[SDK] CreateRawWidget: StaticConstructObject returned null\n";
+	}
 
 	return static_cast<UWidget*>(Obj);
 }
@@ -402,14 +410,20 @@ UWidget* CreateRawWidgetFromTemplate(UClass* WidgetClass, UObject* Outer, UObjec
 	UObject* Obj = StaticConstructObject(&Params);
 	if (!Obj)
 	{
-		std::cout << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
-		          << "): null\n";
+		if (kEnableUICreateLog)
+		{
+			std::cout << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
+			          << "): null\n";
+		}
 		return nullptr;
 	}
 
 	MarkAsGCRoot(Obj);
-	std::cout << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
-	          << "): " << (void*)Obj << " from template=" << (void*)TemplateObj << "\n";
+	if (kEnableUICreateLog)
+	{
+		std::cout << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
+		          << "): " << (void*)Obj << " from template=" << (void*)TemplateObj << "\n";
+	}
 	return static_cast<UWidget*>(Obj);
 }
 UTextBlock* CreateRawTextLabel(UObject* Outer, const wchar_t* Text)
