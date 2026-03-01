@@ -46,6 +46,15 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 	const wchar_t* Hint,
 	const wchar_t* DefaultValue);
 
+// Numeric-only editbox row based on volume item style
+UBPVE_JHConfigVolumeItem2_C* CreateVolumeNumericEditBoxItem(
+	APlayerController* PC,
+	UObject* Outer,
+	UPanelWidget* FallbackContainer,
+	const wchar_t* Title,
+	const wchar_t* Hint,
+	const wchar_t* DefaultValue);
+
 // Collapsible panel
 UVE_JHVideoPanel2_C* CreateCollapsiblePanel(
 	APlayerController* PC,

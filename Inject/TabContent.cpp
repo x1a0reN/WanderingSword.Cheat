@@ -78,57 +78,131 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
 
-	auto AddSlider = [&](const wchar_t* Title) {
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = Container->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Left = 0.0f;
+			Pad.Top = TopGap;
+			Pad.Right = 0.0f;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	};
+
+	auto AddSlider = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateVolumeItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item);
+			else Container->AddChild(Item);
+			Count++;
+		}
 	};
 
-	auto AddEditBox = [&](const wchar_t* Title, const wchar_t* Hint, const wchar_t* DefaultValue) {
-		auto* Item = CreateVolumeEditBoxItem(PC, Outer, Container, Title, Hint, DefaultValue);
-		if (Item) { Container->AddChild(Item); Count++; }
+	auto AddNumeric = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue) {
+		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : Container, Title, L"输入数字", DefaultValue);
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item);
+			else Container->AddChild(Item);
+			Count++;
+		}
 	};
 
-	auto AddDropdown = [&](const wchar_t* Title, std::initializer_list<const wchar_t*> Options) {
+	auto AddDropdown = [&](UPanelWidget* Box, const wchar_t* Title, std::initializer_list<const wchar_t*> Options) {
 		auto* Item = CreateVideoItemWithOptions(PC, Title, Options);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item);
+			else Container->AddChild(Item);
+			Count++;
+		}
 	};
 
-	AddSlider(L"金钱");
-	AddEditBox(L"武学点", L"输入数值", L"100");
-	AddSlider(L"经脉点");
-	AddSlider(L"门派贡献");
-	AddSlider(L"继承点");
-	AddSlider(L"等级");
-	AddSlider(L"钓鱼等级");
+	auto* BasePanel = CreateCollapsiblePanel(PC, L"基础数值");
+	auto* BaseBox = BasePanel ? BasePanel->CT_Contents : nullptr;
+	AddNumeric(BaseBox, L"金钱", L"99999");
+	AddNumeric(BaseBox, L"武学点", L"100");
+	AddNumeric(BaseBox, L"经脉点", L"100");
+	AddNumeric(BaseBox, L"门派贡献", L"100");
+	AddNumeric(BaseBox, L"继承点", L"100");
+	AddNumeric(BaseBox, L"等级", L"10");
+	AddNumeric(BaseBox, L"钓鱼等级", L"10");
+	AddPanelWithFixedGap(BasePanel, 0.0f, 10.0f);
 
-	AddDropdown(L"额外心法栏", { L"0", L"1", L"2" });
-	AddDropdown(L"门派",
+	auto* RolePanel = CreateCollapsiblePanel(PC, L"角色选项");
+	auto* RoleBox = RolePanel ? RolePanel->CT_Contents : nullptr;
+	AddDropdown(RoleBox, L"额外心法栏", { L"0", L"1", L"2" });
+	AddDropdown(RoleBox, L"门派",
 		{ L"无门派", L"少林", L"武当", L"峨眉",
 		  L"明教", L"丐帮", L"唐门", L"天山" });
+	AddPanelWithFixedGap(RolePanel, 0.0f, 10.0f);
 
-	AddSlider(L"气血");
-	AddSlider(L"气血上限");
-	AddSlider(L"真气");
-	AddSlider(L"真气上限");
-	AddSlider(L"精力");
-	AddSlider(L"精力上限");
-	AddSlider(L"力道");
-	AddSlider(L"根骨");
-	AddSlider(L"身法");
-	AddSlider(L"内功");
-	AddSlider(L"攻击");
-	AddSlider(L"防御");
-	AddSlider(L"暴击");
-	AddSlider(L"闪避");
-	AddSlider(L"命中");
+	auto* AttrPanel = CreateCollapsiblePanel(PC, L"基础属性");
+	auto* AttrBox = AttrPanel ? AttrPanel->CT_Contents : nullptr;
+	AddNumeric(AttrBox, L"气血", L"100");
+	AddNumeric(AttrBox, L"气血上限", L"100");
+	AddNumeric(AttrBox, L"真气", L"100");
+	AddNumeric(AttrBox, L"真气上限", L"100");
+	AddNumeric(AttrBox, L"精力", L"100");
+	AddNumeric(AttrBox, L"精力上限", L"100");
+	AddNumeric(AttrBox, L"力道", L"100");
+	AddNumeric(AttrBox, L"根骨", L"100");
+	AddNumeric(AttrBox, L"身法", L"100");
+	AddNumeric(AttrBox, L"内功", L"100");
+	AddNumeric(AttrBox, L"攻击", L"100");
+	AddNumeric(AttrBox, L"防御", L"100");
+	AddNumeric(AttrBox, L"暴击", L"100");
+	AddNumeric(AttrBox, L"暴击抗性", L"100");
+	AddNumeric(AttrBox, L"闪避", L"100");
+	AddNumeric(AttrBox, L"命中", L"100");
+	AddNumeric(AttrBox, L"移动", L"100");
+	AddNumeric(AttrBox, L"聚气速率", L"100");
+	AddNumeric(AttrBox, L"真气护盾", L"100");
+	AddNumeric(AttrBox, L"气血护盾", L"100");
+	AddNumeric(AttrBox, L"名声", L"100");
+	AddNumeric(AttrBox, L"暴击伤害百分比", L"100");
+	AddPanelWithFixedGap(AttrPanel, 0.0f, 10.0f);
 
-	AddSlider(L"拳掌精通");
-	AddSlider(L"剑法精通");
-	AddSlider(L"刀法精通");
-	AddSlider(L"枪棍精通");
-	AddSlider(L"暗器精通");
+	auto* RecoverPanel = CreateCollapsiblePanel(PC, L"恢复速率");
+	auto* RecoverBox = RecoverPanel ? RecoverPanel->CT_Contents : nullptr;
+	AddNumeric(RecoverBox, L"气血恢复速率1", L"100");
+	AddNumeric(RecoverBox, L"气血恢复速率2", L"100");
+	AddNumeric(RecoverBox, L"真气恢复速率1", L"100");
+	AddNumeric(RecoverBox, L"真气恢复速率2", L"100");
+	AddPanelWithFixedGap(RecoverPanel, 0.0f, 10.0f);
 
-	std::cout << "[SDK] Tab0 (Character): " << Count << " items added\n";
+	auto* RatioPanel = CreateCollapsiblePanel(PC, L"倍率与消耗");
+	auto* RatioBox = RatioPanel ? RatioPanel->CT_Contents : nullptr;
+	AddSlider(RatioBox, L"金钱倍率");
+	AddSlider(RatioBox, L"武学点倍率");
+	AddSlider(RatioBox, L"真气消耗倍率");
+	AddPanelWithFixedGap(RatioPanel, 0.0f, 10.0f);
+
+	auto* WeaponPanel = CreateCollapsiblePanel(PC, L"武学精通与经验");
+	auto* WeaponBox = WeaponPanel ? WeaponPanel->CT_Contents : nullptr;
+	AddNumeric(WeaponBox, L"拳掌精通", L"100");
+	AddNumeric(WeaponBox, L"拳掌经验", L"100");
+	AddNumeric(WeaponBox, L"剑法精通", L"100");
+	AddNumeric(WeaponBox, L"剑法经验", L"100");
+	AddNumeric(WeaponBox, L"刀法精通", L"100");
+	AddNumeric(WeaponBox, L"刀法经验", L"100");
+	AddNumeric(WeaponBox, L"枪棍精通", L"100");
+	AddNumeric(WeaponBox, L"枪棍经验", L"100");
+	AddNumeric(WeaponBox, L"暗器精通", L"100");
+	AddNumeric(WeaponBox, L"暗器经验", L"100");
+	AddNumeric(WeaponBox, L"其他武器精通", L"100");
+	AddNumeric(WeaponBox, L"其他武器经验", L"100");
+	AddPanelWithFixedGap(WeaponPanel, 0.0f, 8.0f);
+
+	std::cout << "[SDK] Tab0 (Character): " << Count << " widgets added\n";
 }
 
 
@@ -140,34 +214,88 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	Container->ClearChildren();
 	ClearItemBrowserState();
 	int Count = 0;
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
 
-	
 	auto* OptionsPanel = CreateCollapsiblePanel(PC, L"物品选项");
 	UPanelWidget* OptionsBox = OptionsPanel ? OptionsPanel->CT_Contents : nullptr;
 
-	auto AddToggle = [&](const wchar_t* Title) {
+	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateToggleItem(PC, Title);
-		if (Item && OptionsBox) { OptionsBox->AddChild(Item); Count++; }
-		else if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item);
+			else if (OptionsBox) OptionsBox->AddChild(Item);
+			else Container->AddChild(Item);
+			Count++;
+		}
 	};
-	auto AddSlider = [&](const wchar_t* Title) {
+	auto AddSlider = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateVolumeItem(PC, Title);
-		if (Item && OptionsBox) { OptionsBox->AddChild(Item); Count++; }
-		else if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item);
+			else if (OptionsBox) OptionsBox->AddChild(Item);
+			else Container->AddChild(Item);
+			Count++;
+		}
+	};
+	auto AddNumeric = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue) {
+		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : (OptionsBox ? OptionsBox : Container), Title, L"输入数字", DefaultValue);
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item);
+			else if (OptionsBox) OptionsBox->AddChild(Item);
+			else Container->AddChild(Item);
+			Count++;
+		}
 	};
 
-	AddToggle(L"物品不减");
-	AddToggle(L"物品获得加倍");
-	AddSlider(L"加倍倍数");
-	AddToggle(L"所有物品可出售");
-	AddToggle(L"包括任务物品");
-	AddToggle(L"掉落率100%");
-	AddToggle(L"锻造制衣效果加倍");
-	AddSlider(L"道具增量效果倍率");
-	AddSlider(L"额外效果倍率");
-	AddToggle(L"最大额外词条数");
-	AddToggle(L"无视物品使用次数");
-	AddToggle(L"无视物品使用要求");
+	if (OptionsBox)
+	{
+		auto AddSubPanel = [&](const wchar_t* Title) -> UPanelWidget*
+		{
+			auto* Sub = CreateCollapsiblePanel(PC, Title);
+			if (!Sub)
+				return nullptr;
+			OptionsBox->AddChild(Sub);
+			Count++;
+			return Sub->CT_Contents;
+		};
+
+		auto* CoreBox = AddSubPanel(L"基础开关");
+		AddToggle(CoreBox, L"物品不减");
+		AddToggle(CoreBox, L"物品获得加倍");
+		AddToggle(CoreBox, L"所有物品可出售");
+		AddToggle(CoreBox, L"包括任务物品");
+		AddToggle(CoreBox, L"掉落率100%");
+		AddToggle(CoreBox, L"锻造制衣效果加倍");
+
+		auto* RatioBox = AddSubPanel(L"倍率设置");
+		AddSlider(RatioBox, L"加倍倍数");
+		AddSlider(RatioBox, L"道具增量效果倍率");
+		AddSlider(RatioBox, L"额外效果倍率");
+
+		auto* LimitBox = AddSubPanel(L"限制与词条");
+		AddNumeric(LimitBox, L"最大额外词条数", L"3");
+		AddToggle(LimitBox, L"无视物品使用次数");
+		AddToggle(LimitBox, L"无视物品使用要求");
+	}
+	else
+	{
+		AddToggle(nullptr, L"物品不减");
+		AddToggle(nullptr, L"物品获得加倍");
+		AddSlider(nullptr, L"加倍倍数");
+		AddToggle(nullptr, L"所有物品可出售");
+		AddToggle(nullptr, L"包括任务物品");
+		AddToggle(nullptr, L"掉落率100%");
+		AddToggle(nullptr, L"锻造制衣效果加倍");
+		AddSlider(nullptr, L"道具增量效果倍率");
+		AddSlider(nullptr, L"额外效果倍率");
+		AddNumeric(nullptr, L"最大额外词条数", L"3");
+		AddToggle(nullptr, L"无视物品使用次数");
+		AddToggle(nullptr, L"无视物品使用要求");
+	}
 
 	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
 	{
@@ -194,9 +322,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	UPanelWidget* BrowserBox = BrowserPanel ? BrowserPanel->CT_Contents : nullptr;
 
 	BuildItemCache();
-
-	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
-	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
 	GItemQuantityEdit = nullptr;
 	GItemCategoryDD = CreateVideoItemWithOptions(PC,
 		L"\u2501\u2501\u7269\u54C1\u7BA1\u7406\u2501\u2501",
@@ -577,30 +702,78 @@ void PopulateTab_Battle(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	Container->ClearChildren();
 	int Count = 0;
 
-	auto AddToggle = [&](const wchar_t* Title) {
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
+
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = Container->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Top = TopGap;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	};
+
+	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateToggleItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
 	};
-	auto AddSlider = [&](const wchar_t* Title) {
+	auto AddSlider = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateVolumeItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
+	};
+	auto AddNumeric = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue) {
+		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : Container, Title, L"输入数字", DefaultValue);
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
 	};
 
-	AddToggle(L"伤害加倍");           
-	AddSlider(L"伤害倍率");            
-	AddToggle(L"招式无视冷却"); 
-	AddToggle(L"战斗加速");            
-	AddSlider(L"战斗加速倍数"); 
-	AddToggle(L"不遇敌");                  
-	AddToggle(L"全队友参战");      
-	AddToggle(L"战败视为胜利"); 
-	AddToggle(L"心法填装最后一格"); 
-	AddToggle(L"战斗前自动恢复"); 
-	AddToggle(L"移动速度加倍"); 
-	AddSlider(L"移动倍率");            
-	AddToggle(L"只对本方生效"); 
+	auto* SwitchPanel = CreateCollapsiblePanel(PC, L"战斗开关");
+	auto* SwitchBox = SwitchPanel ? SwitchPanel->CT_Contents : nullptr;
+	AddToggle(SwitchBox, L"伤害加倍");
+	AddToggle(SwitchBox, L"招式无视冷却");
+	AddToggle(SwitchBox, L"战斗加速");
+	AddToggle(SwitchBox, L"不遇敌");
+	AddToggle(SwitchBox, L"全队友参战");
+	AddToggle(SwitchBox, L"战败视为胜利");
+	AddToggle(SwitchBox, L"心法填装最后一格");
+	AddToggle(SwitchBox, L"战斗前自动恢复");
+	AddToggle(SwitchBox, L"移动速度加倍");
+	AddToggle(SwitchBox, L"只对本方生效");
+	AddPanelWithFixedGap(SwitchPanel, 0.0f, 10.0f);
 
-	std::cout << "[SDK] Tab2 (Battle): " << Count << " items added\n";
+	auto* RatioPanel = CreateCollapsiblePanel(PC, L"倍率与速度");
+	auto* RatioBox = RatioPanel ? RatioPanel->CT_Contents : nullptr;
+	AddSlider(RatioBox, L"伤害倍率");
+	AddSlider(RatioBox, L"战斗加速倍数");
+	AddSlider(RatioBox, L"移动倍率");
+	AddSlider(RatioBox, L"逃跑成功率");
+	AddPanelWithFixedGap(RatioPanel, 0.0f, 10.0f);
+
+	auto* ExtraPanel = CreateCollapsiblePanel(PC, L"额外参数");
+	auto* ExtraBox = ExtraPanel ? ExtraPanel->CT_Contents : nullptr;
+	AddNumeric(ExtraBox, L"战斗时间流速", L"1");
+	AddPanelWithFixedGap(ExtraPanel, 0.0f, 8.0f);
+
+	std::cout << "[SDK] Tab2 (Battle): " << Count << " widgets added\n";
 }
 void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
@@ -609,24 +782,89 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	Container->ClearChildren();
 	int Count = 0;
 
-	auto AddToggle = [&](const wchar_t* Title) {
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
+
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = Container->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Top = TopGap;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	};
+
+	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateToggleItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
-	};
-	auto AddSlider = [&](const wchar_t* Title) {
-		auto* Item = CreateVolumeItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
 	};
 
-	AddToggle(L"锻造/制衣/炼丹/烹饪无视要求"); 
-	AddToggle(L"设置产出数量"); 
-	AddSlider(L"产出数量");            
-	AddToggle(L"采集一秒冷却"); 
-	AddToggle(L"钓鱼只钓稀有物"); 
-	AddToggle(L"钓鱼收笿必有收获"); 
-	AddToggle(L"家园随时收获"); 
+	auto AddNumeric = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue) {
+		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : Container, Title, L"输入数字", DefaultValue);
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
+	};
 
-	std::cout << "[SDK] Tab3 (Life): " << Count << " items added\n";
+	auto* SwitchPanel = CreateCollapsiblePanel(PC, L"生活开关");
+	auto* SwitchBox = SwitchPanel ? SwitchPanel->CT_Contents : nullptr;
+	AddToggle(SwitchBox, L"锻造/制衣/炼丹/烹饪无视要求");
+	AddToggle(SwitchBox, L"设置产出数量");
+	AddToggle(SwitchBox, L"采集一秒冷却");
+	AddToggle(SwitchBox, L"钓鱼只钓稀有物");
+	AddToggle(SwitchBox, L"钓鱼收杆必有收获");
+	AddToggle(SwitchBox, L"家园随时收获");
+	AddPanelWithFixedGap(SwitchPanel, 0.0f, 10.0f);
+
+	auto* OutputPanel = CreateCollapsiblePanel(PC, L"产出与掉落");
+	auto* OutputBox = OutputPanel ? OutputPanel->CT_Contents : nullptr;
+	AddNumeric(OutputBox, L"产出数量", L"1");
+	AddPanelWithFixedGap(OutputPanel, 0.0f, 10.0f);
+
+	auto* MasteryPanel = CreateCollapsiblePanel(PC, L"生活精通");
+	auto* MasteryBox = MasteryPanel ? MasteryPanel->CT_Contents : nullptr;
+	AddNumeric(MasteryBox, L"锻造精通", L"100");
+	AddNumeric(MasteryBox, L"医术精通", L"100");
+	AddNumeric(MasteryBox, L"制衣精通", L"100");
+	AddNumeric(MasteryBox, L"炼丹精通", L"100");
+	AddNumeric(MasteryBox, L"烹饪精通", L"100");
+	AddNumeric(MasteryBox, L"采集精通", L"100");
+	AddNumeric(MasteryBox, L"钓鱼精通", L"100");
+	AddNumeric(MasteryBox, L"饮酒精通", L"100");
+	AddNumeric(MasteryBox, L"茶道精通", L"100");
+	AddNumeric(MasteryBox, L"口才精通", L"100");
+	AddNumeric(MasteryBox, L"书法精通", L"100");
+	AddPanelWithFixedGap(MasteryPanel, 0.0f, 10.0f);
+
+	auto* ExpPanel = CreateCollapsiblePanel(PC, L"生活经验");
+	auto* ExpBox = ExpPanel ? ExpPanel->CT_Contents : nullptr;
+	AddNumeric(ExpBox, L"锻造经验", L"100");
+	AddNumeric(ExpBox, L"医术经验", L"100");
+	AddNumeric(ExpBox, L"制衣经验", L"100");
+	AddNumeric(ExpBox, L"炼丹经验", L"100");
+	AddNumeric(ExpBox, L"烹饪经验", L"100");
+	AddNumeric(ExpBox, L"采集经验", L"100");
+	AddNumeric(ExpBox, L"钓鱼经验", L"100");
+	AddNumeric(ExpBox, L"饮酒经验", L"100");
+	AddNumeric(ExpBox, L"茶道经验", L"100");
+	AddNumeric(ExpBox, L"口才经验", L"100");
+	AddNumeric(ExpBox, L"书法经验", L"100");
+	AddPanelWithFixedGap(ExpPanel, 0.0f, 8.0f);
+
+	std::cout << "[SDK] Tab3 (Life): " << Count << " widgets added\n";
 }
 void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
@@ -635,21 +873,58 @@ void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	Container->ClearChildren();
 	int Count = 0;
 
-	auto AddToggle = [&](const wchar_t* Title) {
-		auto* Item = CreateToggleItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = Container->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Top = TopGap;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
 	};
 
-	AddToggle(L"送礼必定喜欢"); 
-	AddToggle(L"邀请无视条件"); 
-	AddToggle(L"切磋无视好感"); 
-	AddToggle(L"请教无视要求"); 
-	AddToggle(L"切磋获得对手背包"); 
-	AddToggle(L"NPC装备可脱");         
-	AddToggle(L"NPC无视武器功法限制"); 
-	AddToggle(L"强制显示NPC互动"); 
+	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
+		auto* Item = CreateToggleItem(PC, Title);
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
+	};
 
-	std::cout << "[SDK] Tab4 (Social): " << Count << " items added\n";
+	auto AddDropdown = [&](UPanelWidget* Box, const wchar_t* Title, std::initializer_list<const wchar_t*> Options) {
+		auto* Item = CreateVideoItemWithOptions(PC, Title, Options);
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
+	};
+
+	auto* MainPanel = CreateCollapsiblePanel(PC, L"社交开关");
+	auto* MainBox = MainPanel ? MainPanel->CT_Contents : nullptr;
+	AddToggle(MainBox, L"送礼必定喜欢");
+	AddToggle(MainBox, L"邀请无视条件");
+	AddToggle(MainBox, L"切磋无视好感");
+	AddToggle(MainBox, L"请教无视要求");
+	AddToggle(MainBox, L"切磋获得对手背包");
+	AddToggle(MainBox, L"NPC装备可脱");
+	AddToggle(MainBox, L"NPC无视武器功法限制");
+	AddToggle(MainBox, L"强制显示NPC互动");
+	AddPanelWithFixedGap(MainPanel, 0.0f, 10.0f);
+
+	auto* GiftPanel = CreateCollapsiblePanel(PC, L"送礼设置");
+	auto* GiftBox = GiftPanel ? GiftPanel->CT_Contents : nullptr;
+	AddDropdown(GiftBox, L"物品质量(送礼)", { L"全部", L"白", L"绿", L"蓝", L"紫", L"橙", L"红" });
+	AddPanelWithFixedGap(GiftPanel, 0.0f, 8.0f);
+
+	std::cout << "[SDK] Tab4 (Social): " << Count << " widgets added\n";
 }
 void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
@@ -658,37 +933,121 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	Container->ClearChildren();
 	int Count = 0;
 
-	auto AddToggle = [&](const wchar_t* Title) {
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
+
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = Container->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Top = TopGap;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	};
+
+	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateToggleItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
 	};
-	auto AddSlider = [&](const wchar_t* Title) {
+	auto AddSlider = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateVolumeItem(PC, Title);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
 	};
-	auto AddDropdown = [&](const wchar_t* Title, std::initializer_list<const wchar_t*> Options) {
+	auto AddDropdown = [&](UPanelWidget* Box, const wchar_t* Title, std::initializer_list<const wchar_t*> Options) {
 		auto* Item = CreateVideoItemWithOptions(PC, Title, Options);
-		if (Item) { Container->AddChild(Item); Count++; }
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
+	};
+	auto AddNumeric = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue) {
+		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : Container, Title, L"输入数字", DefaultValue);
+		if (Item)
+		{
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
 	};
 
-	AddToggle(L"空格跳跃");           
-	AddSlider(L"跳跃速度");            
-	AddToggle(L"无限跳跃");            
-	AddToggle(L"奔跑/骑马加速"); 
-	AddSlider(L"加速倍率");            
-	AddToggle(L"坐骑替换");            
-	AddDropdown(L"指定坐骑",           
-		{ L"黑马", L"白马",           
-		  L"棕马", L"小毛驴" });  
-	AddToggle(L"一周目可选极难"); 
-	AddToggle(L"一周目可选传承"); 
-	AddToggle(L"承君传承包括所有"); 
-	AddToggle(L"未交互驿站可用"); 
-	AddToggle(L"激活GM命令行");   
-	AddToggle(L"解锁全图鉴");      
-	AddToggle(L"解锁全成就");      
+	auto* MovePanel = CreateCollapsiblePanel(PC, L"移动与跳跃");
+	auto* MoveBox = MovePanel ? MovePanel->CT_Contents : nullptr;
+	AddToggle(MoveBox, L"空格跳跃");
+	AddSlider(MoveBox, L"跳跃速度");
+	AddToggle(MoveBox, L"无限跳跃");
+	AddToggle(MoveBox, L"奔跑/骑马加速");
+	AddSlider(MoveBox, L"加速倍率");
+	AddSlider(MoveBox, L"世界移动速度");
+	AddSlider(MoveBox, L"场景移动速度");
+	AddPanelWithFixedGap(MovePanel, 0.0f, 10.0f);
 
-	std::cout << "[SDK] Tab5 (System): " << Count << " items added\n";
+	auto* MountPanel = CreateCollapsiblePanel(PC, L"坐骑设置");
+	auto* MountBox = MountPanel ? MountPanel->CT_Contents : nullptr;
+	AddToggle(MountBox, L"坐骑替换");
+	AddDropdown(MountBox, L"指定坐骑", { L"黑马", L"白马", L"棕马", L"小毛驴" });
+	AddPanelWithFixedGap(MountPanel, 0.0f, 10.0f);
+
+	auto* StoryPanel = CreateCollapsiblePanel(PC, L"开档与解锁");
+	auto* StoryBox = StoryPanel ? StoryPanel->CT_Contents : nullptr;
+	AddToggle(StoryBox, L"一周目可选极难");
+	AddToggle(StoryBox, L"一周目可选传承");
+	AddToggle(StoryBox, L"承君传承包括所有");
+	AddToggle(StoryBox, L"未交互驿站可用");
+	AddToggle(StoryBox, L"激活GM命令行");
+	AddToggle(StoryBox, L"解锁全图鉴");
+	AddToggle(StoryBox, L"解锁全成就");
+	AddPanelWithFixedGap(StoryPanel, 0.0f, 10.0f);
+
+	auto* ScreenPanel = CreateCollapsiblePanel(PC, L"屏幕设置");
+	auto* ScreenBox = ScreenPanel ? ScreenPanel->CT_Contents : nullptr;
+	AddDropdown(ScreenBox, L"分辨率", { L"1920x1080", L"2560x1440", L"3840x2160" });
+	AddDropdown(ScreenBox, L"窗口模式", { L"全屏", L"无边框", L"窗口" });
+	AddToggle(ScreenBox, L"垂直同步");
+	AddPanelWithFixedGap(ScreenPanel, 0.0f, 10.0f);
+
+	auto* DiffPanel = CreateCollapsiblePanel(PC, L"开档难度系数");
+	auto* DiffBox = DiffPanel ? DiffPanel->CT_Contents : nullptr;
+	AddNumeric(DiffBox, L"简单系数", L"100");
+	AddNumeric(DiffBox, L"普通系数", L"100");
+	AddNumeric(DiffBox, L"困难系数", L"100");
+	AddNumeric(DiffBox, L"极难系数", L"100");
+	AddNumeric(DiffBox, L"敌人伤害系数", L"100");
+	AddNumeric(DiffBox, L"敌人气血系数", L"100");
+	AddNumeric(DiffBox, L"资源产出系数", L"100");
+	AddNumeric(DiffBox, L"经验获取系数", L"100");
+	AddPanelWithFixedGap(DiffPanel, 0.0f, 10.0f);
+
+	auto* TitlePanel = CreateCollapsiblePanel(PC, L"称号战力门槛");
+	auto* TitleBox = TitlePanel ? TitlePanel->CT_Contents : nullptr;
+	AddNumeric(TitleBox, L"称号门槛1", L"100");
+	AddNumeric(TitleBox, L"称号门槛2", L"200");
+	AddNumeric(TitleBox, L"称号门槛3", L"300");
+	AddNumeric(TitleBox, L"称号门槛4", L"400");
+	AddNumeric(TitleBox, L"称号门槛5", L"500");
+	AddNumeric(TitleBox, L"称号门槛6", L"600");
+	AddNumeric(TitleBox, L"称号门槛7", L"700");
+	AddNumeric(TitleBox, L"称号门槛8", L"800");
+	AddNumeric(TitleBox, L"称号门槛9", L"900");
+	AddNumeric(TitleBox, L"称号门槛10", L"1000");
+	AddNumeric(TitleBox, L"称号门槛11", L"1100");
+	AddPanelWithFixedGap(TitlePanel, 0.0f, 8.0f);
+
+	std::cout << "[SDK] Tab5 (System): " << Count << " widgets added\n";
 }
 
 
@@ -698,45 +1057,77 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GDynTabContent6->ClearChildren();
 	int Count = 0;
 
-	
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
+
 	GTeammateFollowToggle = nullptr;
 	GTeammateFollowCount = nullptr;
 	GTeammateAddDD = nullptr;
 	GTeammateReplaceToggle = nullptr;
 	GTeammateReplaceDD = nullptr;
 
-	GTeammateFollowToggle = CreateToggleItem(PC, L"设置队友跟随数量"); 
-	if (GTeammateFollowToggle) { GDynTabContent6->AddChild(GTeammateFollowToggle); Count++; }
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = GDynTabContent6->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Top = TopGap;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	};
 
-	GTeammateFollowCount = CreateVolumeItem(PC, L"跟随数量"); 
-	if (GTeammateFollowCount) { GDynTabContent6->AddChild(GTeammateFollowCount); Count++; }
+	auto* TeamPanel = CreateCollapsiblePanel(PC, L"队伍设置");
+	auto* TeamBox = TeamPanel ? TeamPanel->CT_Contents : nullptr;
+	GTeammateFollowToggle = CreateToggleItem(PC, L"设置队友跟随数量");
+	if (GTeammateFollowToggle)
+	{
+		if (TeamBox) TeamBox->AddChild(GTeammateFollowToggle);
+		else GDynTabContent6->AddChild(GTeammateFollowToggle);
+		Count++;
+	}
+	GTeammateFollowCount = CreateVolumeNumericEditBoxItem(PC, Outer, TeamBox ? TeamBox : GDynTabContent6, L"跟随数量", L"输入数字", L"3");
+	if (GTeammateFollowCount)
+	{
+		if (TeamBox) TeamBox->AddChild(GTeammateFollowCount);
+		else GDynTabContent6->AddChild(GTeammateFollowCount);
+		Count++;
+	}
+	AddPanelWithFixedGap(TeamPanel, 0.0f, 10.0f);
 
-	GTeammateAddDD = CreateVideoItemWithOptions(PC, L"添加队友", 
-		{ L"请选择",                     
-		  L"百里东风",               
-		  L"尚云溪",                     
-		  L"叶千秋",                     
-		  L"谢尧",                           
-		  L"唐婉婉",                     
-		  L"徐小小",                     
-		  L"向天笑" });                  
-	if (GTeammateAddDD) { GDynTabContent6->AddChild(GTeammateAddDD); Count++; }
+	auto* OperatePanel = CreateCollapsiblePanel(PC, L"队友操作");
+	auto* OperateBox = OperatePanel ? OperatePanel->CT_Contents : nullptr;
+	GTeammateAddDD = CreateVideoItemWithOptions(PC, L"添加队友",
+		{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢尧", L"唐婉婉", L"徐小小", L"向天笑" });
+	if (GTeammateAddDD)
+	{
+		if (OperateBox) OperateBox->AddChild(GTeammateAddDD);
+		else GDynTabContent6->AddChild(GTeammateAddDD);
+		Count++;
+	}
+	GTeammateReplaceToggle = CreateToggleItem(PC, L"替换指定队友");
+	if (GTeammateReplaceToggle)
+	{
+		if (OperateBox) OperateBox->AddChild(GTeammateReplaceToggle);
+		else GDynTabContent6->AddChild(GTeammateReplaceToggle);
+		Count++;
+	}
+	GTeammateReplaceDD = CreateVideoItemWithOptions(PC, L"指定队友",
+		{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢尧", L"唐婉婉", L"徐小小", L"向天笑" });
+	if (GTeammateReplaceDD)
+	{
+		if (OperateBox) OperateBox->AddChild(GTeammateReplaceDD);
+		else GDynTabContent6->AddChild(GTeammateReplaceDD);
+		Count++;
+	}
+	AddPanelWithFixedGap(OperatePanel, 0.0f, 8.0f);
 
-	GTeammateReplaceToggle = CreateToggleItem(PC, L"替换指定队友"); 
-	if (GTeammateReplaceToggle) { GDynTabContent6->AddChild(GTeammateReplaceToggle); Count++; }
-
-	GTeammateReplaceDD = CreateVideoItemWithOptions(PC, L"指定队友", 
-		{ L"请选择",                     
-		  L"百里东风",               
-		  L"尚云溪",                     
-		  L"叶千秋",                     
-		  L"谢尧",                           
-		  L"唐婉婉",                     
-		  L"徐小小",                     
-		  L"向天笑" });                  
-	if (GTeammateReplaceDD) { GDynTabContent6->AddChild(GTeammateReplaceDD); Count++; }
-
-	std::cout << "[SDK] Tab6 (Teammates): " << Count << " items added\n";
+	std::cout << "[SDK] Tab6 (Teammates): " << Count << " widgets added\n";
 }
 
 
@@ -746,17 +1137,58 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GDynTabContent7->ClearChildren();
 	int Count = 0;
 
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
+
 	GQuestToggle = nullptr;
 	GQuestTypeDD = nullptr;
 
-	GQuestToggle = CreateToggleItem(PC, L"接到/完成任务"); 
-	if (GQuestToggle) { GDynTabContent7->AddChild(GQuestToggle); Count++; }
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		UPanelSlot* Slot = GDynTabContent7->AddChild(Panel);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Top = TopGap;
+			Pad.Bottom = BottomGap;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	};
 
-	GQuestTypeDD = CreateVideoItemWithOptions(PC, L"执行类型", 
-		{ L"接到", L"完成" }); 
-	if (GQuestTypeDD) { GDynTabContent7->AddChild(GQuestTypeDD); Count++; }
+	auto* MainPanel = CreateCollapsiblePanel(PC, L"任务执行");
+	auto* MainBox = MainPanel ? MainPanel->CT_Contents : nullptr;
+	GQuestToggle = CreateToggleItem(PC, L"接到/完成任务");
+	if (GQuestToggle)
+	{
+		if (MainBox) MainBox->AddChild(GQuestToggle);
+		else GDynTabContent7->AddChild(GQuestToggle);
+		Count++;
+	}
+	GQuestTypeDD = CreateVideoItemWithOptions(PC, L"执行类型", { L"接到", L"完成" });
+	if (GQuestTypeDD)
+	{
+		if (MainBox) MainBox->AddChild(GQuestTypeDD);
+		else GDynTabContent7->AddChild(GQuestTypeDD);
+		Count++;
+	}
+	AddPanelWithFixedGap(MainPanel, 0.0f, 10.0f);
 
-	std::cout << "[SDK] Tab7 (Quests): " << Count << " items added\n";
+	auto* ArgPanel = CreateCollapsiblePanel(PC, L"任务参数");
+	auto* ArgBox = ArgPanel ? ArgPanel->CT_Contents : nullptr;
+	auto* QuestIdItem = CreateVolumeNumericEditBoxItem(PC, Outer, ArgBox ? ArgBox : GDynTabContent7, L"任务ID", L"输入数字", L"1");
+	if (QuestIdItem)
+	{
+		if (ArgBox) ArgBox->AddChild(QuestIdItem);
+		else GDynTabContent7->AddChild(QuestIdItem);
+		Count++;
+	}
+	AddPanelWithFixedGap(ArgPanel, 0.0f, 8.0f);
+
+	std::cout << "[SDK] Tab7 (Quests): " << Count << " widgets added\n";
 }
 
 

@@ -1,6 +1,8 @@
 #include <Windows.h>
 #include <algorithm>
+#include <cwctype>
 #include <iostream>
+#include <string>
 #include <vector>
 #include <unordered_map>
 
@@ -13,6 +15,7 @@ namespace
 {
 	std::vector<UVE_JHVideoPanel2_C*> GCollapsiblePanels;
 	std::unordered_map<UVE_JHVideoPanel2_C*, bool> GCollapsibleStates;
+	std::vector<UEditableTextBox*> GNumericOnlyEditBoxes;
 	bool GCollapsibleLmbWasDown = false;
 	UVE_JHVideoPanel2_C* GCollapsiblePressedPanel = nullptr;
 
@@ -396,6 +399,274 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 	return Item;
 }
 
+namespace
+{
+	std::wstring SanitizeNumericText(const wchar_t* Input)
+	{
+		std::wstring Out;
+		if (!Input)
+			return Out;
+
+		bool HasSign = false;
+		bool HasDot = false;
+		for (const wchar_t* P = Input; *P; ++P)
+		{
+			const wchar_t C = *P;
+			if (std::iswdigit(static_cast<wint_t>(C)))
+			{
+				Out.push_back(C);
+				continue;
+			}
+			if ((C == L'+' || C == L'-') && !HasSign && Out.empty())
+			{
+				Out.push_back(C);
+				HasSign = true;
+				continue;
+			}
+			if ((C == L'.' || C == L'。') && !HasDot)
+			{
+				Out.push_back(L'.');
+				HasDot = true;
+			}
+		}
+		return Out;
+	}
+
+	UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItemImpl(
+		APlayerController* PC,
+		UObject* Outer,
+		UPanelWidget* FallbackContainer,
+		const wchar_t* Title,
+		const wchar_t* Hint,
+		const wchar_t* DefaultValue,
+		bool bNumericOnly)
+	{
+		auto* Item = CreateVolumeItem(PC, Title);
+		if (!Item)
+			return nullptr;
+
+		// 该行只用于编辑框展示，不参与滑块轮询接管
+		auto It = std::find(GVolumeItems.begin(), GVolumeItems.end(), Item);
+		if (It != GVolumeItems.end())
+		{
+			const size_t Idx = static_cast<size_t>(std::distance(GVolumeItems.begin(), It));
+			GVolumeItems.erase(It);
+			if (Idx < GVolumeLastValues.size())      GVolumeLastValues.erase(GVolumeLastValues.begin() + Idx);
+			if (Idx < GVolumeMinusWasPressed.size()) GVolumeMinusWasPressed.erase(GVolumeMinusWasPressed.begin() + Idx);
+			if (Idx < GVolumePlusWasPressed.size())  GVolumePlusWasPressed.erase(GVolumePlusWasPressed.begin() + Idx);
+		}
+
+		if (!Outer)
+			Outer = PC;
+
+		auto* Edit = static_cast<UEditableTextBox*>(
+			CreateRawWidget(UEditableTextBox::StaticClass(), Outer));
+		if (!Edit)
+			return Item;
+
+		std::wstring InitialText;
+		if (bNumericOnly)
+		{
+			InitialText = SanitizeNumericText(DefaultValue);
+			if (InitialText.empty())
+				InitialText = L"0";
+		}
+		else
+		{
+			InitialText = DefaultValue ? DefaultValue : L"";
+		}
+
+		Edit->SetHintText(MakeText(Hint ? Hint : L""));
+		Edit->SetText(MakeText(InitialText.c_str()));
+		Edit->SetJustification(ETextJustify::Right);
+		Edit->MinimumDesiredWidth = 320.0f;
+		Edit->SelectAllTextWhenFocused = true;
+		Edit->ClearKeyboardFocusOnCommit = false;
+		Edit->KeyboardType = bNumericOnly ? EVirtualKeyboardType::Number : EVirtualKeyboardType::Default;
+		Edit->Font.Size = 18;
+		Edit->WidgetStyle.Font.Size = 18;
+		Edit->WidgetStyle.Padding.Left = 10.0f;
+		Edit->WidgetStyle.Padding.Top = 8.0f;
+		Edit->WidgetStyle.Padding.Right = 10.0f;
+		Edit->WidgetStyle.Padding.Bottom = 8.0f;
+		ClearEditableTextBindings(Edit);
+		if (bNumericOnly &&
+			std::find(GNumericOnlyEditBoxes.begin(), GNumericOnlyEditBoxes.end(), Edit) == GNumericOnlyEditBoxes.end())
+		{
+			GNumericOnlyEditBoxes.push_back(Edit);
+		}
+
+		auto MakeSlateColor = [](float R, float G, float B, float A) -> FSlateColor
+		{
+			FSlateColor C{};
+			C.SpecifiedColor = FLinearColor{ R, G, B, A };
+			C.ColorUseRule = ESlateColorStylingMode::UseColor_Specified;
+			return C;
+		};
+
+		// 输入框透明，让底部保留原滑块行黑底样式
+		Edit->ForegroundColor = FLinearColor{ 0.95f, 0.95f, 0.95f, 1.0f };
+		Edit->BackgroundColor = FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f };
+		Edit->WidgetStyle.ForegroundColor = MakeSlateColor(0.95f, 0.95f, 0.95f, 1.0f);
+		Edit->WidgetStyle.BackgroundColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+		Edit->WidgetStyle.ReadOnlyForegroundColor = MakeSlateColor(0.75f, 0.75f, 0.75f, 1.0f);
+		Edit->WidgetStyle.BackgroundImageNormal.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+		Edit->WidgetStyle.BackgroundImageHovered.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+		Edit->WidgetStyle.BackgroundImageFocused.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+		Edit->WidgetStyle.BackgroundImageReadOnly.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+		UWidget* InputWidget = Edit;
+		auto* InputSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
+		if (InputSize)
+		{
+			InputSize->SetWidthOverride(340.0f);
+			InputSize->SetHeightOverride(50.0f);
+			InputSize->SetContent(InputWidget);
+			InputWidget = InputSize;
+		}
+
+		UPanelWidget* ValuePanel = nullptr;
+		const char* ValuePanelSource = "none";
+		int ValuePanelScore = -1;
+
+		auto GetPanelTypeName = [](UPanelWidget* P) -> const char*
+		{
+			if (!P) return "null";
+			if (P->IsA(UHorizontalBox::StaticClass())) return "HorizontalBox";
+			if (P->IsA(UOverlay::StaticClass())) return "Overlay";
+			if (P->IsA(UCanvasPanel::StaticClass())) return "CanvasPanel";
+			if (P->IsA(UVerticalBox::StaticClass())) return "VerticalBox";
+			return "PanelWidget";
+		};
+
+		auto GetPanelScore = [](UPanelWidget* P) -> int
+		{
+			if (!P) return -1;
+			if (P->IsA(UHorizontalBox::StaticClass())) return 100;
+			if (P->IsA(UOverlay::StaticClass())) return 90;
+			if (P->IsA(UCanvasPanel::StaticClass())) return 60;
+			if (P->IsA(UVerticalBox::StaticClass())) return 50;
+			return 40;
+		};
+
+		auto ConsiderPanel = [&](UPanelWidget* Candidate, const char* SourceTag, int Depth)
+		{
+			if (!Candidate)
+				return;
+			const int Score = GetPanelScore(Candidate) - (Depth * 4);
+			if (Score > ValuePanelScore)
+			{
+				ValuePanelScore = Score;
+				ValuePanel = Candidate;
+				ValuePanelSource = SourceTag ? SourceTag : "unknown";
+			}
+		};
+
+		auto ProbeParentChain = [&](UWidget* Leaf, const char* SourceTag)
+		{
+			UWidget* Cursor = Leaf;
+			for (int Depth = 0; Cursor && Depth < 6; ++Depth)
+			{
+				auto* Parent = Cursor->GetParent();
+				if (!Parent)
+					break;
+				ConsiderPanel(Parent, SourceTag, Depth);
+				Cursor = static_cast<UWidget*>(Parent);
+			}
+		};
+
+		// 优先从数值文本链路找右侧容器，避免误拿到根 Canvas 导致输入框落在左侧(0,0)。
+		ProbeParentChain(Item->TXT_CurrentValue, "TXT_CurrentValue");
+		ProbeParentChain(static_cast<UWidget*>(Item->BTN_Plus), "BTN_Plus");
+		ProbeParentChain(static_cast<UWidget*>(Item->BTN_Minus), "BTN_Minus");
+		ProbeParentChain(Item->VolumeSlider, "VolumeSlider");
+
+		if (Item->BTN_Minus)
+		{
+			Item->BTN_Minus->SetVisibility(ESlateVisibility::Collapsed);
+			Item->BTN_Minus->SetIsEnabled(false);
+		}
+		if (Item->BTN_Plus)
+		{
+			Item->BTN_Plus->SetVisibility(ESlateVisibility::Collapsed);
+			Item->BTN_Plus->SetIsEnabled(false);
+		}
+		if (Item->VolumeSlider)
+			Item->VolumeSlider->SetVisibility(ESlateVisibility::Collapsed);
+		if (Item->TXT_CurrentValue)
+			Item->TXT_CurrentValue->SetVisibility(ESlateVisibility::Collapsed);
+
+		if (ValuePanel)
+		{
+			UPanelSlot* AddedSlot = nullptr;
+			if (ValuePanel->IsA(UHorizontalBox::StaticClass()))
+			{
+				AddedSlot = static_cast<UHorizontalBox*>(ValuePanel)->AddChildToHorizontalBox(InputWidget);
+			}
+			else if (ValuePanel->IsA(UCanvasPanel::StaticClass()))
+			{
+				auto* CanvasSlot = static_cast<UCanvasPanel*>(ValuePanel)->AddChildToCanvas(InputWidget);
+				AddedSlot = CanvasSlot;
+				if (CanvasSlot)
+				{
+					FAnchors Anchors{};
+					Anchors.Minimum = FVector2D{ 0.56f, 0.0f };
+					Anchors.Maximum = FVector2D{ 0.98f, 1.0f };
+					CanvasSlot->SetAnchors(Anchors);
+
+					FMargin Offsets{};
+					Offsets.Left = 0.0f;
+					Offsets.Top = 0.0f;
+					Offsets.Right = 0.0f;
+					Offsets.Bottom = 0.0f;
+					CanvasSlot->SetOffsets(Offsets);
+					CanvasSlot->SetAlignment(FVector2D{ 0.0f, 0.5f });
+				}
+			}
+			else
+			{
+				AddedSlot = ValuePanel->AddChild(InputWidget);
+			}
+
+			if (AddedSlot && AddedSlot->IsA(UHorizontalBoxSlot::StaticClass()))
+			{
+				auto* HSlot = static_cast<UHorizontalBoxSlot*>(AddedSlot);
+				HSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
+				HSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+				FSlateChildSize AutoSize{};
+				AutoSize.Value = 0.0f;
+				AutoSize.SizeRule = ESlateSizeRule::Automatic;
+				HSlot->SetSize(AutoSize);
+				FMargin Padding{};
+				Padding.Left = 8.0f;
+				Padding.Top = 0.0f;
+				Padding.Right = 0.0f;
+				Padding.Bottom = 0.0f;
+				HSlot->SetPadding(Padding);
+			}
+
+			std::cout << "[SDK] " << (bNumericOnly ? "CreateVolumeNumericEditBoxItem" : "CreateVolumeEditBoxItem")
+			          << ": item=" << (void*)Item
+			          << " panel=" << (void*)ValuePanel
+			          << " panelType=" << GetPanelTypeName(ValuePanel)
+			          << " panelSource=" << ValuePanelSource
+			          << " panelScore=" << ValuePanelScore
+			          << " children=" << ValuePanel->GetChildrenCount()
+			          << " addedSlot=" << (void*)AddedSlot << "\n";
+		}
+		else if (FallbackContainer)
+		{
+			// 兜底：仅在完全找不到内部面板时才加到外层容器，并做右移避免压到左侧标题
+			FallbackContainer->AddChild(InputWidget);
+			InputWidget->SetRenderTranslation(FVector2D{ 260.0f, 0.0f });
+			std::cout << "[SDK] " << (bNumericOnly ? "CreateVolumeNumericEditBoxItem" : "CreateVolumeEditBoxItem")
+			          << ": fallback add to container=" << (void*)FallbackContainer << "\n";
+		}
+
+		return Item;
+	}
+}
+
 UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 	APlayerController* PC,
 	UObject* Outer,
@@ -404,210 +675,20 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeEditBoxItem(
 	const wchar_t* Hint,
 	const wchar_t* DefaultValue)
 {
-	auto* Item = CreateVolumeItem(PC, Title);
-	if (!Item)
-		return nullptr;
+	return CreateVolumeEditBoxItemImpl(
+		PC, Outer, FallbackContainer, Title, Hint, DefaultValue, false);
+}
 
-	// 该行只用于编辑框展示，不参与滑块轮询接管
-	auto It = std::find(GVolumeItems.begin(), GVolumeItems.end(), Item);
-	if (It != GVolumeItems.end())
-	{
-		const size_t Idx = static_cast<size_t>(std::distance(GVolumeItems.begin(), It));
-		GVolumeItems.erase(It);
-		if (Idx < GVolumeLastValues.size())      GVolumeLastValues.erase(GVolumeLastValues.begin() + Idx);
-		if (Idx < GVolumeMinusWasPressed.size()) GVolumeMinusWasPressed.erase(GVolumeMinusWasPressed.begin() + Idx);
-		if (Idx < GVolumePlusWasPressed.size())  GVolumePlusWasPressed.erase(GVolumePlusWasPressed.begin() + Idx);
-	}
-
-	if (!Outer)
-		Outer = PC;
-
-	auto* Edit = static_cast<UEditableTextBox*>(
-		CreateRawWidget(UEditableTextBox::StaticClass(), Outer));
-	if (!Edit)
-		return Item;
-
-	Edit->SetHintText(MakeText(Hint));
-	Edit->SetText(MakeText(DefaultValue));
-	Edit->SetJustification(ETextJustify::Right);
-	Edit->MinimumDesiredWidth = 320.0f;
-	Edit->SelectAllTextWhenFocused = true;
-	Edit->ClearKeyboardFocusOnCommit = false;
-	Edit->Font.Size = 22;
-	Edit->WidgetStyle.Font.Size = 22;
-	Edit->WidgetStyle.Padding.Left = 10.0f;
-	Edit->WidgetStyle.Padding.Top = 8.0f;
-	Edit->WidgetStyle.Padding.Right = 10.0f;
-	Edit->WidgetStyle.Padding.Bottom = 8.0f;
-	ClearEditableTextBindings(Edit);
-
-	auto MakeSlateColor = [](float R, float G, float B, float A) -> FSlateColor
-	{
-		FSlateColor C{};
-		C.SpecifiedColor = FLinearColor{ R, G, B, A };
-		C.ColorUseRule = ESlateColorStylingMode::UseColor_Specified;
-		return C;
-	};
-
-	// 输入框透明，让底部保留原滑块行黑底样式
-	Edit->ForegroundColor = FLinearColor{ 0.95f, 0.95f, 0.95f, 1.0f };
-	Edit->BackgroundColor = FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f };
-	Edit->WidgetStyle.ForegroundColor = MakeSlateColor(0.95f, 0.95f, 0.95f, 1.0f);
-	Edit->WidgetStyle.BackgroundColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
-	Edit->WidgetStyle.ReadOnlyForegroundColor = MakeSlateColor(0.75f, 0.75f, 0.75f, 1.0f);
-	Edit->WidgetStyle.BackgroundImageNormal.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
-	Edit->WidgetStyle.BackgroundImageHovered.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
-	Edit->WidgetStyle.BackgroundImageFocused.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
-	Edit->WidgetStyle.BackgroundImageReadOnly.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-	UWidget* InputWidget = Edit;
-	auto* InputSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
-	if (InputSize)
-	{
-		InputSize->SetWidthOverride(340.0f);
-		InputSize->SetHeightOverride(50.0f);
-		InputSize->SetContent(InputWidget);
-		InputWidget = InputSize;
-	}
-
-	UPanelWidget* ValuePanel = nullptr;
-	const char* ValuePanelSource = "none";
-	int ValuePanelScore = -1;
-
-	auto GetPanelTypeName = [](UPanelWidget* P) -> const char*
-	{
-		if (!P) return "null";
-		if (P->IsA(UHorizontalBox::StaticClass())) return "HorizontalBox";
-		if (P->IsA(UOverlay::StaticClass())) return "Overlay";
-		if (P->IsA(UCanvasPanel::StaticClass())) return "CanvasPanel";
-		if (P->IsA(UVerticalBox::StaticClass())) return "VerticalBox";
-		return "PanelWidget";
-	};
-
-	auto GetPanelScore = [](UPanelWidget* P) -> int
-	{
-		if (!P) return -1;
-		if (P->IsA(UHorizontalBox::StaticClass())) return 100;
-		if (P->IsA(UOverlay::StaticClass())) return 90;
-		if (P->IsA(UCanvasPanel::StaticClass())) return 60;
-		if (P->IsA(UVerticalBox::StaticClass())) return 50;
-		return 40;
-	};
-
-	auto ConsiderPanel = [&](UPanelWidget* Candidate, const char* SourceTag, int Depth)
-	{
-		if (!Candidate)
-			return;
-		const int Score = GetPanelScore(Candidate) - (Depth * 4);
-		if (Score > ValuePanelScore)
-		{
-			ValuePanelScore = Score;
-			ValuePanel = Candidate;
-			ValuePanelSource = SourceTag ? SourceTag : "unknown";
-		}
-	};
-
-	auto ProbeParentChain = [&](UWidget* Leaf, const char* SourceTag)
-	{
-		UWidget* Cursor = Leaf;
-		for (int Depth = 0; Cursor && Depth < 6; ++Depth)
-		{
-			auto* Parent = Cursor->GetParent();
-			if (!Parent)
-				break;
-			ConsiderPanel(Parent, SourceTag, Depth);
-			Cursor = static_cast<UWidget*>(Parent);
-		}
-	};
-
-	// 优先从数值文本链路找右侧容器，避免误拿到根 Canvas 导致输入框落在左侧(0,0)。
-	ProbeParentChain(Item->TXT_CurrentValue, "TXT_CurrentValue");
-	ProbeParentChain(static_cast<UWidget*>(Item->BTN_Plus), "BTN_Plus");
-	ProbeParentChain(static_cast<UWidget*>(Item->BTN_Minus), "BTN_Minus");
-	ProbeParentChain(Item->VolumeSlider, "VolumeSlider");
-
-	if (Item->BTN_Minus)
-	{
-		Item->BTN_Minus->SetVisibility(ESlateVisibility::Collapsed);
-		Item->BTN_Minus->SetIsEnabled(false);
-	}
-	if (Item->BTN_Plus)
-	{
-		Item->BTN_Plus->SetVisibility(ESlateVisibility::Collapsed);
-		Item->BTN_Plus->SetIsEnabled(false);
-	}
-	if (Item->VolumeSlider)
-		Item->VolumeSlider->SetVisibility(ESlateVisibility::Collapsed);
-	if (Item->TXT_CurrentValue)
-		Item->TXT_CurrentValue->SetVisibility(ESlateVisibility::Collapsed);
-
-	if (ValuePanel)
-	{
-		UPanelSlot* AddedSlot = nullptr;
-		if (ValuePanel->IsA(UHorizontalBox::StaticClass()))
-		{
-			AddedSlot = static_cast<UHorizontalBox*>(ValuePanel)->AddChildToHorizontalBox(InputWidget);
-		}
-		else if (ValuePanel->IsA(UCanvasPanel::StaticClass()))
-		{
-			auto* CanvasSlot = static_cast<UCanvasPanel*>(ValuePanel)->AddChildToCanvas(InputWidget);
-			AddedSlot = CanvasSlot;
-			if (CanvasSlot)
-			{
-				FAnchors Anchors{};
-				Anchors.Minimum = FVector2D{ 0.56f, 0.0f };
-				Anchors.Maximum = FVector2D{ 0.98f, 1.0f };
-				CanvasSlot->SetAnchors(Anchors);
-
-				FMargin Offsets{};
-				Offsets.Left = 0.0f;
-				Offsets.Top = 0.0f;
-				Offsets.Right = 0.0f;
-				Offsets.Bottom = 0.0f;
-				CanvasSlot->SetOffsets(Offsets);
-				CanvasSlot->SetAlignment(FVector2D{ 0.0f, 0.5f });
-			}
-		}
-		else
-		{
-			AddedSlot = ValuePanel->AddChild(InputWidget);
-		}
-
-		if (AddedSlot && AddedSlot->IsA(UHorizontalBoxSlot::StaticClass()))
-		{
-			auto* HSlot = static_cast<UHorizontalBoxSlot*>(AddedSlot);
-			HSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
-			HSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
-			FSlateChildSize AutoSize{};
-			AutoSize.Value = 0.0f;
-			AutoSize.SizeRule = ESlateSizeRule::Automatic;
-			HSlot->SetSize(AutoSize);
-			FMargin Padding{};
-			Padding.Left = 8.0f;
-			Padding.Top = 0.0f;
-			Padding.Right = 0.0f;
-			Padding.Bottom = 0.0f;
-			HSlot->SetPadding(Padding);
-		}
-
-		std::cout << "[SDK] CreateVolumeEditBoxItem: item=" << (void*)Item
-		          << " panel=" << (void*)ValuePanel
-		          << " panelType=" << GetPanelTypeName(ValuePanel)
-		          << " panelSource=" << ValuePanelSource
-		          << " panelScore=" << ValuePanelScore
-		          << " children=" << ValuePanel->GetChildrenCount()
-		          << " addedSlot=" << (void*)AddedSlot << "\n";
-	}
-	else if (FallbackContainer)
-	{
-		// 兜底：仅在完全找不到内部面板时才加到外层容器，并做右移避免压到左侧标题
-		FallbackContainer->AddChild(InputWidget);
-		InputWidget->SetRenderTranslation(FVector2D{ 260.0f, 0.0f });
-		std::cout << "[SDK] CreateVolumeEditBoxItem: fallback add to container="
-		          << (void*)FallbackContainer << "\n";
-	}
-
-	return Item;
+UBPVE_JHConfigVolumeItem2_C* CreateVolumeNumericEditBoxItem(
+	APlayerController* PC,
+	UObject* Outer,
+	UPanelWidget* FallbackContainer,
+	const wchar_t* Title,
+	const wchar_t* Hint,
+	const wchar_t* DefaultValue)
+{
+	return CreateVolumeEditBoxItemImpl(
+		PC, Outer, FallbackContainer, Title, Hint, DefaultValue, true);
 }
 
 UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t* Title, bool bStartCollapsed)
@@ -679,6 +760,54 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 
 void PollCollapsiblePanelsInput()
 {
+	// 数字输入框硬过滤：剔除中文和非数值字符。
+	GNumericOnlyEditBoxes.erase(
+		std::remove_if(
+			GNumericOnlyEditBoxes.begin(),
+			GNumericOnlyEditBoxes.end(),
+			[](UEditableTextBox* Edit)
+			{
+				return !IsSafeLiveObject(static_cast<UObject*>(Edit));
+			}),
+		GNumericOnlyEditBoxes.end());
+
+	for (UEditableTextBox* Edit : GNumericOnlyEditBoxes)
+	{
+		if (!IsSafeLiveObject(static_cast<UObject*>(Edit)))
+			continue;
+
+		const std::string Raw = Edit->GetText().ToString();
+		std::string Clean;
+		Clean.reserve(Raw.size());
+		bool HasSign = false;
+		bool HasDot = false;
+		for (unsigned char C : Raw)
+		{
+			if (C >= '0' && C <= '9')
+			{
+				Clean.push_back(static_cast<char>(C));
+				continue;
+			}
+			if ((C == '+' || C == '-') && !HasSign && Clean.empty())
+			{
+				Clean.push_back(static_cast<char>(C));
+				HasSign = true;
+				continue;
+			}
+			if ((C == '.' || C == ',') && !HasDot)
+			{
+				Clean.push_back('.');
+				HasDot = true;
+			}
+		}
+
+		if (Clean != Raw)
+		{
+			std::wstring W(Clean.begin(), Clean.end());
+			Edit->SetText(MakeText(W.c_str()));
+		}
+	}
+
 	const bool LmbDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 	const bool PressedEdge = LmbDown && !GCollapsibleLmbWasDown;
 	const bool ReleasedEdge = !LmbDown && GCollapsibleLmbWasDown;
@@ -714,9 +843,31 @@ void PollCollapsiblePanelsInput()
 
 	const FVector2D MouseAbs = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
 
+	auto IsWidgetVisibleInHierarchy = [&](UWidget* W) -> bool
+	{
+		UWidget* Cursor = W;
+		for (int Depth = 0; Cursor && Depth < 48; ++Depth)
+		{
+			if (!IsSafeLiveObject(static_cast<UObject*>(Cursor)))
+				return false;
+
+			const ESlateVisibility Vis = Cursor->GetVisibility();
+			if (Vis == ESlateVisibility::Collapsed || Vis == ESlateVisibility::Hidden)
+				return false;
+
+			auto* Parent = Cursor->GetParent();
+			if (!Parent)
+				break;
+			Cursor = static_cast<UWidget*>(Parent);
+		}
+		return true;
+	};
+
 	auto IsPointOverWidget = [&](UWidget* W) -> bool
 	{
 		if (!IsSafeLiveObject(static_cast<UObject*>(W)))
+			return false;
+		if (!IsWidgetVisibleInHierarchy(W))
 			return false;
 
 		// NeoUI 某些控件 IsHovered() 不稳定，这里改用几何命中检测作为主判定。
@@ -764,15 +915,17 @@ void PollCollapsiblePanelsInput()
 		          << " collapsed=" << (NextCollapsed ? 1 : 0) << "\n";
 	};
 
-	// 单击语义：按下时记住目标标题，抬起且仍在同一标题上时触发一次切换
+	// 单击语义：按下沿立即切换，避免抬起判定导致的双击/漏触发问题。
 	if (PressedEdge)
 	{
 		GCollapsiblePressedPanel = nullptr;
-		for (auto* Panel : GCollapsiblePanels)
+		for (auto It = GCollapsiblePanels.rbegin(); It != GCollapsiblePanels.rend(); ++It)
 		{
+			auto* Panel = *It;
 			if (IsPointOverPanelTitle(Panel))
 			{
 				GCollapsiblePressedPanel = Panel;
+				TogglePanel(Panel);
 				break;
 			}
 		}
@@ -780,8 +933,6 @@ void PollCollapsiblePanelsInput()
 
 	if (ReleasedEdge)
 	{
-		if (GCollapsiblePressedPanel && IsPointOverPanelTitle(GCollapsiblePressedPanel))
-			TogglePanel(GCollapsiblePressedPanel);
 		GCollapsiblePressedPanel = nullptr;
 	}
 
