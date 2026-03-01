@@ -2498,6 +2498,18 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	Container->ClearChildren();
 	ClearItemBrowserState();
+	GTab1ItemNoDecreaseToggle = nullptr;
+	GTab1ItemGainMultiplierToggle = nullptr;
+	GTab1ItemGainMultiplierSlider = nullptr;
+	GTab1AllItemsSellableToggle = nullptr;
+	GTab1IncludeQuestItemsToggle = nullptr;
+	GTab1DropRate100Toggle = nullptr;
+	GTab1CraftEffectMultiplierToggle = nullptr;
+	GTab1CraftItemIncrementSlider = nullptr;
+	GTab1CraftExtraEffectSlider = nullptr;
+	GTab1MaxExtraAffixesEdit = nullptr;
+	GTab1IgnoreItemUseCountToggle = nullptr;
+	GTab1IgnoreItemRequirementsToggle = nullptr;
 	int Count = 0;
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
@@ -2510,6 +2522,15 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		auto* Item = CreateToggleItem(PC, Title);
 		if (Item)
 		{
+			if (wcscmp(Title, L"物品不减") == 0) GTab1ItemNoDecreaseToggle = Item;
+			else if (wcscmp(Title, L"物品获得加倍") == 0) GTab1ItemGainMultiplierToggle = Item;
+			else if (wcscmp(Title, L"所有物品可出售") == 0) GTab1AllItemsSellableToggle = Item;
+			else if (wcscmp(Title, L"包括任务物品") == 0) GTab1IncludeQuestItemsToggle = Item;
+			else if (wcscmp(Title, L"掉落率100%") == 0) GTab1DropRate100Toggle = Item;
+			else if (wcscmp(Title, L"锻造制衣效果加倍") == 0) GTab1CraftEffectMultiplierToggle = Item;
+			else if (wcscmp(Title, L"无视物品使用次数") == 0) GTab1IgnoreItemUseCountToggle = Item;
+			else if (wcscmp(Title, L"无视物品使用要求") == 0) GTab1IgnoreItemRequirementsToggle = Item;
+
 			if (Box) Box->AddChild(Item);
 			else if (OptionsBox) OptionsBox->AddChild(Item);
 			else Container->AddChild(Item);
@@ -2520,6 +2541,10 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		auto* Item = CreateVolumeItem(PC, Title);
 		if (Item)
 		{
+			if (wcscmp(Title, L"加倍倍数") == 0) GTab1ItemGainMultiplierSlider = Item;
+			else if (wcscmp(Title, L"道具增量效果倍率") == 0) GTab1CraftItemIncrementSlider = Item;
+			else if (wcscmp(Title, L"额外效果倍率") == 0) GTab1CraftExtraEffectSlider = Item;
+
 			if (Box) Box->AddChild(Item);
 			else if (OptionsBox) OptionsBox->AddChild(Item);
 			else Container->AddChild(Item);
@@ -2530,6 +2555,9 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : (OptionsBox ? OptionsBox : Container), Title, L"输入数字", DefaultValue);
 		if (Item)
 		{
+			if (wcscmp(Title, L"最大额外词条数") == 0)
+				GTab1MaxExtraAffixesEdit = FindFirstEditableTextBox(Item);
+
 			if (Box) Box->AddChild(Item);
 			else if (OptionsBox) OptionsBox->AddChild(Item);
 			else Container->AddChild(Item);

@@ -1,6 +1,12 @@
 ﻿#include <Windows.h>
 #include <iostream>
 #include <cmath>
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "CheatState.hpp"
 #include "FrameHook.hpp"
@@ -9,6 +15,7 @@
 #include "TabContent.hpp"
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
+#include "SDK/JH_structs.hpp"
 
 namespace
 {
@@ -41,6 +48,717 @@ namespace
 		ClearRuntimeWidgetState();
 		return false;
 	}
+
+	void DrawFpsOverlay(UCanvas* CanvasObj)
+	{
+		if (!CanvasObj || !IsSafeLiveObjectOfClass(static_cast<UObject*>(CanvasObj), UCanvas::StaticClass()))
+			return;
+
+		static ULONGLONG sFpsWindowStartTick = 0;
+		static int32 sFpsFrameCount = 0;
+		static float sDisplayFps = 0.0f;
+
+		const ULONGLONG NowTick = GetTickCount64();
+		if (sFpsWindowStartTick == 0)
+			sFpsWindowStartTick = NowTick;
+
+		++sFpsFrameCount;
+		const ULONGLONG ElapsedMs = NowTick - sFpsWindowStartTick;
+		if (ElapsedMs >= 250ULL)
+		{
+			sDisplayFps = (static_cast<float>(sFpsFrameCount) * 1000.0f) / static_cast<float>(ElapsedMs);
+			sFpsFrameCount = 0;
+			sFpsWindowStartTick = NowTick;
+		}
+
+		wchar_t Buf[64] = {};
+		swprintf_s(Buf, 64, L"FPS: %.1f", sDisplayFps);
+
+		UFont* Font = nullptr;
+		UEngine* Engine = UEngine::GetEngine();
+		if (Engine && IsSafeLiveObject(static_cast<UObject*>(Engine)))
+			Font = Engine->SmallFont;
+
+		CanvasObj->K2_DrawText(
+			Font,
+			FString(Buf),
+			FVector2D{ 12.0f, 10.0f },
+			FVector2D{ 1.0f, 1.0f },
+			FLinearColor{ 0.1f, 1.0f, 0.1f, 1.0f },
+			0.0f,
+			FLinearColor{ 0.0f, 0.0f, 0.0f, 0.9f },
+			FVector2D{ 1.0f, 1.0f },
+			false,
+			false,
+			true,
+			FLinearColor{ 0.0f, 0.0f, 0.0f, 1.0f });
+	}
+
+	struct FGuidKey final
+	{
+		int32 A = 0;
+		int32 B = 0;
+		int32 C = 0;
+		int32 D = 0;
+
+		bool operator==(const FGuidKey& Other) const
+		{
+			return A == Other.A && B == Other.B && C == Other.C && D == Other.D;
+		}
+	};
+
+	struct FGuidKeyHasher final
+	{
+		size_t operator()(const FGuidKey& Key) const
+		{
+			uint64 V = static_cast<uint32>(Key.A);
+			V = (V * 0x9E3779B185EBCA87ULL) ^ static_cast<uint32>(Key.B);
+			V = (V * 0x9E3779B185EBCA87ULL) ^ static_cast<uint32>(Key.C);
+			V = (V * 0x9E3779B185EBCA87ULL) ^ static_cast<uint32>(Key.D);
+			return static_cast<size_t>(V);
+		}
+	};
+
+	struct FItemInventorySnapshot final
+	{
+		int32 Num = 0;
+		int32 DefId = 0;
+	};
+
+	struct FTab1RuntimeConfig final
+	{
+		bool ItemNoDecrease = false;
+		bool ItemGainMultiplier = false;
+		int32 ItemGainMultiplierValue = 1;
+		bool AllItemsSellable = false;
+		bool IncludeQuestItems = false;
+		bool DropRate100 = false;
+		bool CraftEffectMultiplier = false;
+		float CraftItemIncrementMultiplier = 1.0f;
+		float CraftExtraEffectMultiplier = 1.0f;
+		int32 MaxExtraAffixes = 0;
+		bool IgnoreItemUseCount = false;
+		bool IgnoreItemRequirements = false;
+	};
+
+	struct FItemRowOriginalState final
+	{
+		bool bCantSell = false;
+		float SellPrice = 0.0f;
+		int32 UsedCountLimit = 0;
+		std::vector<FRequirementSetting> Requirements;
+		std::vector<int32> RandRange;
+		std::vector<int32> NormalRandRange;
+		std::vector<FActionSetting> Actions;
+	};
+
+	struct FDropPoolOriginalState final
+	{
+		std::vector<FDropWeight> DropWeights;
+	};
+
+	struct FRandPoolOriginalState final
+	{
+		std::vector<FActionWeight> ActionWeights;
+	};
+
+	std::unordered_map<FGuidKey, FItemInventorySnapshot, FGuidKeyHasher> GTab1ItemSnapshots;
+	UDataTable* GTab1CachedItemTable = nullptr;
+	UDataTable* GTab1CachedDropPoolTable = nullptr;
+	UDataTable* GTab1CachedRandPoolTable = nullptr;
+	std::unordered_map<uintptr_t, FItemRowOriginalState> GTab1ItemRowOriginals;
+	std::unordered_map<uintptr_t, FDropPoolOriginalState> GTab1DropPoolOriginals;
+	std::unordered_map<uintptr_t, FRandPoolOriginalState> GTab1RandPoolOriginals;
+
+	bool IsLiveComboBox(UComboBoxString* Combo)
+	{
+		return Combo &&
+			IsSafeLiveObject(static_cast<UObject*>(Combo)) &&
+			!(Combo->Flags & EObjectFlags::BeginDestroyed) &&
+			!(Combo->Flags & EObjectFlags::FinishDestroyed);
+	}
+
+	int32 GetComboSelectedIndexSafe(UComboBoxString* Combo)
+	{
+		if (!IsLiveComboBox(Combo))
+			return -1;
+
+		const int32 Count = Combo->DefaultOptions.Num();
+		if (Count <= 0)
+			return -1;
+
+		const FString& Selected = Combo->SelectedOption;
+		const wchar_t* SelectedWs = Selected.CStr();
+		if (!SelectedWs || !SelectedWs[0])
+			return 0;
+
+		for (int32 i = 0; i < Count; ++i)
+		{
+			if (!Combo->DefaultOptions.IsValidIndex(i))
+				continue;
+			if (Combo->DefaultOptions[i] == Selected)
+				return i;
+		}
+		return 0;
+	}
+
+	bool ReadToggleValue(UBPVE_JHConfigVideoItem2_C* Toggle, bool DefaultValue)
+	{
+		if (!Toggle || !IsSafeLiveObject(static_cast<UObject*>(Toggle)))
+			return DefaultValue;
+		if (!Toggle->CB_Main || !IsLiveComboBox(Toggle->CB_Main))
+			return DefaultValue;
+
+		const int32 Idx = GetComboSelectedIndexSafe(Toggle->CB_Main);
+		if (Idx < 0)
+			return DefaultValue;
+		return Idx > 0;
+	}
+
+	float ReadSliderPercent(UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultPercent)
+	{
+		if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
+			return DefaultPercent;
+		USlider* Slider = SliderItem->VolumeSlider;
+		if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+			return DefaultPercent;
+
+		float MinValue = Slider->MinValue;
+		float MaxValue = Slider->MaxValue;
+		float CurValue = Slider->GetValue();
+		if (MaxValue < MinValue)
+		{
+			const float T = MaxValue;
+			MaxValue = MinValue;
+			MinValue = T;
+		}
+
+		float Norm = CurValue;
+		if (MaxValue > MinValue)
+			Norm = (CurValue - MinValue) / (MaxValue - MinValue);
+		if (Norm < 0.0f) Norm = 0.0f;
+		if (Norm > 1.0f) Norm = 1.0f;
+		return Norm * 100.0f;
+	}
+
+	int32 ReadIntegerEditValue(UEditableTextBox* Edit, int32 DefaultValue, int32 MinValue, int32 MaxValue)
+	{
+		if (!Edit || !IsSafeLiveObject(static_cast<UObject*>(Edit)))
+			return DefaultValue;
+
+		const FText Text = Edit->GetText();
+		const FString Raw = UKismetTextLibrary::Conv_TextToString(Text);
+		const wchar_t* WS = Raw.CStr();
+		if (!WS || !WS[0])
+			return DefaultValue;
+
+		int32 Value = _wtoi(WS);
+		if (Value < MinValue) Value = MinValue;
+		if (Value > MaxValue) Value = MaxValue;
+		return Value;
+	}
+
+	int32 SliderPercentToIntMultiplier(float Percent)
+	{
+		int32 Value = static_cast<int32>(Percent + 0.5f);
+		if (Value < 1) Value = 1;
+		if (Value > 100) Value = 100;
+		return Value;
+	}
+
+	float SliderPercentToFloatMultiplier(float Percent)
+	{
+		if (Percent < 0.0f) Percent = 0.0f;
+		if (Percent > 100.0f) Percent = 100.0f;
+		return 1.0f + Percent * 0.09f; // [1.0, 10.0]
+	}
+
+	template <typename T>
+	std::vector<T> CopyArrayToVector(const TArray<T>& Array)
+	{
+		std::vector<T> Out;
+		const int32 Count = Array.Num();
+		if (Count <= 0)
+			return Out;
+
+		Out.reserve(static_cast<size_t>(Count));
+		for (int32 i = 0; i < Count; ++i)
+			Out.push_back(Array[i]);
+		return Out;
+	}
+
+	template <typename T>
+	void RestoreArrayFromVector(TArray<T>& Target, const std::vector<T>& Source)
+	{
+		const int32 TargetCount = Target.Num();
+		const int32 SourceCount = static_cast<int32>(Source.size());
+		int32 Count = TargetCount;
+		if (SourceCount < Count)
+			Count = SourceCount;
+
+		for (int32 i = 0; i < Count; ++i)
+			Target[i] = Source[static_cast<size_t>(i)];
+	}
+
+	FGuidKey MakeGuidKey(const FGuid& Guid)
+	{
+		FGuidKey Key{};
+		Key.A = Guid.A;
+		Key.B = Guid.B;
+		Key.C = Guid.C;
+		Key.D = Guid.D;
+		return Key;
+	}
+
+	void ResetTab1TableCachesIfNeeded(UDataTable* ItemTable, UDataTable* DropTable, UDataTable* RandTable)
+	{
+		if (GTab1CachedItemTable != ItemTable)
+		{
+			GTab1CachedItemTable = ItemTable;
+			GTab1ItemRowOriginals.clear();
+		}
+		if (GTab1CachedDropPoolTable != DropTable)
+		{
+			GTab1CachedDropPoolTable = DropTable;
+			GTab1DropPoolOriginals.clear();
+		}
+		if (GTab1CachedRandPoolTable != RandTable)
+		{
+			GTab1CachedRandPoolTable = RandTable;
+			GTab1RandPoolOriginals.clear();
+		}
+	}
+
+	void CaptureTab1ItemRowOriginals(UDataTable* ItemTable)
+	{
+		if (!ItemTable || !IsSafeLiveObject(static_cast<UObject*>(ItemTable)))
+			return;
+		if (!GTab1ItemRowOriginals.empty())
+			return;
+
+		auto& RowMap = ItemTable->RowMap;
+		if (!RowMap.IsValid())
+			return;
+
+		const int32 AllocatedSlots = RowMap.NumAllocated();
+		for (int32 i = 0; i < AllocatedSlots; ++i)
+		{
+			if (!RowMap.IsValidIndex(i))
+				continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData)
+				continue;
+
+			auto* Row = reinterpret_cast<FItemInfoSetting*>(RowData);
+			FItemRowOriginalState Original{};
+			Original.bCantSell = Row->bCantSell;
+			Original.SellPrice = Row->SellPrice;
+			Original.UsedCountLimit = Row->UsedCountLimit;
+			Original.Requirements = CopyArrayToVector(Row->Requirements);
+			Original.RandRange = CopyArrayToVector(Row->RandRange);
+			Original.NormalRandRange = CopyArrayToVector(Row->NormalRandRange);
+			Original.Actions = CopyArrayToVector(Row->Actions);
+			GTab1ItemRowOriginals.emplace(reinterpret_cast<uintptr_t>(RowData), std::move(Original));
+		}
+	}
+
+	void CaptureTab1DropPoolOriginals(UDataTable* DropTable)
+	{
+		if (!DropTable || !IsSafeLiveObject(static_cast<UObject*>(DropTable)))
+			return;
+		if (!GTab1DropPoolOriginals.empty())
+			return;
+
+		auto& RowMap = DropTable->RowMap;
+		if (!RowMap.IsValid())
+			return;
+
+		const int32 AllocatedSlots = RowMap.NumAllocated();
+		for (int32 i = 0; i < AllocatedSlots; ++i)
+		{
+			if (!RowMap.IsValidIndex(i))
+				continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData)
+				continue;
+
+			auto* Row = reinterpret_cast<FDropPoolSetting*>(RowData);
+			FDropPoolOriginalState Original{};
+			Original.DropWeights = CopyArrayToVector(Row->DropWeights);
+			GTab1DropPoolOriginals.emplace(reinterpret_cast<uintptr_t>(RowData), std::move(Original));
+		}
+	}
+
+	void CaptureTab1RandPoolOriginals(UDataTable* RandTable)
+	{
+		if (!RandTable || !IsSafeLiveObject(static_cast<UObject*>(RandTable)))
+			return;
+		if (!GTab1RandPoolOriginals.empty())
+			return;
+
+		auto& RowMap = RandTable->RowMap;
+		if (!RowMap.IsValid())
+			return;
+
+		const int32 AllocatedSlots = RowMap.NumAllocated();
+		for (int32 i = 0; i < AllocatedSlots; ++i)
+		{
+			if (!RowMap.IsValidIndex(i))
+				continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData)
+				continue;
+
+			auto* Row = reinterpret_cast<FRandActionPoolSetting*>(RowData);
+			FRandPoolOriginalState Original{};
+			Original.ActionWeights = CopyArrayToVector(Row->ActionWeights);
+			GTab1RandPoolOriginals.emplace(reinterpret_cast<uintptr_t>(RowData), std::move(Original));
+		}
+	}
+
+	void ApplyTab1ItemDefinitionFeatures(const FTab1RuntimeConfig& Cfg, UDataTable* ItemTable)
+	{
+		if (!ItemTable || !IsSafeLiveObject(static_cast<UObject*>(ItemTable)))
+			return;
+
+		CaptureTab1ItemRowOriginals(ItemTable);
+		if (GTab1ItemRowOriginals.empty())
+			return;
+
+		auto& RowMap = ItemTable->RowMap;
+		if (!RowMap.IsValid())
+			return;
+
+		const int32 AllocatedSlots = RowMap.NumAllocated();
+		for (int32 i = 0; i < AllocatedSlots; ++i)
+		{
+			if (!RowMap.IsValidIndex(i))
+				continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData)
+				continue;
+
+			auto* Row = reinterpret_cast<FItemInfoSetting*>(RowData);
+			const auto It = GTab1ItemRowOriginals.find(reinterpret_cast<uintptr_t>(RowData));
+			if (It == GTab1ItemRowOriginals.end())
+				continue;
+			const FItemRowOriginalState& Original = It->second;
+
+			const bool IsQuestItem = (Row->ItemType == EItemSubType::QuestItem);
+
+			if (Cfg.AllItemsSellable && (Cfg.IncludeQuestItems || !IsQuestItem))
+			{
+				Row->bCantSell = false;
+				if (Row->SellPrice <= 0.0f)
+					Row->SellPrice = 1.0f;
+			}
+			else
+			{
+				Row->bCantSell = Original.bCantSell;
+				Row->SellPrice = Original.SellPrice;
+			}
+
+			if (Cfg.IgnoreItemUseCount)
+				Row->UsedCountLimit = 0;
+			else
+				Row->UsedCountLimit = Original.UsedCountLimit;
+
+			if (Cfg.IgnoreItemRequirements)
+			{
+				const int32 ReqCount = Row->Requirements.Num();
+				for (int32 ReqIdx = 0; ReqIdx < ReqCount; ++ReqIdx)
+				{
+					Row->Requirements[ReqIdx].Type = ERequirementType::None;
+					Row->Requirements[ReqIdx].ID = 0;
+					Row->Requirements[ReqIdx].Num = 0.0f;
+				}
+			}
+			else
+			{
+				RestoreArrayFromVector(Row->Requirements, Original.Requirements);
+			}
+
+			if (Cfg.MaxExtraAffixes > 0)
+			{
+				if (Row->RandRange.Num() >= 2)
+				{
+					Row->RandRange[0] = Cfg.MaxExtraAffixes;
+					Row->RandRange[1] = Cfg.MaxExtraAffixes;
+				}
+				if (Row->NormalRandRange.Num() >= 2)
+				{
+					Row->NormalRandRange[0] = Cfg.MaxExtraAffixes;
+					Row->NormalRandRange[1] = Cfg.MaxExtraAffixes;
+				}
+			}
+			else
+			{
+				RestoreArrayFromVector(Row->RandRange, Original.RandRange);
+				RestoreArrayFromVector(Row->NormalRandRange, Original.NormalRandRange);
+			}
+
+			if (Cfg.CraftEffectMultiplier)
+			{
+				const int32 CurrentCount = Row->Actions.Num();
+				int32 Count = CurrentCount;
+				const int32 OriginalCount = static_cast<int32>(Original.Actions.size());
+				if (OriginalCount < Count)
+					Count = OriginalCount;
+
+				for (int32 ActIdx = 0; ActIdx < Count; ++ActIdx)
+				{
+					const FActionSetting& BaseAction = Original.Actions[static_cast<size_t>(ActIdx)];
+					if (BaseAction.Type == EActionType::CItem)
+						Row->Actions[ActIdx].Num = BaseAction.Num * Cfg.CraftItemIncrementMultiplier;
+					else
+						Row->Actions[ActIdx].Num = BaseAction.Num * Cfg.CraftExtraEffectMultiplier;
+				}
+			}
+			else
+			{
+				RestoreArrayFromVector(Row->Actions, Original.Actions);
+			}
+		}
+	}
+
+	void ApplyTab1DropPoolFeature(const FTab1RuntimeConfig& Cfg, UDataTable* DropTable)
+	{
+		if (!DropTable || !IsSafeLiveObject(static_cast<UObject*>(DropTable)))
+			return;
+
+		CaptureTab1DropPoolOriginals(DropTable);
+		if (GTab1DropPoolOriginals.empty())
+			return;
+
+		auto& RowMap = DropTable->RowMap;
+		if (!RowMap.IsValid())
+			return;
+
+		const int32 AllocatedSlots = RowMap.NumAllocated();
+		for (int32 i = 0; i < AllocatedSlots; ++i)
+		{
+			if (!RowMap.IsValidIndex(i))
+				continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData)
+				continue;
+
+			auto* Row = reinterpret_cast<FDropPoolSetting*>(RowData);
+			const auto It = GTab1DropPoolOriginals.find(reinterpret_cast<uintptr_t>(RowData));
+			if (It == GTab1DropPoolOriginals.end())
+				continue;
+			const FDropPoolOriginalState& Original = It->second;
+
+			if (!Cfg.DropRate100)
+			{
+				RestoreArrayFromVector(Row->DropWeights, Original.DropWeights);
+				continue;
+			}
+
+			const int32 CurrentCount = Row->DropWeights.Num();
+			int32 Count = CurrentCount;
+			const int32 OriginalCount = static_cast<int32>(Original.DropWeights.size());
+			if (OriginalCount < Count)
+				Count = OriginalCount;
+
+			for (int32 WIdx = 0; WIdx < Count; ++WIdx)
+			{
+				const FDropWeight& BaseWeight = Original.DropWeights[static_cast<size_t>(WIdx)];
+				if (BaseWeight.ItemDefId <= 0)
+					Row->DropWeights[WIdx].Weight = 0;
+				else
+					Row->DropWeights[WIdx].Weight = 100000;
+			}
+		}
+	}
+
+	void ApplyTab1RandPoolFeature(const FTab1RuntimeConfig& Cfg, UDataTable* RandTable)
+	{
+		if (!RandTable || !IsSafeLiveObject(static_cast<UObject*>(RandTable)))
+			return;
+
+		CaptureTab1RandPoolOriginals(RandTable);
+		if (GTab1RandPoolOriginals.empty())
+			return;
+
+		auto& RowMap = RandTable->RowMap;
+		if (!RowMap.IsValid())
+			return;
+
+		const int32 AllocatedSlots = RowMap.NumAllocated();
+		for (int32 i = 0; i < AllocatedSlots; ++i)
+		{
+			if (!RowMap.IsValidIndex(i))
+				continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData)
+				continue;
+
+			auto* Row = reinterpret_cast<FRandActionPoolSetting*>(RowData);
+			const auto It = GTab1RandPoolOriginals.find(reinterpret_cast<uintptr_t>(RowData));
+			if (It == GTab1RandPoolOriginals.end())
+				continue;
+			const FRandPoolOriginalState& Original = It->second;
+
+			if (!Cfg.CraftEffectMultiplier)
+			{
+				RestoreArrayFromVector(Row->ActionWeights, Original.ActionWeights);
+				continue;
+			}
+
+			const int32 CurrentCount = Row->ActionWeights.Num();
+			int32 Count = CurrentCount;
+			const int32 OriginalCount = static_cast<int32>(Original.ActionWeights.size());
+			if (OriginalCount < Count)
+				Count = OriginalCount;
+
+			for (int32 AIdx = 0; AIdx < Count; ++AIdx)
+			{
+				const FActionWeight& BaseWeight = Original.ActionWeights[static_cast<size_t>(AIdx)];
+				Row->ActionWeights[AIdx].Action.Num = BaseWeight.Action.Num * Cfg.CraftExtraEffectMultiplier;
+			}
+		}
+	}
+
+	void ApplyTab1BackpackFeatures(const FTab1RuntimeConfig& Cfg)
+	{
+		const bool EnableNoDecrease = Cfg.ItemNoDecrease;
+		const bool EnableGainMultiplier = Cfg.ItemGainMultiplier && Cfg.ItemGainMultiplierValue > 1;
+		if (!EnableNoDecrease && !EnableGainMultiplier)
+		{
+			GTab1ItemSnapshots.clear();
+			return;
+		}
+
+		UItemManager* ItemMgr = UManagerFuncLib::GetItemManager();
+		if (!ItemMgr || !IsSafeLiveObject(static_cast<UObject*>(ItemMgr)))
+			return;
+
+		TArray<UItemInfoSpec*>& BackpackItems = ItemMgr->BackpackItems;
+		if (!BackpackItems.IsValid())
+			return;
+
+		std::unordered_set<FGuidKey, FGuidKeyHasher> SeenKeys;
+		SeenKeys.reserve(static_cast<size_t>(BackpackItems.Num()) + 8);
+
+		for (int32 i = 0; i < BackpackItems.Num(); ++i)
+		{
+			UItemInfoSpec* Spec = BackpackItems[i];
+			if (!Spec || !IsSafeLiveObject(static_cast<UObject*>(Spec)))
+				continue;
+
+			const FGuidKey Key = MakeGuidKey(Spec->ID);
+			SeenKeys.insert(Key);
+
+			auto It = GTab1ItemSnapshots.find(Key);
+			const bool HadSnapshot = (It != GTab1ItemSnapshots.end());
+			const int32 PrevNum = HadSnapshot ? It->second.Num : 0;
+
+			int32 CurNum = Spec->Num;
+			if (CurNum < 0)
+				CurNum = 0;
+
+			if (EnableGainMultiplier && CurNum > PrevNum)
+			{
+				const int64 Delta = static_cast<int64>(CurNum) - static_cast<int64>(PrevNum);
+				const int64 Extra = Delta * static_cast<int64>(Cfg.ItemGainMultiplierValue - 1);
+				int64 NewNum = static_cast<int64>(CurNum) + Extra;
+				const int64 MaxInt = static_cast<int64>((std::numeric_limits<int32>::max)());
+				if (NewNum > MaxInt)
+					NewNum = MaxInt;
+				CurNum = static_cast<int32>(NewNum);
+			}
+
+			if (EnableNoDecrease && CurNum < PrevNum)
+				CurNum = PrevNum;
+
+			if (CurNum != Spec->Num)
+				Spec->Num = CurNum;
+
+			FItemInventorySnapshot Snapshot{};
+			Snapshot.Num = CurNum;
+			Snapshot.DefId = Spec->ItemDefId;
+			GTab1ItemSnapshots[Key] = Snapshot;
+		}
+
+		for (auto It = GTab1ItemSnapshots.begin(); It != GTab1ItemSnapshots.end(); )
+		{
+			if (SeenKeys.find(It->first) != SeenKeys.end())
+			{
+				++It;
+				continue;
+			}
+
+			if (EnableNoDecrease && It->second.Num > 0 && It->second.DefId > 0)
+				UItemFuncLib::AddItem(It->second.DefId, It->second.Num);
+
+			It = GTab1ItemSnapshots.erase(It);
+		}
+	}
+
+	void ReadTab1ConfigFromUI(FTab1RuntimeConfig& Cfg)
+	{
+		Cfg.ItemNoDecrease = ReadToggleValue(GTab1ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
+		Cfg.ItemGainMultiplier = ReadToggleValue(GTab1ItemGainMultiplierToggle, Cfg.ItemGainMultiplier);
+		Cfg.AllItemsSellable = ReadToggleValue(GTab1AllItemsSellableToggle, Cfg.AllItemsSellable);
+		Cfg.IncludeQuestItems = ReadToggleValue(GTab1IncludeQuestItemsToggle, Cfg.IncludeQuestItems);
+		Cfg.DropRate100 = ReadToggleValue(GTab1DropRate100Toggle, Cfg.DropRate100);
+		Cfg.CraftEffectMultiplier = ReadToggleValue(GTab1CraftEffectMultiplierToggle, Cfg.CraftEffectMultiplier);
+		Cfg.IgnoreItemUseCount = ReadToggleValue(GTab1IgnoreItemUseCountToggle, Cfg.IgnoreItemUseCount);
+		Cfg.IgnoreItemRequirements = ReadToggleValue(GTab1IgnoreItemRequirementsToggle, Cfg.IgnoreItemRequirements);
+
+		const float GainPercent = ReadSliderPercent(GTab1ItemGainMultiplierSlider, static_cast<float>(Cfg.ItemGainMultiplierValue));
+		Cfg.ItemGainMultiplierValue = SliderPercentToIntMultiplier(GainPercent);
+
+		const float IncrementPercent = ReadSliderPercent(
+			GTab1CraftItemIncrementSlider,
+			(Cfg.CraftItemIncrementMultiplier - 1.0f) / 0.09f);
+		Cfg.CraftItemIncrementMultiplier = SliderPercentToFloatMultiplier(IncrementPercent);
+
+		const float ExtraPercent = ReadSliderPercent(
+			GTab1CraftExtraEffectSlider,
+			(Cfg.CraftExtraEffectMultiplier - 1.0f) / 0.09f);
+		Cfg.CraftExtraEffectMultiplier = SliderPercentToFloatMultiplier(ExtraPercent);
+
+		Cfg.MaxExtraAffixes = ReadIntegerEditValue(GTab1MaxExtraAffixesEdit, Cfg.MaxExtraAffixes, 0, 32);
+	}
+
+	void PollAndApplyTab1Features(bool CanReadFromUI)
+	{
+		static FTab1RuntimeConfig Config{};
+		if (CanReadFromUI)
+			ReadTab1ConfigFromUI(Config);
+
+		UItemResManager* ResMgr = UManagerFuncLib::GetItemResManager();
+		UDataTable* ItemTable = nullptr;
+		UDataTable* DropTable = nullptr;
+		UDataTable* RandTable = nullptr;
+		if (ResMgr && IsSafeLiveObject(static_cast<UObject*>(ResMgr)))
+		{
+			ItemTable = ResMgr->ItemDataTable;
+			DropTable = ResMgr->DropPoolDataTable;
+			RandTable = ResMgr->RandActionPoolDataTable;
+		}
+
+		ResetTab1TableCachesIfNeeded(ItemTable, DropTable, RandTable);
+
+		static DWORD LastInventoryTick = 0;
+		const DWORD NowTick = GetTickCount();
+		if (LastInventoryTick == 0 || (NowTick - LastInventoryTick) >= 80)
+		{
+			LastInventoryTick = NowTick;
+			ApplyTab1BackpackFeatures(Config);
+		}
+
+		static DWORD LastTableTick = 0;
+		if (LastTableTick == 0 || (NowTick - LastTableTick) >= 300)
+		{
+			LastTableTick = NowTick;
+			ApplyTab1ItemDefinitionFeatures(Config, ItemTable);
+			ApplyTab1DropPoolFeature(Config, DropTable);
+			ApplyTab1RandPoolFeature(Config, RandTable);
+		}
+	}
 }
 
 void __fastcall HookedGVCPostRender(void* This, void* Canvas)
@@ -50,6 +768,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	// Call original first to preserve normal rendering
 	if (OriginalGVCPostRender)
 		OriginalGVCPostRender(This, Canvas);
+
+	DrawFpsOverlay(static_cast<UCanvas*>(Canvas));
 
 	if (GIsUnloading.load(std::memory_order_relaxed))
 	{
@@ -272,7 +992,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 						int32 CurrentCat = 0;
 						if (GItemCategoryDD && GItemCategoryDD->CB_Main)
 						{
-							int32 SelectedCat = GItemCategoryDD->CB_Main->GetSelectedIndex();
+							int32 SelectedCat = GetComboSelectedIndexSafe(GItemCategoryDD->CB_Main);
 							if (SelectedCat >= 0)
 								CurrentCat = SelectedCat;
 						}
@@ -286,7 +1006,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 			if (GItemCategoryDD && GItemCategoryDD->CB_Main)
 			{
-				int32 catIdx = GItemCategoryDD->CB_Main->GetSelectedIndex();
+				int32 catIdx = GetComboSelectedIndexSafe(GItemCategoryDD->CB_Main);
 				if (catIdx != GItemLastCatIdx && catIdx >= 0)
 				{
 					GItemLastCatIdx = catIdx;
@@ -443,6 +1163,12 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 			GItemSlotWasPressed[i] = false;
 	}
+
+	const bool CanReadTab1FromUI =
+		InternalWidgetVisible &&
+		LiveInternalWidget &&
+		IsItemsTabActive;
+	PollAndApplyTab1Features(CanReadTab1FromUI);
 
 	// Hover tips polling:
 	// 1) 物品 Tab 内高频轮询（节流到约 60Hz）

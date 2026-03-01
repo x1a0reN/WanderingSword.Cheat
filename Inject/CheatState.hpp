@@ -100,6 +100,20 @@ extern std::vector<UBPVE_JHConfigVolumeItem2_C*> GVolumeItems; // 婊戝潡鎺т
 extern std::vector<float> GVolumeLastValues;      // 婊戝潡涓婂抚鏁板€?
 extern std::vector<bool> GVolumeMinusWasPressed;  // "-" 鎸夐挳涓婂抚鎸変笅鐘舵€?
 extern std::vector<bool> GVolumePlusWasPressed;   // "+" 鎸夐挳涓婂抚鎸変笅鐘舵€?
+
+// Tab1（物品）功能控件引用
+extern UBPVE_JHConfigVideoItem2_C* GTab1ItemNoDecreaseToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab1ItemGainMultiplierToggle;
+extern UBPVE_JHConfigVolumeItem2_C* GTab1ItemGainMultiplierSlider;
+extern UBPVE_JHConfigVideoItem2_C* GTab1AllItemsSellableToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab1IncludeQuestItemsToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab1DropRate100Toggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab1CraftEffectMultiplierToggle;
+extern UBPVE_JHConfigVolumeItem2_C* GTab1CraftItemIncrementSlider;
+extern UBPVE_JHConfigVolumeItem2_C* GTab1CraftExtraEffectSlider;
+extern UEditableTextBox* GTab1MaxExtraAffixesEdit;
+extern UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemUseCountToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemRequirementsToggle;
 // 鈹€鈹€ 鍔ㄦ€?Tab (6/7/8) 鈹€鈹€
 
 extern UBP_JHConfigTabBtn_C* GDynTabBtn6;         // Tab 6 (闃熷弸) 鎸夐挳

@@ -48,6 +48,19 @@ std::vector<float> GVolumeLastValues;
 std::vector<bool> GVolumeMinusWasPressed;
 std::vector<bool> GVolumePlusWasPressed;
 
+UBPVE_JHConfigVideoItem2_C* GTab1ItemNoDecreaseToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1ItemGainMultiplierToggle = nullptr;
+UBPVE_JHConfigVolumeItem2_C* GTab1ItemGainMultiplierSlider = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1AllItemsSellableToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1IncludeQuestItemsToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1DropRate100Toggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1CraftEffectMultiplierToggle = nullptr;
+UBPVE_JHConfigVolumeItem2_C* GTab1CraftItemIncrementSlider = nullptr;
+UBPVE_JHConfigVolumeItem2_C* GTab1CraftExtraEffectSlider = nullptr;
+UEditableTextBox* GTab1MaxExtraAffixesEdit = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemUseCountToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemRequirementsToggle = nullptr;
+
 UBP_JHConfigTabBtn_C* GDynTabBtn6 = nullptr;
 UBP_JHConfigTabBtn_C* GDynTabBtn7 = nullptr;
 UBP_JHConfigTabBtn_C* GDynTabBtn8 = nullptr;
