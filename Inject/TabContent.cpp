@@ -771,15 +771,60 @@ namespace
 	{
 		return Item &&
 			IsSafeLiveObject(static_cast<UObject*>(Item)) &&
+			!(Item->Flags & EObjectFlags::BeginDestroyed) &&
+			!(Item->Flags & EObjectFlags::FinishDestroyed) &&
 			Item->CB_Main &&
-			IsSafeLiveObject(static_cast<UObject*>(Item->CB_Main));
+			IsSafeLiveObject(static_cast<UObject*>(Item->CB_Main)) &&
+			!(Item->CB_Main->Flags & EObjectFlags::BeginDestroyed) &&
+			!(Item->CB_Main->Flags & EObjectFlags::FinishDestroyed);
+	}
+
+	int32 GetComboOptionCountFast(UComboBoxString* Combo)
+	{
+		if (!Combo ||
+			!IsSafeLiveObject(static_cast<UObject*>(Combo)) ||
+			(Combo->Flags & EObjectFlags::BeginDestroyed) ||
+			(Combo->Flags & EObjectFlags::FinishDestroyed))
+		{
+			return 0;
+		}
+		return Combo->DefaultOptions.Num();
+	}
+
+	int32 GetComboSelectedIndexFast(UComboBoxString* Combo)
+	{
+		if (!Combo ||
+			!IsSafeLiveObject(static_cast<UObject*>(Combo)) ||
+			(Combo->Flags & EObjectFlags::BeginDestroyed) ||
+			(Combo->Flags & EObjectFlags::FinishDestroyed))
+		{
+			return -1;
+		}
+
+		const int32 Count = Combo->DefaultOptions.Num();
+		if (Count <= 0)
+			return -1;
+
+		const FString& Selected = Combo->SelectedOption;
+		const wchar_t* SelectedWs = Selected.CStr();
+		if (!SelectedWs || !SelectedWs[0])
+			return 0;
+
+		for (int32 i = 0; i < Count; ++i)
+		{
+			if (!Combo->DefaultOptions.IsValidIndex(i))
+				continue;
+			if (Combo->DefaultOptions[i] == Selected)
+				return i;
+		}
+		return 0;
 	}
 
 	int32 ClampComboIndex(UComboBoxString* Combo, int32 Index)
 	{
 		if (!Combo)
 			return 0;
-		const int32 Count = Combo->GetOptionCount();
+		const int32 Count = GetComboOptionCountFast(Combo);
 		if (Count <= 0)
 			return 0;
 		if (Index < 0)
@@ -800,13 +845,12 @@ namespace
 	{
 		std::vector<std::pair<int32, std::wstring>> Entries;
 		bool bResolvedFromTable = false;
-		auto AddEntry = [&Entries](int32 GuildId, const std::wstring& Label)
+		auto IsSyntheticLabel = [](const std::wstring& Label)
 		{
-			for (const auto& It : Entries)
-			{
-				if (It.first == GuildId)
-					return;
-			}
+			return Label.empty() || Label.rfind(L"Guild_", 0) == 0;
+		};
+		auto AddEntry = [&Entries, &IsSyntheticLabel](int32 GuildId, const std::wstring& Label)
+		{
 			std::wstring FinalLabel = Label;
 			if (FinalLabel.empty())
 			{
@@ -814,6 +858,19 @@ namespace
 				swprintf_s(Buf, 64, L"Guild_%d", GuildId);
 				FinalLabel = Buf;
 			}
+
+			for (auto& It : Entries)
+			{
+				if (It.first == GuildId)
+				{
+					if (!IsSyntheticLabel(FinalLabel) && IsSyntheticLabel(It.second))
+					{
+						It.second = FinalLabel;
+					}
+					return;
+				}
+			}
+
 			Entries.emplace_back(GuildId, FinalLabel);
 		};
 
@@ -854,8 +911,21 @@ namespace
 				}
 			}
 
-				// RowMap 在极端情况下可能为空，再尝试引擎 helper 路径兜底一次
-				if (Entries.empty())
+			bool bNeedFallbackResolve = Entries.empty();
+			if (!bNeedFallbackResolve)
+			{
+				for (const auto& It : Entries)
+				{
+					if (IsSyntheticLabel(It.second))
+					{
+						bNeedFallbackResolve = true;
+						break;
+					}
+				}
+			}
+
+			// RowMap 解析到的 FText 可能是占位文本，补走 helper 路径拿本地化后的门派名
+			if (bNeedFallbackResolve)
 			{
 				TArray<FName> RowNames;
 				UDataTableFunctionLibrary::GetDataTableRowNames(GuildTable, &RowNames);
@@ -871,14 +941,14 @@ namespace
 						continue;
 					}
 
-						FString NameStr = UKismetTextLibrary::Conv_TextToString(Row.Name);
-						const wchar_t* NameWs = NameStr.CStr();
-						std::wstring Label = (NameWs && NameWs[0]) ? std::wstring(NameWs) : std::wstring();
-						AddEntry(Row.ID, Label);
-						bResolvedFromTable = true;
-					}
+					FString NameStr = UKismetTextLibrary::Conv_TextToString(Row.Name);
+					const wchar_t* NameWs = NameStr.CStr();
+					std::wstring Label = (NameWs && NameWs[0]) ? std::wstring(NameWs) : std::wstring();
+					AddEntry(Row.ID, Label);
+					bResolvedFromTable = true;
 				}
 			}
+		}
 
 		if (Entries.empty())
 		{
@@ -948,7 +1018,7 @@ namespace
 			return;
 
 		UComboBoxString* Combo = GTab0GuildDD->CB_Main;
-		const int32 CurrentCount = Combo ? Combo->GetOptionCount() : 0;
+		const int32 CurrentCount = GetComboOptionCountFast(Combo);
 		const bool bLooksPlaceholder =
 			(CurrentCount <= 1) ||
 			(GTab0GuildOptionGuildIds.size() <= 1 && !GTab0GuildOptionsResolvedFromTable);
@@ -984,7 +1054,7 @@ namespace
 
 		std::cout << "[SDK][Tab0Role] GuildDropdownRefresh force=" << (bForce ? 1 : 0)
 		          << " placeholder=" << (bLooksPlaceholder ? 1 : 0)
-		          << " count=" << Combo->GetOptionCount()
+		          << " count=" << GetComboOptionCountFast(Combo)
 		          << " preferredGuildId=" << PreferredGuildId
 		          << " selectedIdx=" << TargetIdx << "\n";
 	}
@@ -1002,7 +1072,7 @@ namespace
 			if (LiveTeamInfo && IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
 				TargetIdx = ClampTab0ExtraNeiGongLimit(LiveTeamInfo->AddNeiGongUpLimit);
 			TargetIdx = ClampComboIndex(Combo, TargetIdx);
-			if (Combo->GetSelectedIndex() != TargetIdx)
+			if (GetComboSelectedIndexFast(Combo) != TargetIdx)
 				Combo->SetSelectedIndex(TargetIdx);
 			GTab0ExtraNeiGongLimitLastIdx = TargetIdx;
 		}
@@ -1014,7 +1084,7 @@ namespace
 			if (LiveTeamInfo && IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
 				TargetIdx = Tab0GuildIdToDropdownIndex(LiveTeamInfo->GuildId, Combo);
 			TargetIdx = ClampComboIndex(Combo, TargetIdx);
-			if (Combo->GetSelectedIndex() != TargetIdx)
+			if (GetComboSelectedIndexFast(Combo) != TargetIdx)
 				Combo->SetSelectedIndex(TargetIdx);
 			GTab0GuildLastIdx = TargetIdx;
 		}
@@ -1046,22 +1116,18 @@ namespace
 
 	void PollTab0RoleDropdowns(APlayerController* PC, bool bTab0Active)
 	{
+		if (!bTab0Active)
+			return;
+
 		auto ReadIndex = [](UBPVE_JHConfigVideoItem2_C* Item) -> int32
 		{
 			if (!IsValidTab0Dropdown(Item))
 				return -1;
-			return Item->CB_Main->GetSelectedIndex();
+			return GetComboSelectedIndexFast(Item->CB_Main);
 		};
 
 		const int32 CurExtraIdx = ReadIndex(GTab0ExtraNeiGongLimitDD);
 		const int32 CurGuildIdx = ReadIndex(GTab0GuildDD);
-
-		if (!bTab0Active)
-		{
-			if (CurExtraIdx >= 0) GTab0ExtraNeiGongLimitLastIdx = CurExtraIdx;
-			if (CurGuildIdx >= 0) GTab0GuildLastIdx = CurGuildIdx;
-			return;
-		}
 
 		if (CurExtraIdx < 0 && CurGuildIdx < 0)
 			return;
@@ -2145,7 +2211,7 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			Item->CB_Main->ClearOptions();
 			for (const auto& Opt : Options)
 				Item->CB_Main->AddOption(FString(Opt.c_str()));
-			if (Item->CB_Main->GetOptionCount() > 0)
+			if (GetComboOptionCountFast(Item->CB_Main) > 0)
 				Item->CB_Main->SetSelectedIndex(0);
 		}
 		if (Box) Box->AddChild(Item);
