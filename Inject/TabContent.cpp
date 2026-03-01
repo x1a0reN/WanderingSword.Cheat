@@ -217,8 +217,9 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
 
-	auto* OptionsPanel = CreateCollapsiblePanel(PC, L"物品选项");
-	UPanelWidget* OptionsBox = OptionsPanel ? OptionsPanel->CT_Contents : nullptr;
+	auto* OptionsPanelRoot = static_cast<UVerticalBox*>(
+		CreateRawWidget(UVerticalBox::StaticClass(), Outer));
+	UPanelWidget* OptionsBox = OptionsPanelRoot;
 
 	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateToggleItem(PC, Title);
@@ -315,7 +316,21 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	};
 
-	AddPanelWithFixedGap(OptionsPanel, 0.0f, 14.0f);
+	if (OptionsPanelRoot)
+	{
+		UPanelSlot* Slot = Container->AddChild(OptionsPanelRoot);
+		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+			FMargin Pad{};
+			Pad.Left = 0.0f;
+			Pad.Top = 0.0f;
+			Pad.Right = 0.0f;
+			Pad.Bottom = 14.0f;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
+	}
 
 	
 	auto* BrowserPanel = CreateCollapsiblePanel(PC, L"物品浏览器");

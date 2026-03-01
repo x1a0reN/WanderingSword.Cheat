@@ -760,6 +760,9 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 
 void PollCollapsiblePanelsInput()
 {
+	// 临时停用：不再监听/切换 CollapsibleToggle，降低每帧轮询负担。
+	return;
+
 	// 数字输入框硬过滤：剔除中文和非数值字符。
 	GNumericOnlyEditBoxes.erase(
 		std::remove_if(
