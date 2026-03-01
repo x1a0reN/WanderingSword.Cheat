@@ -391,11 +391,12 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	{
 		static DWORD sLastHoverPollTick = 0;
 		const DWORD HoverPollNow = GetTickCount();
-		const DWORD PollIntervalMs = IsItemsTabActive ? 16 : 80;
+		const DWORD PollIntervalMs = IsItemsTabActive ? (HasActiveHoverTips ? 33 : 20) : 80;
 		if (sLastHoverPollTick == 0 || (HoverPollNow - sLastHoverPollTick) >= PollIntervalMs)
 		{
 			sLastHoverPollTick = HoverPollNow;
-			PollItemBrowserHoverTips();
+			// 临时禁用：用于验证物品 Tab 悬浮 Tip 轮询是否为卡顿主因
+			// PollItemBrowserHoverTips();
 		}
 	}
 

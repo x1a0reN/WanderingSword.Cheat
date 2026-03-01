@@ -2,6 +2,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -96,15 +97,33 @@ namespace
 	UTexture2D* ResolveTextureFromSoftData(const uint8* SoftTextureData28)
 	{
 		static std::unordered_map<uint64, UTexture2D*> sIconCache;
-		static std::unordered_set<uint64> sMissingIconCache;
+		static std::unordered_map<uint64, DWORD> sMissingIconRetryUntil;
+		static UWorld* sLastWorld = nullptr;
+		static ULevel* sLastLevel = nullptr;
+
+		UWorld* CurWorld = UWorld::GetWorld();
+		ULevel* CurLevel = CurWorld ? CurWorld->PersistentLevel : nullptr;
+		if (CurWorld != sLastWorld || CurLevel != sLastLevel)
+		{
+			sLastWorld = CurWorld;
+			sLastLevel = CurLevel;
+			sIconCache.clear();
+			sMissingIconRetryUntil.clear();
+		}
 
 		const FName* AssetPathName = GetAssetPathNameFromSoftTextureData(SoftTextureData28);
 		if (!AssetPathName || AssetPathName->IsNone())
 			return nullptr;
 
 		const uint64 Key = MakeAssetPathKey(*AssetPathName);
-		if (sMissingIconCache.find(Key) != sMissingIconCache.end())
-			return nullptr;
+		const DWORD NowTick = GetTickCount();
+		auto MissingIt = sMissingIconRetryUntil.find(Key);
+		if (MissingIt != sMissingIconRetryUntil.end())
+		{
+			if (NowTick < MissingIt->second)
+				return nullptr;
+			sMissingIconRetryUntil.erase(MissingIt);
+		}
 
 		auto CachedIt = sIconCache.find(Key);
 		if (CachedIt != sIconCache.end())
@@ -131,10 +150,12 @@ namespace
 		if (IsSafeLiveObject(static_cast<UObject*>(Texture)))
 		{
 			sIconCache[Key] = Texture;
+			sMissingIconRetryUntil.erase(Key);
 			return Texture;
 		}
 
-		sMissingIconCache.insert(Key);
+		// 转场期间有些资源会临时不可用，设置重试窗口避免永久 missing 污染。
+		sMissingIconRetryUntil[Key] = NowTick + 2500;
 		std::cout << "[SDK] ItemIconMissing: " << AssetPathName->GetRawString() << "\n";
 		return nullptr;
 	}
@@ -773,6 +794,8 @@ void PollItemBrowserHoverTips()
 	static int32 sLastFailCode = -1;
 	static DWORD sLastHeartbeatTick = 0;
 	static DWORD sLastHoverSeenTick = 0;
+	static int32 sPendingHoverSlot = -1;
+	static DWORD sPendingHoverTick = 0;
 
 	const DWORD NowTick = GetTickCount();
 	const bool Heartbeat = kVerboseItemHoverLogs && (NowTick - sLastHeartbeatTick >= 1000);
@@ -967,16 +990,8 @@ void PollItemBrowserHoverTips()
 
 	if (HoveredSlot < 0)
 	{
-		// Anti-jitter grace window:
-		// entry geometry can fluctuate for 1~2 frames in injected tree.
-		// Keep current tips for a short time to avoid immediate hide/recreate flicker.
-		if (GItemHoverTipsWidget &&
-			IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)) &&
-			(NowTick - sLastHoverSeenTick) <= 180)
-		{
-			GItemHoverTipsWidget->SetVisibility(ESlateVisibility::Visible);
-			return;
-		}
+		sPendingHoverSlot = -1;
+		sPendingHoverTick = 0;
 
 		if (kVerboseItemHoverLogs && sLastProbeSlot >= 0)
 			std::cout << "[SDK] ItemHoverProbe: cleared\n";
@@ -984,6 +999,27 @@ void PollItemBrowserHoverTips()
 		sLastFailCode = -1;
 		HideCurrentItemTips();
 		return;
+	}
+
+	// 悬浮切换稳态判定：鼠标快速扫过格子时，不要每帧都重建 Tip 内容。
+	const bool HoverTargetChanged = (HoveredSlot != GItemHoveredSlot);
+	if (HoverTargetChanged)
+	{
+		if (sPendingHoverSlot != HoveredSlot)
+		{
+			sPendingHoverSlot = HoveredSlot;
+			sPendingHoverTick = NowTick;
+			return;
+		}
+
+		const DWORD HoverSettleMs = 28;
+		if ((NowTick - sPendingHoverTick) < HoverSettleMs)
+			return;
+	}
+	else
+	{
+		sPendingHoverSlot = -1;
+		sPendingHoverTick = 0;
 	}
 
 	const int32 ItemIdx = GItemSlotItemIndices[HoveredSlot];
@@ -1023,7 +1059,7 @@ void PollItemBrowserHoverTips()
 	{
 		const CachedItem& CI = GAllItems[ItemIdx];
 		const bool HasReusableStandalone = IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget));
-		const bool RebuildTooFrequent = HasReusableStandalone && (NowTick - sLastTipRebuildTick < 24);
+		const bool RebuildTooFrequent = HasReusableStandalone && (NowTick - sLastTipRebuildTick < 40);
 		if (RebuildTooFrequent)
 			GItemHoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
 		else
@@ -1147,8 +1183,19 @@ void PollItemBrowserHoverTips()
 		float TipY = MouseVP.Y + kItemTipMouseOffset;
 
 		const FVector2D TipPos{ TipX, TipY };
-		GItemHoverTipsWidget->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
-		GItemHoverTipsWidget->SetPositionInViewport(TipPos, false);
+		static FVector2D sLastTipPos{ -99999.0f, -99999.0f };
+		static DWORD sLastTipPosTick = 0;
+		const bool NeedMove =
+			(std::fabs(TipPos.X - sLastTipPos.X) > 1.0f) ||
+			(std::fabs(TipPos.Y - sLastTipPos.Y) > 1.0f) ||
+			((NowTick - sLastTipPosTick) >= 66);
+		if (NeedMove)
+		{
+			GItemHoverTipsWidget->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
+			GItemHoverTipsWidget->SetPositionInViewport(TipPos, false);
+			sLastTipPos = TipPos;
+			sLastTipPosTick = NowTick;
+		}
 	}
 
 	GItemHoverTipsWidget->SetRenderOpacity(1.0f);
