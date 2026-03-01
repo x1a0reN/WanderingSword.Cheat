@@ -195,48 +195,128 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	BuildItemCache();
 
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
+	GItemQuantityEdit = nullptr;
 	GItemCategoryDD = CreateVideoItemWithOptions(PC,
-		L"══ 物品管理 ══",
-		{ L"全部", L"武器", L"防具", L"消耗品", L"其他" });
-	if (GItemCategoryDD) {
+		L"\u2501\u2501\u7269\u54C1\u7BA1\u7406\u2501\u2501",
+		{ L"\u5168\u90E8", L"\u6B66\u5668", L"\u9632\u5177", L"\u6D88\u8017\u54C1", L"\u5176\u4ED6" });
+	GItemLastCatIdx = 0;
+
+	GItemQuantityRow = nullptr;
+	if (GItemCategoryDD)
+	{
+		auto* SearchEdit = static_cast<UEditableTextBox*>(
+			CreateRawWidget(UEditableTextBox::StaticClass(), Outer));
+		if (SearchEdit)
+		{
+			SearchEdit->SetHintText(MakeText(L"\u8F93\u5165\u4EE5\u641C\u7D22..."));
+			SearchEdit->SetText(MakeText(L""));
+			SearchEdit->SetJustification(ETextJustify::Left);
+			SearchEdit->MinimumDesiredWidth = 320.0f;
+			SearchEdit->SelectAllTextWhenFocused = true;
+			SearchEdit->ClearKeyboardFocusOnCommit = false;
+			SearchEdit->Font.Size = 22;
+			SearchEdit->WidgetStyle.Font.Size = 22;
+			SearchEdit->WidgetStyle.Padding.Left = 10.0f;
+			SearchEdit->WidgetStyle.Padding.Top = 8.0f;
+			SearchEdit->WidgetStyle.Padding.Right = 10.0f;
+			SearchEdit->WidgetStyle.Padding.Bottom = 8.0f;
+			ClearEditableTextBindings(SearchEdit);
+
+			auto MakeSlateColor = [](float R, float G, float B, float A) -> FSlateColor
+			{
+				FSlateColor C{};
+				C.SpecifiedColor = FLinearColor{ R, G, B, A };
+				C.ColorUseRule = ESlateColorStylingMode::UseColor_Specified;
+				return C;
+			};
+
+			SearchEdit->ForegroundColor = FLinearColor{ 0.95f, 0.95f, 0.95f, 1.0f };
+			SearchEdit->BackgroundColor = FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f };
+			SearchEdit->WidgetStyle.ForegroundColor = MakeSlateColor(0.95f, 0.95f, 0.95f, 1.0f);
+			SearchEdit->WidgetStyle.BackgroundColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+			SearchEdit->WidgetStyle.ReadOnlyForegroundColor = MakeSlateColor(0.75f, 0.75f, 0.75f, 1.0f);
+			SearchEdit->WidgetStyle.BackgroundImageNormal.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+			SearchEdit->WidgetStyle.BackgroundImageHovered.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+			SearchEdit->WidgetStyle.BackgroundImageFocused.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+			SearchEdit->WidgetStyle.BackgroundImageReadOnly.TintColor = MakeSlateColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+			UWidget* SearchWidget = SearchEdit;
+			auto* SearchSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
+			if (SearchSize)
+			{
+				SearchSize->SetWidthOverride(340.0f);
+				SearchSize->SetHeightOverride(50.0f);
+				SearchSize->SetContent(SearchWidget);
+				SearchWidget = SearchSize;
+			}
+
+			if (GItemCategoryDD->TXT_Title)
+			{
+				GItemCategoryDD->TXT_Title->SetText(MakeText(L""));
+				GItemCategoryDD->TXT_Title->SetVisibility(ESlateVisibility::Collapsed);
+				UPanelWidget* TitleParent = GItemCategoryDD->TXT_Title->GetParent();
+				if (TitleParent)
+				{
+					UPanelSlot* SearchPanelSlot = nullptr;
+					if (TitleParent->IsA(UHorizontalBox::StaticClass()))
+					{
+						auto* HParent = static_cast<UHorizontalBox*>(TitleParent);
+						HParent->RemoveChild(GItemCategoryDD->TXT_Title);
+
+						bool bReaddCombo = false;
+						if (GItemCategoryDD->CB_Main && GItemCategoryDD->CB_Main->GetParent() == HParent)
+						{
+							HParent->RemoveChild(GItemCategoryDD->CB_Main);
+							bReaddCombo = true;
+						}
+
+						SearchPanelSlot = HParent->AddChildToHorizontalBox(SearchWidget);
+						if (bReaddCombo)
+						{
+							auto* ComboSlot = HParent->AddChildToHorizontalBox(GItemCategoryDD->CB_Main);
+							if (ComboSlot)
+							{
+								FSlateChildSize AutoSize{};
+								AutoSize.SizeRule = ESlateSizeRule::Automatic;
+								AutoSize.Value = 0.0f;
+								ComboSlot->SetSize(AutoSize);
+								ComboSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
+								ComboSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+							}
+						}
+					}
+					else
+					{
+						SearchPanelSlot = TitleParent->AddChild(SearchWidget);
+					}
+
+					if (SearchPanelSlot && SearchPanelSlot->IsA(UHorizontalBoxSlot::StaticClass()))
+					{
+						auto* SearchHSlot = static_cast<UHorizontalBoxSlot*>(SearchPanelSlot);
+						FSlateChildSize Fill{};
+						Fill.SizeRule = ESlateSizeRule::Fill;
+						Fill.Value = 1.0f;
+						SearchHSlot->SetSize(Fill);
+						SearchHSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+						SearchHSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+					}
+				}
+			}
+		}
+
 		if (BrowserBox) BrowserBox->AddChild(GItemCategoryDD);
 		else Container->AddChild(GItemCategoryDD);
 		Count++;
 	}
-	GItemLastCatIdx = 0;
 
-	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
-	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
-	GItemQuantityRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
-	if (GItemQuantityRow)
-	{
-		auto* QtyLabel = static_cast<UTextBlock*>(CreateRawWidget(UTextBlock::StaticClass(), Outer));
-		if (QtyLabel)
-		{
-			QtyLabel->SetText(MakeText(L"添加数量"));
-			GItemQuantityRow->AddChildToHorizontalBox(QtyLabel);
-		}
-
-		GItemQuantityEdit = static_cast<UEditableTextBox*>(CreateRawWidget(UEditableTextBox::StaticClass(), Outer));
-		if (GItemQuantityEdit)
-		{
-			GItemQuantityEdit->SetHintText(MakeText(L"1"));
-			wchar_t QtyBuf[16] = {};
-			swprintf_s(QtyBuf, 16, L"%d", GItemAddQuantity);
-			GItemQuantityEdit->SetText(MakeText(QtyBuf));
-			GItemQuantityRow->AddChildToHorizontalBox(GItemQuantityEdit);
-		}
-
-		if (BrowserBox) BrowserBox->AddChild(GItemQuantityRow);
-		else Container->AddChild(GItemQuantityRow);
-		Count++;
-	}
 	GItemPagerRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
 	if (GItemPagerRow)
 	{
 		UWidget* PrevLayout = nullptr;
 		GItemPrevPageBtn = CreateGameStyleButton(PC, L"上一页", "ItemPrevPage",
-			0.0f, 0.0f, &PrevLayout);
+			136.0f, 48.0f, &PrevLayout);
 		if (PrevLayout)
 		{
 			auto* PrevSlot = GItemPagerRow->AddChildToHorizontalBox(PrevLayout);
@@ -264,7 +344,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 		UWidget* NextLayout = nullptr;
 		GItemNextPageBtn = CreateGameStyleButton(PC, L"下一页", "ItemNextPage",
-			0.0f, 0.0f, &NextLayout);
+			136.0f, 48.0f, &NextLayout);
 		if (NextLayout)
 		{
 			auto* NextSlot = GItemPagerRow->AddChildToHorizontalBox(NextLayout);
@@ -291,7 +371,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 		GItemGridPanel->SetMinDesiredSlotWidth(68.0f);
 		GItemGridPanel->SetMinDesiredSlotHeight(68.0f);
-		GItemGridPanel->SetSlotPadding(FMargin{ 3.0f, 3.0f, 3.0f, 3.0f });
+		GItemGridPanel->SetSlotPadding(FMargin{ 3.0f, 10.0f, 3.0f, 10.0f });
 		if (BrowserBox) BrowserBox->AddChild(GItemGridPanel);
 		else Container->AddChild(GItemGridPanel);
 		Count++;
@@ -381,8 +461,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
 			FMargin Pad{};
 			Pad.Left = 0.0f;
-			Pad.Top = 4.0f;
-			Pad.Right = 0.0f;
+			Pad.Top = 14.0f;
+			Pad.Right = 12.0f;
 			Pad.Bottom = 0.0f;
 			VSlot->SetPadding(Pad);
 		}
