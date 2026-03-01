@@ -224,6 +224,26 @@ namespace
 		Created->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
 		Created->SetDesiredSizeInViewport(FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight });
 
+		// 这些区域在独立物品 Tip 中固定隐藏，只在初始化时设置一次。
+		if (Created->VE_Effects)
+			Created->VE_Effects->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->VE_Additional)
+			Created->VE_Additional->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->NeoUIImageBase_53)
+			Created->NeoUIImageBase_53->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->CT_Bottom)
+			Created->CT_Bottom->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->BottomGap)
+			Created->BottomGap->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->TXT_BuyTip)
+			Created->TXT_BuyTip->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->TXT_SellTip)
+			Created->TXT_SellTip->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->TXT_Price)
+			Created->TXT_Price->SetVisibility(ESlateVisibility::Collapsed);
+		if (Created->TXT_Acquired)
+			Created->TXT_Acquired->SetVisibility(ESlateVisibility::Collapsed);
+
 		if (Created->RootCanvas && Created->RootCanvas->Slot)
 		{
 			auto* RcSlot = static_cast<UCanvasPanelSlot*>(Created->RootCanvas->Slot);
@@ -267,36 +287,8 @@ namespace
 			Tip->VE_Desc->UpdateDesc(MakeText(Desc));
 		}
 
-		if (Tip->VE_Effects)
-			Tip->VE_Effects->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->VE_Additional)
-			Tip->VE_Additional->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->NeoUIImageBase_53)
-			Tip->NeoUIImageBase_53->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->CT_Bottom)
-			Tip->CT_Bottom->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->BottomGap)
-			Tip->BottomGap->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->TXT_BuyTip)
-			Tip->TXT_BuyTip->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->TXT_SellTip)
-			Tip->TXT_SellTip->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->TXT_Price)
-			Tip->TXT_Price->SetVisibility(ESlateVisibility::Collapsed);
-		if (Tip->TXT_Acquired)
-			Tip->TXT_Acquired->SetVisibility(ESlateVisibility::Collapsed);
-
 		Tip->SetRenderOpacity(1.0f);
 		Tip->SetVisibility(ESlateVisibility::HitTestInvisible);
-		Tip->BP_AnchorTop_Left();
-		Tip->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
-		Tip->SetDesiredSizeInViewport(FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight });
-
-		if (Tip->RootCanvas && Tip->RootCanvas->Slot)
-		{
-			auto* RcSlot = static_cast<UCanvasPanelSlot*>(Tip->RootCanvas->Slot);
-			RcSlot->SetPosition(FVector2D{ 0.0f, 0.0f });
-		}
 
 		if (!Tip->IsInViewport())
 		{
@@ -574,139 +566,6 @@ static UJHNeoUISubsystem* GetJHNeoUISubsystem()
 	return Cached;
 }
 
-static UObject* GetConsoleTipModuleObject()
-{
-	static UObject* CachedTipModuleObj = nullptr;
-	UGameInstance* CurrentGI = GetCurrentGameInstance();
-
-	auto IsRuntimeTipModuleObj = [&](UObject* Obj) -> bool
-	{
-		if (!IsSafeLiveObject(Obj))
-			return false;
-		if (Obj->IsDefaultObject())
-			return false;
-		if (!Obj->Class)
-			return false;
-		return Obj->Class->GetFunction("JHNeoUIC_TipModule", "ShowBackpackItem") != nullptr;
-	};
-
-	auto ResolveFromContext = [&](UObject* ContextObj) -> UObject*
-	{
-		if (!ContextObj)
-			return nullptr;
-
-		auto* SubObj = USubsystemBlueprintLibrary::GetGameInstanceSubsystem(
-			ContextObj,
-			UJHNeoUISubsystem_Console::StaticClass());
-		auto* ConsoleSub = static_cast<UJHNeoUISubsystem_Console*>(SubObj);
-		if (!IsSafeLiveObject(static_cast<UObject*>(ConsoleSub)))
-			return nullptr;
-
-		TScriptInterface<IJHNeoUIC_TipModule> TipModule = ConsoleSub->Tips_Console();
-		UObject* TipObj = TipModule.GetObjectRef();
-		return IsRuntimeTipModuleObj(TipObj) ? TipObj : nullptr;
-	};
-
-	if (IsRuntimeTipModuleObj(CachedTipModuleObj))
-		return CachedTipModuleObj;
-
-	CachedTipModuleObj = nullptr;
-
-	if (CurrentGI)
-		CachedTipModuleObj = ResolveFromContext(static_cast<UObject*>(CurrentGI));
-	if (!CachedTipModuleObj)
-	{
-		if (UWorld* World = UWorld::GetWorld())
-			CachedTipModuleObj = ResolveFromContext(static_cast<UObject*>(World));
-	}
-
-	// 鏈€鍚庡厹搴曪細閬嶅巻 Console 瀛愮郴缁熷疄渚嬪彇 Tips_Console 瀵硅薄
-	if (!CachedTipModuleObj)
-	{
-		auto* ObjArray = UObject::GObjects.GetTypedPtr();
-		if (ObjArray)
-		{
-			const int32 Num = ObjArray->Num();
-			for (int32 i = 0; i < Num; ++i)
-			{
-				UObject* Obj = ObjArray->GetByIndex(i);
-				if (!Obj || !Obj->IsA(UJHNeoUISubsystem_Console::StaticClass()))
-					continue;
-				if (!IsSafeLiveObject(Obj))
-					continue;
-
-				auto* ConsoleSub = static_cast<UJHNeoUISubsystem_Console*>(Obj);
-				TScriptInterface<IJHNeoUIC_TipModule> TipModule = ConsoleSub->Tips_Console();
-				UObject* TipObj = TipModule.GetObjectRef();
-				if (IsRuntimeTipModuleObj(TipObj))
-				{
-					CachedTipModuleObj = TipObj;
-					break;
-				}
-			}
-		}
-	}
-
-	static DWORD sLastTipModuleNullLogTick = 0;
-	const DWORD Now = GetTickCount();
-	if (!CachedTipModuleObj && (Now - sLastTipModuleNullLogTick > 1500))
-	{
-		sLastTipModuleNullLogTick = Now;
-		std::cout << "[SDK] ItemHoverProbe: Tips_Console interface not found\n";
-	}
-	return CachedTipModuleObj;
-}
-
-static UObject* GetBackpackItemTipVMObject()
-{
-	static UObject* Cached = nullptr;
-
-	auto IsRuntimeBackpackTipVM = [&](UObject* Obj) -> bool
-	{
-		if (!IsSafeLiveObject(Obj))
-			return false;
-		if (Obj->IsDefaultObject())
-			return false;
-		if (!Obj->IsA(UJHNeoUIC_Backpack_ItemTipVM::StaticClass()))
-			return false;
-		if (!Obj->Class || !Obj->Class->GetFunction("JHNeoUIC_Backpack_ItemTipVM", "ShowBackpackItem"))
-			return false;
-		return true;
-	};
-
-	if (IsRuntimeBackpackTipVM(Cached))
-		return Cached;
-
-	Cached = nullptr;
-	auto* ObjArray = UObject::GObjects.GetTypedPtr();
-	if (ObjArray)
-	{
-		const int32 Num = ObjArray->Num();
-		for (int32 i = 0; i < Num; ++i)
-		{
-			UObject* Obj = ObjArray->GetByIndex(i);
-			if (!Obj)
-				continue;
-			if (!Obj->IsA(UJHNeoUIC_Backpack_ItemTipVM::StaticClass()))
-				continue;
-			if (IsRuntimeBackpackTipVM(Obj))
-			{
-				Cached = Obj;
-				break;
-			}
-		}
-	}
-
-	static DWORD sLastNullLogTick = 0;
-	const DWORD Now = GetTickCount();
-	if (!Cached && (Now - sLastNullLogTick > 1500))
-	{
-		sLastNullLogTick = Now;
-		std::cout << "[SDK] ItemHoverProbe: Backpack_ItemTipVM not found\n";
-	}
-	return Cached;
-}
-
 static void HideCurrentItemTips()
 {
 	if (GItemHoverTipsWidget && UKismetSystemLibrary::IsValid(static_cast<UObject*>(GItemHoverTipsWidget)))
@@ -733,11 +592,11 @@ void FilterItems(int32 category)
 		bool match = false;
 		uint8 st = GAllItems[i].SubType;
 		switch (category) {
-		case 0: match = true; break;                          // 鍏ㄩ儴
-		case 1: match = (st >= 1 && st <= 6); break;         // 姝﹀櫒
-		case 2: match = (st >= 10 && st <= 13); break;       // 闃插叿
-		case 3: match = (st >= 14 && st <= 17); break;       // 娑堣€楀搧
-		default: match = (st == 0 || st > 17); break;        // 鍏朵粬
+		case 0: match = true; break;                          // 全部
+		case 1: match = (st >= 1 && st <= 6); break;         // 武器
+		case 2: match = (st >= 10 && st <= 13); break;       // 防具
+		case 3: match = (st >= 14 && st <= 17); break;       // 消耗品
+		default: match = (st == 0 || st > 17); break;        // 其他
 		}
 		if (match)
 			GFilteredIndices.push_back(i);
@@ -935,107 +794,8 @@ void PollItemBrowserHoverTips()
 	int32 HoverByGridFallbackCount = 0;
 
 	int32 HoveredSlot = -1;
-	for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
-	{
-		auto* Btn = GItemSlotButtons[i];
-		auto* Entry = GItemSlotEntryWidgets[i];
-		const bool BtnValid = IsSafeLiveObject(static_cast<UObject*>(Btn));
-		const bool EntryValid = IsSafeLiveObject(static_cast<UObject*>(Entry));
-		if (BtnValid) ++ValidBtnCount;
-		if (EntryValid) ++ValidEntryCount;
-		if (!BtnValid && !EntryValid)
-			continue;
-		++CandidateSlotCount;
-
-		bool bEnabled = true;
-		if (BtnValid)
-			bEnabled = Btn->GetIsEnabled();
-		if (!bEnabled)
-			continue;
-		++EnabledSlotCount;
-
-		bool bHovered = false;
-		if (BtnValid)
-		{
-			bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(Btn));
-			if (bHovered) ++HoverByBtnCount;
-		}
-		if (!bHovered && EntryValid)
-		{
-			bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(Entry));
-			if (bHovered) ++HoverByEntryCount;
-		}
-		if (!bHovered && EntryValid && Entry->IsA(UBPEntry_Item_C::StaticClass()))
-		{
-			auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
-			auto* GpcBtn = EntryBP ? EntryBP->BTN_JHItem : nullptr;
-			if (IsSafeLiveObject(static_cast<UObject*>(GpcBtn)))
-			{
-				bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(GpcBtn));
-				if (bHovered) ++HoverByGpcWrapperCount;
-
-				if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(GpcBtn->BtnMain)))
-				{
-					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(GpcBtn->BtnMain));
-					if (bHovered) ++HoverByGpcMainCount;
-				}
-			}
-
-			if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(EntryBP->ItemDisplay)))
-			{
-				bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(EntryBP->ItemDisplay));
-				if (bHovered) ++HoverByDisplayElemCount;
-			}
-
-			if (!bHovered && EntryBP->ItemDisplay &&
-				IsSafeLiveObject(static_cast<UObject*>(EntryBP->ItemDisplay->CMP)))
-			{
-				auto* DisplayCmp = EntryBP->ItemDisplay->CMP;
-				bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp));
-				if (bHovered) ++HoverByDisplayCmpCount;
-
-				if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->CT_Main)))
-				{
-					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->CT_Main));
-					if (bHovered) ++HoverByDisplayCanvasCount;
-				}
-
-				if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_SolidBG)))
-				{
-					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_SolidBG));
-					if (bHovered) ++HoverByDisplayImageCount;
-				}
-				if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_Item)))
-				{
-					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_Item));
-					if (bHovered) ++HoverByDisplayImageCount;
-				}
-				if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_Border)))
-				{
-					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_Border));
-					if (bHovered) ++HoverByDisplayImageCount;
-				}
-				if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_QualityBorder)))
-				{
-					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_QualityBorder));
-					if (bHovered) ++HoverByDisplayImageCount;
-				}
-			}
-		}
-
-		if (bHovered)
-		{
-			HoveredSlot = i;
-			sLastHoverSeenTick = NowTick;
-			break;
-		}
-	}
-
-	// Geometry fallback:
-	// Some backpack-style entry sub-widgets keep zero cached size in this injected tree,
-	// so per-widget hover probing can stay false. In that case, resolve hovered slot by
-	// the uniform grid's viewport rect and 6x4 layout.
-	if (HoveredSlot < 0 && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+	// 优先使用网格坐标命中，避免每轮都做 24 格深度 IsHovered 探测。
+	if (IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
 	{
 		UObject* WorldCtx = nullptr;
 		if (UWorld* World = UWorld::GetWorld())
@@ -1098,6 +858,113 @@ void PollItemBrowserHoverTips()
 		}
 	}
 
+	// 网格命中失败时，低频走深度探测兜底，兼容特殊布局。
+	if (HoveredSlot < 0)
+	{
+		static DWORD sLastDeepProbeTick = 0;
+		if ((NowTick - sLastDeepProbeTick) >= 80)
+		{
+			sLastDeepProbeTick = NowTick;
+			for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+			{
+				auto* Btn = GItemSlotButtons[i];
+				auto* Entry = GItemSlotEntryWidgets[i];
+				const bool BtnValid = IsSafeLiveObject(static_cast<UObject*>(Btn));
+				const bool EntryValid = IsSafeLiveObject(static_cast<UObject*>(Entry));
+				if (BtnValid) ++ValidBtnCount;
+				if (EntryValid) ++ValidEntryCount;
+				if (!BtnValid && !EntryValid)
+					continue;
+				++CandidateSlotCount;
+
+				bool bEnabled = true;
+				if (BtnValid)
+					bEnabled = Btn->GetIsEnabled();
+				if (!bEnabled)
+					continue;
+				++EnabledSlotCount;
+
+				bool bHovered = false;
+				if (BtnValid)
+				{
+					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(Btn));
+					if (bHovered) ++HoverByBtnCount;
+				}
+				if (!bHovered && EntryValid)
+				{
+					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(Entry));
+					if (bHovered) ++HoverByEntryCount;
+				}
+				if (!bHovered && EntryValid && Entry->IsA(UBPEntry_Item_C::StaticClass()))
+				{
+					auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
+					auto* GpcBtn = EntryBP ? EntryBP->BTN_JHItem : nullptr;
+					if (IsSafeLiveObject(static_cast<UObject*>(GpcBtn)))
+					{
+						bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(GpcBtn));
+						if (bHovered) ++HoverByGpcWrapperCount;
+
+						if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(GpcBtn->BtnMain)))
+						{
+							bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(GpcBtn->BtnMain));
+							if (bHovered) ++HoverByGpcMainCount;
+						}
+					}
+
+					if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(EntryBP->ItemDisplay)))
+					{
+						bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(EntryBP->ItemDisplay));
+						if (bHovered) ++HoverByDisplayElemCount;
+					}
+
+					if (!bHovered && EntryBP->ItemDisplay &&
+						IsSafeLiveObject(static_cast<UObject*>(EntryBP->ItemDisplay->CMP)))
+					{
+						auto* DisplayCmp = EntryBP->ItemDisplay->CMP;
+						bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp));
+						if (bHovered) ++HoverByDisplayCmpCount;
+
+						if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->CT_Main)))
+						{
+							bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->CT_Main));
+							if (bHovered) ++HoverByDisplayCanvasCount;
+						}
+
+						if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_SolidBG)))
+						{
+							bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_SolidBG));
+							if (bHovered) ++HoverByDisplayImageCount;
+						}
+						if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_Item)))
+						{
+							bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_Item));
+							if (bHovered) ++HoverByDisplayImageCount;
+						}
+						if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_Border)))
+						{
+							bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_Border));
+							if (bHovered) ++HoverByDisplayImageCount;
+						}
+						if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(DisplayCmp->IMG_QualityBorder)))
+						{
+							bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp->IMG_QualityBorder));
+							if (bHovered) ++HoverByDisplayImageCount;
+						}
+					}
+				}
+
+				if (bHovered)
+				{
+					HoveredSlot = i;
+					break;
+				}
+			}
+		}
+	}
+
+	if (HoveredSlot >= 0)
+		sLastHoverSeenTick = NowTick;
+
 	if (HoveredSlot < 0)
 	{
 		// Anti-jitter grace window:
@@ -1145,20 +1012,22 @@ void PollItemBrowserHoverTips()
 		return;
 	}
 
-	auto* Subsystem = GetJHNeoUISubsystem();
-
 	// Hover target changed: build a fresh game-native tips widget.
 	const bool NeedRebuildTips =
 		(HoveredSlot != GItemHoveredSlot) ||
 		(!GItemHoverTipsWidget) ||
 		(!IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)));
+	static DWORD sLastTipRebuildTick = 0;
 
 	if (NeedRebuildTips)
 	{
-		HideCurrentItemTips();
-
 		const CachedItem& CI = GAllItems[ItemIdx];
-		GItemHoverTipsWidget = nullptr;
+		const bool HasReusableStandalone = IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget));
+		const bool RebuildTooFrequent = HasReusableStandalone && (NowTick - sLastTipRebuildTick < 24);
+		if (RebuildTooFrequent)
+			GItemHoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
+		else
+			GItemHoverTipsWidget = nullptr;
 		// 仅使用自建 StandaloneGameTip，不再调用游戏原生 Tip VM 接口。
 		if (!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)))
 		{
@@ -1166,6 +1035,7 @@ void PollItemBrowserHoverTips()
 			if (StandaloneOK && IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget)))
 			{
 				GItemHoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
+				sLastTipRebuildTick = NowTick;
 				if (kVerboseItemHoverLogs)
 				{
 					std::cout << "[SDK] ItemHoverProbe: tip source=StandaloneGameTip inViewport="
@@ -1199,8 +1069,11 @@ void PollItemBrowserHoverTips()
 	const bool IsStandaloneTip =
 		(GStandaloneItemTipWidget &&
 		 GItemHoverTipsWidget == static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget));
-	if (!IsStandaloneTip && Subsystem && IsSafeLiveObject(static_cast<UObject*>(Anchor)))
-		Subsystem->UpdateItemTipsPosition(Anchor, GItemHoverTipsWidget, false);
+	if (!IsStandaloneTip && IsSafeLiveObject(static_cast<UObject*>(Anchor)))
+	{
+		if (auto* Subsystem = GetJHNeoUISubsystem())
+			Subsystem->UpdateItemTipsPosition(Anchor, GItemHoverTipsWidget, false);
+	}
 
 	if (UWorld* World = UWorld::GetWorld())
 	{

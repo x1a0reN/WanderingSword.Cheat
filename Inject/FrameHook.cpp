@@ -179,203 +179,225 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	ExitWasPressed = ExitPressed;
 
 	// 鈹€鈹€ Item browser per-frame polling 鈹€鈹€
+	static DWORD sLastItemUiPollTick = 0;
 	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
-		PollCollapsiblePanelsInput();
-
-		if (GVolumeLastValues.size() != GVolumeItems.size())
-			GVolumeLastValues.resize(GVolumeItems.size(), 0.0f);
-		if (GVolumeMinusWasPressed.size() != GVolumeItems.size())
-			GVolumeMinusWasPressed.resize(GVolumeItems.size(), false);
-		if (GVolumePlusWasPressed.size() != GVolumeItems.size())
-			GVolumePlusWasPressed.resize(GVolumeItems.size(), false);
-
-		for (size_t i = 0; i < GVolumeItems.size(); ++i)
+		const DWORD ItemUiNow = GetTickCount();
+		const bool RunItemUiPoll = (sLastItemUiPollTick == 0) || ((ItemUiNow - sLastItemUiPollTick) >= 16);
+		if (RunItemUiPoll)
 		{
-			auto* Item = GVolumeItems[i];
-			if (!Item || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item)))
-				continue;
+			sLastItemUiPollTick = ItemUiNow;
+			PollCollapsiblePanelsInput();
 
-			auto* Slider = Item->VolumeSlider;
-			if (!Slider || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Slider)))
-				continue;
+			if (GVolumeLastValues.size() != GVolumeItems.size())
+				GVolumeLastValues.resize(GVolumeItems.size(), 0.0f);
+			if (GVolumeMinusWasPressed.size() != GVolumeItems.size())
+				GVolumeMinusWasPressed.resize(GVolumeItems.size(), false);
+			if (GVolumePlusWasPressed.size() != GVolumeItems.size())
+				GVolumePlusWasPressed.resize(GVolumeItems.size(), false);
 
-			bool MinusPressed = false;
-			bool PlusPressed = false;
-			if (Item->BTN_Minus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Minus)))
-				MinusPressed = Item->BTN_Minus->IsPressed();
-			if (Item->BTN_Plus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Plus)))
-				PlusPressed = Item->BTN_Plus->IsPressed();
-
-			const bool MinusClicked = GVolumeMinusWasPressed[i] && !MinusPressed;
-			const bool PlusClicked = GVolumePlusWasPressed[i] && !PlusPressed;
-
-			float CurValue = Slider->GetValue();
-			bool bValueChanged = std::fabs(CurValue - GVolumeLastValues[i]) > 0.0001f;
-
-			if (MinusClicked || PlusClicked)
+			for (size_t i = 0; i < GVolumeItems.size(); ++i)
 			{
-				float Step = Slider->StepSize;
-				if (Step <= 0.0001f)
-					Step = 0.01f;
+				auto* Item = GVolumeItems[i];
+				if (!Item || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item)))
+					continue;
 
-				float NewValue = CurValue + (PlusClicked ? Step : 0.0f) - (MinusClicked ? Step : 0.0f);
-				float MinValue = Slider->MinValue;
-				float MaxValue = Slider->MaxValue;
-				if (MaxValue < MinValue)
+				auto* Slider = Item->VolumeSlider;
+				if (!Slider || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Slider)))
+					continue;
+
+				bool MinusPressed = false;
+				bool PlusPressed = false;
+				if (Item->BTN_Minus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Minus)))
+					MinusPressed = Item->BTN_Minus->IsPressed();
+				if (Item->BTN_Plus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Plus)))
+					PlusPressed = Item->BTN_Plus->IsPressed();
+
+				const bool MinusClicked = GVolumeMinusWasPressed[i] && !MinusPressed;
+				const bool PlusClicked = GVolumePlusWasPressed[i] && !PlusPressed;
+
+				float CurValue = Slider->GetValue();
+				bool bValueChanged = std::fabs(CurValue - GVolumeLastValues[i]) > 0.0001f;
+
+				if (MinusClicked || PlusClicked)
 				{
-					const float Tmp = MinValue;
-					MinValue = MaxValue;
-					MaxValue = Tmp;
-				}
+					float Step = Slider->StepSize;
+					if (Step <= 0.0001f)
+						Step = 0.01f;
 
-				if (NewValue < MinValue) NewValue = MinValue;
-				if (NewValue > MaxValue) NewValue = MaxValue;
-
-				if (std::fabs(NewValue - CurValue) > 0.0001f)
-				{
-					Slider->SetValue(NewValue);
-					CurValue = NewValue;
-					bValueChanged = true;
-				}
-			}
-
-			if (bValueChanged)
-			{
-				CurValue = Slider->GetValue();
-				if (Item->TXT_CurrentValue)
-				{
+					float NewValue = CurValue + (PlusClicked ? Step : 0.0f) - (MinusClicked ? Step : 0.0f);
 					float MinValue = Slider->MinValue;
 					float MaxValue = Slider->MaxValue;
-					float Norm = CurValue;
-					if (MaxValue > MinValue)
-						Norm = (CurValue - MinValue) / (MaxValue - MinValue);
-					if (Norm < 0.0f) Norm = 0.0f;
-					if (Norm > 1.0f) Norm = 1.0f;
-					const int32 DisplayValue = static_cast<int32>(Norm * 100.0f + 0.5f);
-					wchar_t Buf[16] = {};
-					swprintf_s(Buf, 16, L"%d", DisplayValue);
-					Item->TXT_CurrentValue->SetText(MakeText(Buf));
+					if (MaxValue < MinValue)
+					{
+						const float Tmp = MinValue;
+						MinValue = MaxValue;
+						MaxValue = Tmp;
+					}
+
+					if (NewValue < MinValue) NewValue = MinValue;
+					if (NewValue > MaxValue) NewValue = MaxValue;
+
+					if (std::fabs(NewValue - CurValue) > 0.0001f)
+					{
+						Slider->SetValue(NewValue);
+						CurValue = NewValue;
+						bValueChanged = true;
+					}
+				}
+
+				if (bValueChanged)
+				{
+					CurValue = Slider->GetValue();
+					if (Item->TXT_CurrentValue)
+					{
+						float MinValue = Slider->MinValue;
+						float MaxValue = Slider->MaxValue;
+						float Norm = CurValue;
+						if (MaxValue > MinValue)
+							Norm = (CurValue - MinValue) / (MaxValue - MinValue);
+						if (Norm < 0.0f) Norm = 0.0f;
+						if (Norm > 1.0f) Norm = 1.0f;
+						const int32 DisplayValue = static_cast<int32>(Norm * 100.0f + 0.5f);
+						wchar_t Buf[16] = {};
+						swprintf_s(Buf, 16, L"%d", DisplayValue);
+						Item->TXT_CurrentValue->SetText(MakeText(Buf));
+					}
+				}
+
+				GVolumeLastValues[i] = CurValue;
+				GVolumeMinusWasPressed[i] = MinusPressed;
+				GVolumePlusWasPressed[i] = PlusPressed;
+			}
+
+			static DWORD LastItemCacheRetryTick = 0;
+			if (!GItemCacheBuilt && (GItemCategoryDD || GItemGridPanel))
+			{
+				DWORD NowTick = GetTickCount();
+				if (NowTick - LastItemCacheRetryTick > 1000)
+				{
+					LastItemCacheRetryTick = NowTick;
+					BuildItemCache();
+					if (GItemCacheBuilt)
+					{
+						int32 CurrentCat = 0;
+						if (GItemCategoryDD && GItemCategoryDD->CB_Main)
+						{
+							int32 SelectedCat = GItemCategoryDD->CB_Main->GetSelectedIndex();
+							if (SelectedCat >= 0)
+								CurrentCat = SelectedCat;
+						}
+						GItemCurrentPage = 0;
+						GItemLastCatIdx = CurrentCat;
+						FilterItems(CurrentCat);
+						RefreshItemPage();
+					}
 				}
 			}
 
-			GVolumeLastValues[i] = CurValue;
-			GVolumeMinusWasPressed[i] = MinusPressed;
-			GVolumePlusWasPressed[i] = PlusPressed;
-		}
-
-		static DWORD LastItemCacheRetryTick = 0;
-		if (!GItemCacheBuilt && (GItemCategoryDD || GItemGridPanel))
-		{
-			DWORD NowTick = GetTickCount();
-			if (NowTick - LastItemCacheRetryTick > 1000)
+			if (GItemCategoryDD && GItemCategoryDD->CB_Main)
 			{
-				LastItemCacheRetryTick = NowTick;
-				BuildItemCache();
-				if (GItemCacheBuilt)
+				int32 catIdx = GItemCategoryDD->CB_Main->GetSelectedIndex();
+				if (catIdx != GItemLastCatIdx && catIdx >= 0)
 				{
-					int32 CurrentCat = 0;
-					if (GItemCategoryDD && GItemCategoryDD->CB_Main)
-					{
-						int32 SelectedCat = GItemCategoryDD->CB_Main->GetSelectedIndex();
-						if (SelectedCat >= 0)
-							CurrentCat = SelectedCat;
-					}
+					GItemLastCatIdx = catIdx;
 					GItemCurrentPage = 0;
-					GItemLastCatIdx = CurrentCat;
-					FilterItems(CurrentCat);
+					FilterItems(catIdx);
 					RefreshItemPage();
 				}
 			}
-		}
 
-		if (GItemCategoryDD && GItemCategoryDD->CB_Main)
-		{
-			int32 catIdx = GItemCategoryDD->CB_Main->GetSelectedIndex();
-			if (catIdx != GItemLastCatIdx && catIdx >= 0)
+			GItemAddQuantity = GetItemAddQuantityFromEdit();
+
+			auto GetClickableButton = [](UJHCommon_Btn_Free_C* W) -> UButton* {
+				if (!W) return nullptr;
+				if (W->Btn) return W->Btn;
+				if (W->JHGPCBtn)
+					return static_cast<UJHNeoUIGamepadConfirmButton*>(W->JHGPCBtn)->BtnMain;
+				return nullptr;
+			};
+
+			UButton* PrevInner = GetClickableButton(GItemPrevPageBtn);
+			bool PrevPressed = PrevInner &&
+				UKismetSystemLibrary::IsValid(static_cast<UObject*>(PrevInner)) &&
+				PrevInner->IsPressed();
+			if (GItemPrevWasPressed && !PrevPressed && GItemCurrentPage > 0)
 			{
-				GItemLastCatIdx = catIdx;
-				GItemCurrentPage = 0;
-				FilterItems(catIdx);
+				GItemCurrentPage--;
 				RefreshItemPage();
 			}
-		}
+			GItemPrevWasPressed = PrevPressed;
 
-		GItemAddQuantity = GetItemAddQuantityFromEdit();
-
-		auto GetClickableButton = [](UJHCommon_Btn_Free_C* W) -> UButton* {
-			if (!W) return nullptr;
-			if (W->Btn) return W->Btn;
-			if (W->JHGPCBtn)
-				return static_cast<UJHNeoUIGamepadConfirmButton*>(W->JHGPCBtn)->BtnMain;
-			return nullptr;
-		};
-
-		UButton* PrevInner = GetClickableButton(GItemPrevPageBtn);
-		bool PrevPressed = PrevInner &&
-			UKismetSystemLibrary::IsValid(static_cast<UObject*>(PrevInner)) &&
-			PrevInner->IsPressed();
-		if (GItemPrevWasPressed && !PrevPressed && GItemCurrentPage > 0)
-		{
-			GItemCurrentPage--;
-			RefreshItemPage();
-		}
-		GItemPrevWasPressed = PrevPressed;
-
-		UButton* NextInner = GetClickableButton(GItemNextPageBtn);
-		bool NextPressed = NextInner &&
-			UKismetSystemLibrary::IsValid(static_cast<UObject*>(NextInner)) &&
-			NextInner->IsPressed();
-		if (GItemNextWasPressed && !NextPressed && (GItemCurrentPage + 1) < GItemTotalPages)
-		{
-			GItemCurrentPage++;
-			RefreshItemPage();
-		}
-		GItemNextWasPressed = NextPressed;
-
-		for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
-		{
-			auto* Btn = GItemSlotButtons[i];
-			if (!Btn || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Btn)))
-				continue;
-
-			bool Pressed = Btn->IsPressed();
-			if (GItemSlotWasPressed[i] && !Pressed)
+			UButton* NextInner = GetClickableButton(GItemNextPageBtn);
+			bool NextPressed = NextInner &&
+				UKismetSystemLibrary::IsValid(static_cast<UObject*>(NextInner)) &&
+				NextInner->IsPressed();
+			if (GItemNextWasPressed && !NextPressed && (GItemCurrentPage + 1) < GItemTotalPages)
 			{
-				int32 itemIdx = GItemSlotItemIndices[i];
-				if (itemIdx >= 0 && itemIdx < (int32)GAllItems.size())
-				{
-					CachedItem& item = GAllItems[itemIdx];
-					UItemFuncLib::AddItem(item.DefId, GItemAddQuantity);
-					std::cout << "[SDK] AddItem(click): " << item.DefId << " x" << GItemAddQuantity << "\n";
-				}
+				GItemCurrentPage++;
+				RefreshItemPage();
 			}
-			GItemSlotWasPressed[i] = Pressed;
+			GItemNextWasPressed = NextPressed;
+
+			for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
+			{
+				auto* Btn = GItemSlotButtons[i];
+				if (!Btn || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Btn)))
+					continue;
+
+				bool Pressed = Btn->IsPressed();
+				if (GItemSlotWasPressed[i] && !Pressed)
+				{
+					int32 itemIdx = GItemSlotItemIndices[i];
+					if (itemIdx >= 0 && itemIdx < (int32)GAllItems.size())
+					{
+						CachedItem& item = GAllItems[itemIdx];
+						UItemFuncLib::AddItem(item.DefId, GItemAddQuantity);
+						std::cout << "[SDK] AddItem(click): " << item.DefId << " x" << GItemAddQuantity << "\n";
+					}
+				}
+				GItemSlotWasPressed[i] = Pressed;
+			}
 		}
 	}
 	else
 	{
+		sLastItemUiPollTick = 0;
 		GItemPrevWasPressed = false;
 		GItemNextWasPressed = false;
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 			GItemSlotWasPressed[i] = false;
 	}
 
-	// Hover tips polling should not be hard-gated by native tab index only.
-	// In some transitions/sync states, CT_Contents index may be stale while item grid is visible.
+	// Hover tips polling:
+	// 1) 物品 Tab 内高频轮询（节流到约 60Hz）
+	// 2) 非物品 Tab 仅在已有 tips 残留时低频轮询，用于快速收口隐藏
 	bool HoverGridValid = false;
 	if (GItemGridPanel)
 	{
 		auto* GridObj = static_cast<UObject*>(GItemGridPanel);
 		HoverGridValid = IsPointerInLiveObjectArray(GridObj) && UKismetSystemLibrary::IsValid(GridObj);
 	}
+	const bool HasActiveHoverTips =
+		(GItemHoveredSlot >= 0) ||
+		(GItemHoverTipsWidget && UKismetSystemLibrary::IsValid(static_cast<UObject*>(GItemHoverTipsWidget)));
 	const bool CanPollHover =
 		InternalWidgetVisible &&
 		LiveInternalWidget &&
-		HoverGridValid;
+		HoverGridValid &&
+		(IsItemsTabActive || HasActiveHoverTips);
 
 	if (CanPollHover)
-		PollItemBrowserHoverTips();
+	{
+		static DWORD sLastHoverPollTick = 0;
+		const DWORD HoverPollNow = GetTickCount();
+		const DWORD PollIntervalMs = IsItemsTabActive ? 16 : 80;
+		if (sLastHoverPollTick == 0 || (HoverPollNow - sLastHoverPollTick) >= PollIntervalMs)
+		{
+			sLastHoverPollTick = HoverPollNow;
+			PollItemBrowserHoverTips();
+		}
+	}
 
 	// 鈹€鈹€ Dynamic tab button click detection 鈹€鈹€
 	if (InternalWidgetVisible && LiveConfigView)
