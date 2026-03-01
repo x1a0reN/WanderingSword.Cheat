@@ -238,24 +238,42 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		GItemPrevPageBtn = CreateGameStyleButton(PC, L"上一页", "ItemPrevPage",
 			0.0f, 0.0f, &PrevLayout);
 		if (PrevLayout)
-			GItemPagerRow->AddChildToHorizontalBox(PrevLayout);
+		{
+			auto* PrevSlot = GItemPagerRow->AddChildToHorizontalBox(PrevLayout);
+			if (PrevSlot)
+			{
+				PrevSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
+				PrevSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+			}
+		}
 
 		GItemPageLabel = static_cast<UTextBlock*>(CreateRawWidget(UTextBlock::StaticClass(), Outer));
 		if (GItemPageLabel)
 		{
 			GItemPageLabel->SetText(MakeText(L"1/1"));
-			GItemPagerRow->AddChildToHorizontalBox(GItemPageLabel);
+			GItemPageLabel->SetJustification(ETextJustify::Center);
+			GItemPageLabel->SetMinDesiredWidth(92.0f);
+			GItemPageLabel->Font.Size = 18;
+			auto* LabelSlot = GItemPagerRow->AddChildToHorizontalBox(GItemPageLabel);
+			if (LabelSlot)
+			{
+				LabelSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+				LabelSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+			}
 		}
 
 		UWidget* NextLayout = nullptr;
 		GItemNextPageBtn = CreateGameStyleButton(PC, L"下一页", "ItemNextPage",
 			0.0f, 0.0f, &NextLayout);
 		if (NextLayout)
-			GItemPagerRow->AddChildToHorizontalBox(NextLayout);
-
-		if (BrowserBox) BrowserBox->AddChild(GItemPagerRow);
-		else Container->AddChild(GItemPagerRow);
-		Count++;
+		{
+			auto* NextSlot = GItemPagerRow->AddChildToHorizontalBox(NextLayout);
+			if (NextSlot)
+			{
+				NextSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
+				NextSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+			}
+		}
 	}
 
 	GItemGridPanel = static_cast<UUniformGridPanel*>(CreateRawWidget(UUniformGridPanel::StaticClass(), Outer));
@@ -346,6 +364,29 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			GItemSlotItemIndices[i] = -1;
 			GItemSlotWasPressed[i] = false;
 		}
+	}
+
+	if (GItemPagerRow)
+	{
+		UPanelSlot* PagerSlot = nullptr;
+		if (BrowserBox)
+			PagerSlot = BrowserBox->AddChild(GItemPagerRow);
+		else
+			PagerSlot = Container->AddChild(GItemPagerRow);
+
+		if (PagerSlot && PagerSlot->IsA(UVerticalBoxSlot::StaticClass()))
+		{
+			auto* VSlot = static_cast<UVerticalBoxSlot*>(PagerSlot);
+			VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
+			VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+			FMargin Pad{};
+			Pad.Left = 0.0f;
+			Pad.Top = 4.0f;
+			Pad.Right = 0.0f;
+			Pad.Bottom = 0.0f;
+			VSlot->SetPadding(Pad);
+		}
+		Count++;
 	}
 
 	AddPanelWithFixedGap(BrowserPanel, 0.0f, 8.0f);
