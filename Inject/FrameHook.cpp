@@ -167,6 +167,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	// 鈹€鈹€ Item browser per-frame polling 鈹€鈹€
 	static DWORD sLastItemUiPollTick = 0;
+	static bool sItemGridClickWasDown = false;
+	static int32 sItemGridPressedSlot = -1;
 	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
 		const DWORD ItemUiNow = GetTickCount();
@@ -326,6 +328,26 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			}
 			GItemNextWasPressed = NextPressed;
 
+			auto AddItemBySlot = [&](int32 Slot, const char* TriggerTag) -> bool
+			{
+				if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
+					return false;
+
+				const int32 itemIdx = GItemSlotItemIndices[Slot];
+				if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+					return false;
+
+				const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
+				CachedItem& item = GAllItems[itemIdx];
+				UItemFuncLib::AddItem(item.DefId, Quantity);
+				std::cout << "[SDK] AddItem(" << (TriggerTag ? TriggerTag : "unknown")
+					<< "): slot=" << Slot
+					<< " defId=" << item.DefId
+					<< " x" << Quantity << "\n";
+				return true;
+			};
+
+			bool AddedByButtonEdge = false;
 			for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
 			{
 				auto* Btn = GItemSlotButtons[i];
@@ -335,21 +357,87 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				bool Pressed = Btn->IsPressed();
 				if (GItemSlotWasPressed[i] && !Pressed)
 				{
-					int32 itemIdx = GItemSlotItemIndices[i];
-					if (itemIdx >= 0 && itemIdx < (int32)GAllItems.size())
-					{
-						CachedItem& item = GAllItems[itemIdx];
-						UItemFuncLib::AddItem(item.DefId, GItemAddQuantity);
-						std::cout << "[SDK] AddItem(click): " << item.DefId << " x" << GItemAddQuantity << "\n";
-					}
+					AddedByButtonEdge = AddItemBySlot(i, "button-edge") || AddedByButtonEdge;
 				}
 				GItemSlotWasPressed[i] = Pressed;
 			}
+
+			auto ResolveHoveredGridSlot = [&]() -> int32
+			{
+				if (!GItemGridPanel || !IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+					return -1;
+
+				UWorld* World = UWorld::GetWorld();
+				if (!World)
+					return -1;
+
+				UObject* ViewportContext = static_cast<UObject*>(World);
+				const FGeometry GridGeo = GItemGridPanel->GetCachedGeometry();
+				const FVector2D GridSize = USlateBlueprintLibrary::GetLocalSize(GridGeo);
+				if (GridSize.X <= 1.0f || GridSize.Y <= 1.0f)
+					return -1;
+
+				FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+				USlateBlueprintLibrary::LocalToViewport(
+					ViewportContext, GridGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+				USlateBlueprintLibrary::LocalToViewport(
+					ViewportContext, GridGeo, GridSize, &PixelBR, &ViewBR);
+
+				const float MinX = (ViewTL.X < ViewBR.X) ? ViewTL.X : ViewBR.X;
+				const float MaxX = (ViewTL.X > ViewBR.X) ? ViewTL.X : ViewBR.X;
+				const float MinY = (ViewTL.Y < ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+				const float MaxY = (ViewTL.Y > ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+
+				const FVector2D MouseVP = UWidgetLayoutLibrary::GetMousePositionOnViewport(ViewportContext);
+				if (MouseVP.X < MinX || MouseVP.X > MaxX || MouseVP.Y < MinY || MouseVP.Y > MaxY)
+					return -1;
+
+				const float GridW = MaxX - MinX;
+				const float GridH = MaxY - MinY;
+				if (GridW <= 1.0f || GridH <= 1.0f)
+					return -1;
+
+				const int32 Col = static_cast<int32>(((MouseVP.X - MinX) / GridW) * ITEM_GRID_COLS);
+				const int32 Row = static_cast<int32>(((MouseVP.Y - MinY) / GridH) * ITEM_GRID_ROWS);
+				if (Col < 0 || Col >= ITEM_GRID_COLS || Row < 0 || Row >= ITEM_GRID_ROWS)
+					return -1;
+
+				const int32 Slot = Row * ITEM_GRID_COLS + Col;
+				if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
+					return -1;
+
+				const int32 itemIdx = GItemSlotItemIndices[Slot];
+				if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+					return -1;
+				return Slot;
+			};
+
+			// 兜底：某些 BPEntry_Item 组合下 BtnMain->IsPressed 边沿不稳定，改用网格命中点击判定补齐。
+			const bool LeftDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+			const int32 HoveredSlot = ResolveHoveredGridSlot();
+			if (LeftDown && !sItemGridClickWasDown)
+			{
+				sItemGridPressedSlot = HoveredSlot;
+			}
+			else if (!LeftDown && sItemGridClickWasDown)
+			{
+				if (!AddedByButtonEdge &&
+					sItemGridPressedSlot >= 0 &&
+					HoveredSlot >= 0 &&
+					HoveredSlot == sItemGridPressedSlot)
+				{
+					AddItemBySlot(HoveredSlot, "grid-hit");
+				}
+				sItemGridPressedSlot = -1;
+			}
+			sItemGridClickWasDown = LeftDown;
 		}
 	}
 	else
 	{
 		sLastItemUiPollTick = 0;
+		sItemGridClickWasDown = false;
+		sItemGridPressedSlot = -1;
 		GItemPrevWasPressed = false;
 		GItemNextWasPressed = false;
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
