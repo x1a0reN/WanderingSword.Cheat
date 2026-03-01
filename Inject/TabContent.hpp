@@ -42,3 +42,8 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 
 /// Tab 8 (动态) - 控件展示: 用于测试各种游戏原生控件的创建和显示
 void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC);
+
+/// Tab0 数值输入轮询（仅在 Tab0 激活时调用）：
+/// - 回车提交当前获得焦点的编辑框
+/// - 提交后写入游戏数据（SDK 调用），并回填最新值
+void PollTab0CharacterInput(bool bTab0Active);

@@ -13,31 +13,9 @@ namespace
 	APlayerController* GInternalWidgetOwnerPC = nullptr;
 	UGameInstance* GInternalWidgetOwnerGI = nullptr;
 
-	bool IsPointerInLiveObjectArray(UObject* Obj)
-	{
-		if (!Obj)
-			return false;
-
-		auto* ObjArray = UObject::GObjects.GetTypedPtr();
-		if (!ObjArray)
-			return false;
-
-		const int32 Num = ObjArray->Num();
-		for (int32 i = 0; i < Num; ++i)
-		{
-			if (ObjArray->GetByIndex(i) == Obj)
-				return true;
-		}
-		return false;
-	}
-
 	bool IsValidUObject(UObject* Obj)
 	{
-		if (!Obj)
-			return false;
-		if (!IsPointerInLiveObjectArray(Obj))
-			return false;
-		return UKismetSystemLibrary::IsValid(Obj);
+		return IsSafeLiveObject(Obj);
 	}
 
 	bool IsValidPlayerController(APlayerController* PC)
@@ -549,7 +527,7 @@ void ToggleInternalWidget()
 	}
 
 	// Use real widget state instead of our boolean flag
-	bool isShowing = InternalWidget && InternalWidget->IsInViewport();
+	bool isShowing = InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)) && InternalWidget->IsInViewport();
 	if (isShowing)
 		HideInternalWidget(PlayerController);
 	else

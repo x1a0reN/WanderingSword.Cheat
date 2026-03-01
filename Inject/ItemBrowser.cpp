@@ -45,29 +45,6 @@ namespace
 		return Q;
 	}
 
-	bool IsPointerInLiveObjectArray(UObject* Obj)
-	{
-		if (!Obj)
-			return false;
-
-		auto* ObjArray = UObject::GObjects.GetTypedPtr();
-		if (!ObjArray)
-			return false;
-
-		const int32 Num = ObjArray->Num();
-		for (int32 i = 0; i < Num; ++i)
-		{
-			if (ObjArray->GetByIndex(i) == Obj)
-				return true;
-		}
-		return false;
-	}
-
-	bool IsSafeLiveObject(UObject* Obj)
-	{
-		return Obj && IsPointerInLiveObjectArray(Obj) && UKismetSystemLibrary::IsValid(Obj);
-	}
-
 	uint64 MakeAssetPathKey(const FName& Name)
 	{
 		return (static_cast<uint64>(static_cast<uint32>(Name.ComparisonIndex)) << 32) |
@@ -88,7 +65,7 @@ namespace
 			return nullptr;
 
 		APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
-		if (PC && UKismetSystemLibrary::IsValid(static_cast<UObject*>(PC)))
+		if (PC && IsSafeLiveObject(static_cast<UObject*>(PC)))
 			return UGameplayStatics::GetGameInstance(PC);
 
 		return World->OwningGameInstance;
@@ -129,7 +106,7 @@ namespace
 		if (CachedIt != sIconCache.end())
 		{
 			UTexture2D* CachedTex = CachedIt->second;
-			if (IsSafeLiveObject(static_cast<UObject*>(CachedTex)))
+			if (IsSafeLiveObjectOfClass(static_cast<UObject*>(CachedTex), UTexture2D::StaticClass()))
 				return CachedTex;
 			sIconCache.erase(CachedIt);
 		}
@@ -147,7 +124,7 @@ namespace
 				Texture = static_cast<UTexture2D*>(Loaded);
 		}
 
-		if (IsSafeLiveObject(static_cast<UObject*>(Texture)))
+		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(Texture), UTexture2D::StaticClass()))
 		{
 			sIconCache[Key] = Texture;
 			sMissingIconRetryUntil.erase(Key);
@@ -480,11 +457,11 @@ void BuildItemCache()
 // Set icon brush through SDK wrapper (UImage::SetBrushFromSoftTexture)
 void SetImageFromSoftTextureBySDK(UImage* ImageWidget, const uint8* SoftTextureData28)
 {
-	if (!ImageWidget || !SoftTextureData28)
+	if (!SoftTextureData28 || !IsSafeLiveObjectOfClass(static_cast<UObject*>(ImageWidget), UImage::StaticClass()))
 		return;
 
 	UTexture2D* Texture = ResolveTextureFromSoftData(SoftTextureData28);
-	if (!Texture)
+	if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Texture), UTexture2D::StaticClass()))
 		return;
 
 	ImageWidget->SetBrushFromTexture(Texture, true);
@@ -514,7 +491,7 @@ static UJHNeoUISubsystem* GetJHNeoUISubsystem()
 		if ((static_cast<int32>(Obj->Flags) &
 			static_cast<int32>(EObjectFlags::ClassDefaultObject)) != 0)
 			return false;
-		if (!UKismetSystemLibrary::IsValid(Obj))
+		if (!IsSafeLiveObject(Obj))
 			return false;
 		if (!CurrentGI)
 			return true;
@@ -589,7 +566,7 @@ static UJHNeoUISubsystem* GetJHNeoUISubsystem()
 
 static void HideCurrentItemTips()
 {
-	if (GItemHoverTipsWidget && UKismetSystemLibrary::IsValid(static_cast<UObject*>(GItemHoverTipsWidget)))
+	if (GItemHoverTipsWidget && IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)))
 		GItemHoverTipsWidget->SetVisibility(ESlateVisibility::Collapsed);
 	if (GStandaloneItemTipWidget && IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget)))
 		GStandaloneItemTipWidget->SetVisibility(ESlateVisibility::Collapsed);
@@ -646,17 +623,17 @@ void RefreshItemPage()
 		auto* EntryWidget = GItemSlotEntryWidgets[i];
 		UImage* MainBorder = nullptr;
 
-		if (Btn && !IsSafeLiveObject(static_cast<UObject*>(Btn)))
+		if (Btn && !IsSafeLiveObjectOfClass(static_cast<UObject*>(Btn), UButton::StaticClass()))
 		{
 			GItemSlotButtons[i] = nullptr;
 			Btn = nullptr;
 		}
-		if (Img && !IsSafeLiveObject(static_cast<UObject*>(Img)))
+		if (Img && !IsSafeLiveObjectOfClass(static_cast<UObject*>(Img), UImage::StaticClass()))
 		{
 			GItemSlotImages[i] = nullptr;
 			Img = nullptr;
 		}
-		if (Border && !IsSafeLiveObject(static_cast<UObject*>(Border)))
+		if (Border && !IsSafeLiveObjectOfClass(static_cast<UObject*>(Border), UImage::StaticClass()))
 		{
 			GItemSlotQualityBorders[i] = nullptr;
 			Border = nullptr;
@@ -673,12 +650,13 @@ void RefreshItemPage()
 			if (Entry->ItemDisplay && Entry->ItemDisplay->CMP && Entry->ItemDisplay->CMP->IMG_Border)
 			{
 				auto* CandidateMainBorder = static_cast<UImage*>(Entry->ItemDisplay->CMP->IMG_Border);
-				if (CandidateMainBorder && IsSafeLiveObject(static_cast<UObject*>(CandidateMainBorder)))
+				if (CandidateMainBorder &&
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(CandidateMainBorder), UImage::StaticClass()))
 					MainBorder = CandidateMainBorder;
 			}
 		}
 
-		if (!Btn || !IsSafeLiveObject(static_cast<UObject*>(Btn)))
+		if (!Btn || !IsSafeLiveObjectOfClass(static_cast<UObject*>(Btn), UButton::StaticClass()))
 			continue;
 
 		int32 filtIdx = startIdx + i;
@@ -705,7 +683,9 @@ void RefreshItemPage()
 				if (CI.HasIcon)
 				{
 					UTexture2D* IconTex = ResolveTextureFromSoftData(CI.IconData);
-					if (IconTex && IsSafeLiveObject(static_cast<UObject*>(IconTex)))
+					if (IconTex &&
+						IsSafeLiveObjectOfClass(static_cast<UObject*>(IconTex), UTexture2D::StaticClass()) &&
+						IsSafeLiveObjectOfClass(static_cast<UObject*>(Img), UImage::StaticClass()))
 					{
 						Img->SetBrushFromTexture(IconTex, true);
 						Img->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
@@ -733,7 +713,9 @@ void RefreshItemPage()
 			if (Border)
 			{
 				UTexture2D* QTex = GetItemQualityBorderTexture(static_cast<uint8>(SafeQuality));
-				if (QTex && IsSafeLiveObject(static_cast<UObject*>(QTex)))
+				if (QTex &&
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(QTex), UTexture2D::StaticClass()) &&
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(Border), UImage::StaticClass()))
 				{
 					Border->SetBrushFromTexture(QTex, true);
 					Border->SetColorAndOpacity(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });

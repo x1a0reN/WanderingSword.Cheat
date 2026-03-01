@@ -2,6 +2,10 @@
 
 #include "CheatState.hpp"
 
+bool IsPointerInLiveObjectArray(UObject* Obj);
+bool IsSafeLiveObject(UObject* Obj);
+bool IsSafeLiveObjectOfClass(UObject* Obj, UClass* ExpectedClass);
+
 // ── 文本与诊断工具 ──
 
 /// 将 wchar_t* 字符串转换为 UE4 FText (通过 FTextStringHelper::CreateFromBuffer)。

@@ -6,6 +6,7 @@
 #include "FrameHook.hpp"
 #include "ItemBrowser.hpp"
 #include "PanelManager.hpp"
+#include "TabContent.hpp"
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
 
@@ -24,31 +25,13 @@ namespace
 		}
 	};
 
-	bool IsPointerInLiveObjectArray(UObject* Obj)
-	{
-		if (!Obj)
-			return false;
-
-		auto* ObjArray = UObject::GObjects.GetTypedPtr();
-		if (!ObjArray)
-			return false;
-
-		const int32 Num = ObjArray->Num();
-		for (int32 i = 0; i < Num; ++i)
-		{
-			if (ObjArray->GetByIndex(i) == Obj)
-				return true;
-		}
-		return false;
-	}
-
 	bool EnsureLiveInternalWidgetForFrame()
 	{
 		if (!InternalWidget)
 			return false;
 
 		auto* Obj = static_cast<UObject*>(InternalWidget);
-		if (Obj && IsPointerInLiveObjectArray(Obj) && UKismetSystemLibrary::IsValid(Obj))
+		if (IsSafeLiveObject(Obj))
 			return true;
 
 		std::cout << "[SDK] FrameHook: stale internal widget pointer detected, reset state\n";
@@ -133,12 +116,16 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	{
 		LiveConfigView = static_cast<UBPMV_ConfigView2_C*>(LiveInternalWidget);
 		if (LiveConfigView->CT_Contents &&
-			UKismetSystemLibrary::IsValid(static_cast<UObject*>(LiveConfigView->CT_Contents)))
+			IsSafeLiveObject(static_cast<UObject*>(LiveConfigView->CT_Contents)))
 		{
 			ActiveNativeTabIndex = LiveConfigView->CT_Contents->GetActiveWidgetIndex();
 		}
 	}
 	const bool IsItemsTabActive = (ActiveNativeTabIndex == 1);
+	const bool IsCharacterTabActive = (ActiveNativeTabIndex == 0);
+
+	// Tab0（角色）编辑框：按 Enter 提交写回并回填。
+	PollTab0CharacterInput(IsCharacterTabActive);
 
 	// Detect BTN_Exit click (edge-triggered).
 	// Only poll while panel is visible and pointer is valid to avoid unreachable UObject asserts.
@@ -158,7 +145,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		if (GCachedBtnExit)
 		{
 			auto* ExitObj = static_cast<UObject*>(GCachedBtnExit);
-			if (UKismetSystemLibrary::IsValid(ExitObj))
+			if (IsSafeLiveObject(ExitObj))
 				ExitPressed = GCachedBtnExit->IsPressed();
 			else
 				GCachedBtnExit = nullptr;
@@ -199,18 +186,18 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			for (size_t i = 0; i < GVolumeItems.size(); ++i)
 			{
 				auto* Item = GVolumeItems[i];
-				if (!Item || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item)))
+				if (!IsSafeLiveObject(static_cast<UObject*>(Item)))
 					continue;
 
 				auto* Slider = Item->VolumeSlider;
-				if (!Slider || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Slider)))
+				if (!IsSafeLiveObject(static_cast<UObject*>(Slider)))
 					continue;
 
 				bool MinusPressed = false;
 				bool PlusPressed = false;
-				if (Item->BTN_Minus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Minus)))
+				if (Item->BTN_Minus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Minus)))
 					MinusPressed = Item->BTN_Minus->IsPressed();
-				if (Item->BTN_Plus && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Item->BTN_Plus)))
+				if (Item->BTN_Plus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Plus)))
 					PlusPressed = Item->BTN_Plus->IsPressed();
 
 				const bool MinusClicked = GVolumeMinusWasPressed[i] && !MinusPressed;
@@ -319,7 +306,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 			UButton* PrevInner = GetClickableButton(GItemPrevPageBtn);
 			bool PrevPressed = PrevInner &&
-				UKismetSystemLibrary::IsValid(static_cast<UObject*>(PrevInner)) &&
+				IsSafeLiveObject(static_cast<UObject*>(PrevInner)) &&
 				PrevInner->IsPressed();
 			if (GItemPrevWasPressed && !PrevPressed && GItemCurrentPage > 0)
 			{
@@ -330,7 +317,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 			UButton* NextInner = GetClickableButton(GItemNextPageBtn);
 			bool NextPressed = NextInner &&
-				UKismetSystemLibrary::IsValid(static_cast<UObject*>(NextInner)) &&
+				IsSafeLiveObject(static_cast<UObject*>(NextInner)) &&
 				NextInner->IsPressed();
 			if (GItemNextWasPressed && !NextPressed && (GItemCurrentPage + 1) < GItemTotalPages)
 			{
@@ -342,7 +329,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
 			{
 				auto* Btn = GItemSlotButtons[i];
-				if (!Btn || !UKismetSystemLibrary::IsValid(static_cast<UObject*>(Btn)))
+				if (!IsSafeLiveObject(static_cast<UObject*>(Btn)))
 					continue;
 
 				bool Pressed = Btn->IsPressed();
@@ -376,11 +363,11 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	if (GItemGridPanel)
 	{
 		auto* GridObj = static_cast<UObject*>(GItemGridPanel);
-		HoverGridValid = IsPointerInLiveObjectArray(GridObj) && UKismetSystemLibrary::IsValid(GridObj);
+		HoverGridValid = IsSafeLiveObject(GridObj);
 	}
 	const bool HasActiveHoverTips =
 		(GItemHoveredSlot >= 0) ||
-		(GItemHoverTipsWidget && UKismetSystemLibrary::IsValid(static_cast<UObject*>(GItemHoverTipsWidget)));
+		(GItemHoverTipsWidget && IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)));
 	const bool CanPollHover =
 		InternalWidgetVisible &&
 		LiveInternalWidget &&
@@ -406,7 +393,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		auto* CV = LiveConfigView;
 		auto IsLiveTabBtn = [](UBP_JHConfigTabBtn_C* Btn) -> bool
 		{
-			return Btn && UKismetSystemLibrary::IsValid(static_cast<UObject*>(Btn));
+			return IsSafeLiveObject(static_cast<UObject*>(Btn));
 		};
 
 		// Native tabs fully handle themselves via AutoFocusForMouseEntering 鈫?
@@ -434,12 +421,12 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			// Moving mouse to content area or empty space keeps dynamic tab active
 			// 鈥?same behavior as native tabs.
 			bool nativeHovered =
-				(CV->BTN_Sound && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Sound)) && CV->BTN_Sound->IsHovered()) ||
-				(CV->BTN_Video && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Video)) && CV->BTN_Video->IsHovered()) ||
-				(CV->BTN_Keys && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Keys)) && CV->BTN_Keys->IsHovered()) ||
-				(CV->BTN_Lan && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Lan)) && CV->BTN_Lan->IsHovered()) ||
-				(CV->BTN_Others && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Others)) && CV->BTN_Others->IsHovered()) ||
-				(CV->BTN_Gamepad && UKismetSystemLibrary::IsValid(static_cast<UObject*>(CV->BTN_Gamepad)) && CV->BTN_Gamepad->IsHovered());
+				(CV->BTN_Sound && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Sound)) && CV->BTN_Sound->IsHovered()) ||
+				(CV->BTN_Video && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Video)) && CV->BTN_Video->IsHovered()) ||
+				(CV->BTN_Keys && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Keys)) && CV->BTN_Keys->IsHovered()) ||
+				(CV->BTN_Lan && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Lan)) && CV->BTN_Lan->IsHovered()) ||
+				(CV->BTN_Others && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Others)) && CV->BTN_Others->IsHovered()) ||
+				(CV->BTN_Gamepad && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Gamepad)) && CV->BTN_Gamepad->IsHovered());
 			if (nativeHovered)
 			{
 				ShowOriginalTab(CV);

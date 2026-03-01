@@ -18,24 +18,6 @@ namespace
 	std::vector<UEditableTextBox*> GNumericOnlyEditBoxes;
 	bool GCollapsibleLmbWasDown = false;
 	UVE_JHVideoPanel2_C* GCollapsiblePressedPanel = nullptr;
-
-	bool IsSafeLiveObject(UObject* Obj)
-	{
-		if (!Obj)
-			return false;
-
-		auto* ObjArray = UObject::GObjects.GetTypedPtr();
-		if (!ObjArray)
-			return false;
-
-		const int32 Num = ObjArray->Num();
-		for (int32 i = 0; i < Num; ++i)
-		{
-			if (ObjArray->GetByIndex(i) == Obj)
-				return UKismetSystemLibrary::IsValid(Obj);
-		}
-		return false;
-	}
 }
 void HideTabIcon(UJHNeoUIConfigV2TabBtn* TabBtn)
 {

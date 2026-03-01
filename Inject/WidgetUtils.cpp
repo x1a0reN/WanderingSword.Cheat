@@ -5,6 +5,43 @@
 
 #include "WidgetUtils.hpp"
 #include "GCManager.hpp"
+
+bool IsPointerInLiveObjectArray(UObject* Obj)
+{
+	if (!Obj)
+		return false;
+
+	const uintptr_t Ptr = reinterpret_cast<uintptr_t>(Obj);
+	if (Ptr < 0x10000 || (Ptr & (sizeof(void*) - 1)) != 0)
+		return false;
+
+	auto* ObjArray = UObject::GObjects.GetTypedPtr();
+	if (!ObjArray)
+		return false;
+
+	const int32 Num = ObjArray->Num();
+	for (int32 i = 0; i < Num; ++i)
+	{
+		if (ObjArray->GetByIndex(i) == Obj)
+			return true;
+	}
+	return false;
+}
+
+bool IsSafeLiveObject(UObject* Obj)
+{
+	if (!IsPointerInLiveObjectArray(Obj))
+		return false;
+	return UKismetSystemLibrary::IsValid(Obj);
+}
+
+bool IsSafeLiveObjectOfClass(UObject* Obj, UClass* ExpectedClass)
+{
+	if (!ExpectedClass || !IsSafeLiveObject(Obj))
+		return false;
+	return Obj->IsA(ExpectedClass);
+}
+
 FText MakeText(const wchar_t* W)
 {
 	return UKismetTextLibrary::Conv_StringToText(FString(W));
