@@ -144,6 +144,13 @@ DWORD MainThread(HMODULE Module)
 			unsigned char* Trampoline = static_cast<unsigned char*>(GHookTrampoline);
 			size_t Offset = 0;
 
+			// 保存寄存器 (rbx)
+			Trampoline[Offset++] = 0x48;  // rex.w
+			Trampoline[Offset++] = 0x89;
+			Trampoline[Offset++] = 0x5C;
+			Trampoline[Offset++] = 0x24;
+			Trampoline[Offset++] = 0x08;  // mov [rsp+08], rbx
+
 			// cmp r8d, 0        ; 比较 Num 参数
 			Trampoline[Offset++] = 0x41;
 			Trampoline[Offset++] = 0x83;
