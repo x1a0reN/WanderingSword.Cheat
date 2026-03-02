@@ -16,6 +16,7 @@
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
 #include "SDK/JH_structs.hpp"
+#include "SDK/JH_parameters.hpp"
 #include "SDK/JH_classes.hpp"
 #include "SDK/Engine_classes.hpp"
 
@@ -1318,20 +1319,14 @@ void __stdcall HookedProcessEvent(void* This, void* Function, void* Parms)
 			std::string FuncName = Func->GetName();
 			if (FuncName == "ChangeItemNum")
 			{
-				// ChangeItemNum 参数结构:
-				// 0x00-0x10: FGuid ID
-				// 0x10-0x14: int32 Num (第二个参数)
-				// 0x14-0x15: bool FireEvent
-				// 0x15-0x16: 返回值 bool
-				int32* NumPtr = reinterpret_cast<int32*>(reinterpret_cast<uint8*>(Parms) + 0x10);
-				int32 Num = *NumPtr;
+				// 使用 SDK 中的参数结构访问参数 (SDK::Params 命名空间)
+				auto* Params = reinterpret_cast<SDK::Params::ItemManager_ChangeItemNum*>(Parms);
 
 				// 只有当 Num < 0 时才拦截（减少物品）
-				if (Num < 0)
+				if (Params->Num < 0)
 				{
 					// 设置返回值为 true（表示操作成功），但不执行原函数
-					bool* ReturnValue = reinterpret_cast<bool*>(reinterpret_cast<uint8*>(Parms) + 0x15);
-					*ReturnValue = true;
+					Params->ReturnValue = true;
 					return;
 				}
 			}
