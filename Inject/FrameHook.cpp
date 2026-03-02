@@ -16,6 +16,7 @@
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
 #include "SDK/JH_structs.hpp"
+#include "SDK/JH_classes.hpp"
 
 namespace
 {
@@ -810,6 +811,29 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	if (!InTransitionGuard && HomeDown && !HomeWasDown)
 		ToggleInternalWidget();
 	HomeWasDown = HomeDown;
+
+	// PGUP: 输出当前世界状态
+	static bool PGUPWasDown = false;
+	const bool PGUPDown = (GetAsyncKeyState(VK_PRIOR) & 0x8000) != 0;
+	if (PGUPDown && !PGUPWasDown)
+	{
+		EWorldStateType WorldState = UManagerFuncLib::GetWorldType();
+		std::cout << "[SDK] WorldStateType: " << (int)WorldState << "\n";
+		switch (WorldState)
+		{
+			case EWorldStateType::None: std::cout << "[SDK]   -> None (主菜单/未进入游戏)\n"; break;
+			case EWorldStateType::Scene: std::cout << "[SDK]   -> Scene (大世界/主菜单场景)\n"; break;
+			case EWorldStateType::IntoFight: std::cout << "[SDK]   -> IntoFight (进入战斗)\n"; break;
+			case EWorldStateType::Fighting: std::cout << "[SDK]   -> Fighting (战斗中)\n"; break;
+			case EWorldStateType::IntoScene: std::cout << "[SDK]   -> IntoScene (进入场景)\n"; break;
+			case EWorldStateType::CG: std::cout << "[SDK]   -> CG (CG动画)\n"; break;
+			case EWorldStateType::ChangeScene: std::cout << "[SDK]   -> ChangeScene (切换场景)\n"; break;
+			case EWorldStateType::SkipingCG: std::cout << "[SDK]   -> SkipingCG (跳过CG)\n"; break;
+			case EWorldStateType::GameSystemActived: std::cout << "[SDK]   -> GameSystemActived (游戏系统已激活)\n"; break;
+			default: std::cout << "[SDK]   -> Unknown\n"; break;
+		}
+	}
+	PGUPWasDown = PGUPDown;
 
 	if (InTransitionGuard)
 		return;
