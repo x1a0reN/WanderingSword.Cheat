@@ -653,7 +653,8 @@ namespace
 
 				// 获取角色名字
 				FText Name = UNPCFuncLib::GetNPCNameById(Info->NPCId);
-				std::wstring NameStr = Name.ToString();
+				std::string NameStr8 = Name.ToString();
+				std::wstring NameStr = AsciiToWide(NameStr8);
 
 				GTab0RoleSelectNPCIds.push_back(Info->NPCId);
 				GTab0RoleSelectNames.push_back(NameStr);
@@ -664,6 +665,9 @@ namespace
 		ProcessTeamArray(TeamManager->TeamInfos);
 		ProcessTeamArray(TeamManager->FightTeamInfos);
 	}
+
+	// 前向声明
+	void RefreshTab0BindingsText(APlayerController* PC);
 
 	FTab0HeroContext BuildTab0HeroContext(APlayerController* PC)
 	{
@@ -1197,7 +1201,11 @@ namespace
 				GTab0MoneyMultiplierLastPercent = -1.0f;
 				GTab0SkillExpMultiplierLastPercent = -1.0f;
 				GTab0ManaCostMultiplierLastPercent = -1.0f;
-				std::cout << "[SDK] Tab0 Role changed to: " << GTab0RoleSelectNames[CurRoleIdx].c_str() << "\n";
+				// 输出角色名字（窄字符）
+				std::string NarrowName;
+				const auto& WideName = GTab0RoleSelectNames[CurRoleIdx];
+				for (wchar_t wc : WideName) NarrowName += static_cast<char>(wc);
+				std::cout << "[SDK] Tab0 Role changed to: " << NarrowName.c_str() << "\n";
 			}
 		}
 
