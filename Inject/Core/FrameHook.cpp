@@ -798,7 +798,13 @@ namespace
 			LastItemNoDecrease = Config.ItemNoDecrease;
 		}
 
-		SetItemGainMultiplierHookValue(Config.ItemGainMultiplierValue);
+		// 只在倍率值变化时更新
+		static int32 LastItemGainMultiplierValue = 1;
+		if (Config.ItemGainMultiplierValue != LastItemGainMultiplierValue)
+		{
+			SetItemGainMultiplierHookValue(Config.ItemGainMultiplierValue);
+			LastItemGainMultiplierValue = Config.ItemGainMultiplierValue;
+		}
 
 		const bool WantItemGainMultiplierHook = Config.ItemGainMultiplier && Config.ItemGainMultiplierValue > 1;
 		static bool LastItemGainMultiplierHook = false;
