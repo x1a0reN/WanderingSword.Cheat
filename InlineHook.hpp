@@ -1006,10 +1006,6 @@ private:
                 return false;
             }
 
-            if (decoded.UsesRipRelative || decoded.UsesRelativeControlFlow) {
-                return false;
-            }
-
             if (decoded.Length == 0 || total + decoded.Length > available) {
                 return false;
             }
@@ -1286,7 +1282,7 @@ public:
 
         size_t patchSize = 0;
         if (!CalculatePatchSize(prologueBytes, sizeof(prologueBytes), minPatchRequired, patchSize)) {
-            LOGE_STREAM("InlineHook") << "[InlineHook] Unsupported/unsafe prologue, abort install\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to calculate patch size (decode/boundary), abort install\n";
             VirtualFree(reinterpret_cast<void*>(trampolineAddr), 0, MEM_RELEASE);
             return false;
         }
