@@ -11,6 +11,7 @@
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
 #include "SDK/BPEntry_Item_classes.hpp"
+#include "SDK/BP_ItemGridWDT_classes.hpp"
 #include "SDK/JH_structs.hpp"
 #include "Logging.hpp"
 

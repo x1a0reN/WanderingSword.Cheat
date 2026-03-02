@@ -9,6 +9,7 @@
 #include "GCManager.hpp"
 #include "WidgetUtils.hpp"
 #include "SDK/BPEntry_Item_classes.hpp"
+#include "SDK/BPEntry_Item_WDT_classes.hpp"
 #include "SDK/BPVE_JHTips_Item_classes.hpp"
 #include "SDK/BPVE_TipsBlock_classes.hpp"
 #include "Logging.hpp"
@@ -16,6 +17,7 @@
 namespace
 {
 	UBPVE_JHTips_Item_C* GStandaloneItemTipWidget = nullptr;
+	std::vector<UItemInfoSpec*> GCurrentPageSpecs;
 	constexpr int32 kItemTipZOrder = 20050;
 	constexpr bool kVerboseItemHoverLogs = false;
 	constexpr float kItemTipDefaultWidth = 520.0f;
@@ -613,91 +615,178 @@ void RefreshItemPage()
 	if (GItemCurrentPage < 0)
 		GItemCurrentPage = 0;
 
-	int32 startIdx = GItemCurrentPage * ITEMS_PER_PAGE;
-	for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
+	const int32 StartIdx = GItemCurrentPage * ITEMS_PER_PAGE;
+	for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 	{
+		GItemSlotButtons[i] = nullptr;
+		GItemSlotImages[i] = nullptr;
+		GItemSlotQualityBorders[i] = nullptr;
+		GItemSlotEntryWidgets[i] = nullptr;
 		GItemSlotItemIndices[i] = -1;
-		auto* Btn = GItemSlotButtons[i];
-		auto* Img = GItemSlotImages[i];
-		auto* Border = GItemSlotQualityBorders[i];
-		auto* EntryWidget = GItemSlotEntryWidgets[i];
-		UImage* MainBorder = nullptr;
+		GItemSlotWasPressed[i] = false;
+	}
 
-		if (Btn && !IsSafeLiveObjectOfClass(static_cast<UObject*>(Btn), UButton::StaticClass()))
+	UListView* ListView = GItemListView;
+	if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UListView::StaticClass()))
+	{
+		GItemListView = nullptr;
+		GItemGridPanel = nullptr;
+	}
+	else
+	{
+		for (UItemInfoSpec* Spec : GCurrentPageSpecs)
 		{
-			GItemSlotButtons[i] = nullptr;
-			Btn = nullptr;
+			if (Spec && IsSafeLiveObject(static_cast<UObject*>(Spec)))
+				ClearGCRoot(static_cast<UObject*>(Spec));
 		}
-		if (Img && !IsSafeLiveObjectOfClass(static_cast<UObject*>(Img), UImage::StaticClass()))
+		GCurrentPageSpecs.clear();
+
+		std::vector<int32> PageItemIndices;
+		PageItemIndices.reserve(ITEMS_PER_PAGE);
+		int32 BuiltSlots = 0;
+		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 		{
-			GItemSlotImages[i] = nullptr;
-			Img = nullptr;
-		}
-		if (Border && !IsSafeLiveObjectOfClass(static_cast<UObject*>(Border), UImage::StaticClass()))
-		{
-			GItemSlotQualityBorders[i] = nullptr;
-			Border = nullptr;
-		}
-		if (EntryWidget && !IsSafeLiveObject(static_cast<UObject*>(EntryWidget)))
-		{
-			GItemSlotEntryWidgets[i] = nullptr;
-			EntryWidget = nullptr;
+			const int32 FiltIdx = StartIdx + i;
+			if (FiltIdx < 0 || FiltIdx >= static_cast<int32>(GFilteredIndices.size()))
+				continue;
+
+			const int32 ItemIdx = GFilteredIndices[FiltIdx];
+			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
+				continue;
+
+			const CachedItem& CI = GAllItems[ItemIdx];
+			UItemInfoSpec* Spec = UItemFuncLib::MakeItemInfoSpec(CI.DefId, 1, EItemRandPoolType::None);
+			if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Spec), UItemInfoSpec::StaticClass()))
+				continue;
+
+			MarkAsGCRoot(static_cast<UObject*>(Spec));
+			GCurrentPageSpecs.push_back(Spec);
+			PageItemIndices.push_back(ItemIdx);
+			++BuiltSlots;
 		}
 
-		if (EntryWidget && EntryWidget->IsA(UJHNeoUIItemEntry::StaticClass()))
+		ListView->ClearListItems();
+		for (UItemInfoSpec* Spec : GCurrentPageSpecs)
 		{
-			auto* Entry = static_cast<UJHNeoUIItemEntry*>(EntryWidget);
-			if (Entry->ItemDisplay && Entry->ItemDisplay->CMP && Entry->ItemDisplay->CMP->IMG_Border)
+			if (Spec && IsSafeLiveObject(static_cast<UObject*>(Spec)))
+				ListView->AddItem(static_cast<UObject*>(Spec));
+		}
+		ListView->ScrollToTop();
+		ListView->RequestRefresh();
+		ListView->RegenerateAllEntries();
+		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UNeoUIListView::StaticClass()))
+		{
+			auto* NeoList = static_cast<UNeoUIListView*>(ListView);
+			NeoList->EVT_InitOnce();
+			UJHNeoUIUtilLib::NeoUIListRender(NeoList);
+			ListView->RequestRefresh();
+			ListView->RegenerateAllEntries();
+		}
+
+		const int32 NumItemsInList = ListView->GetNumItems();
+		const TArray<UUserWidget*> Displayed = ListView->GetDisplayedEntryWidgets();
+		const int32 DisplayedNum = Displayed.Num();
+		const int32 MappedNum = static_cast<int32>(PageItemIndices.size());
+
+		auto BindEntryToSlot = [&](int32 Slot, UUserWidget* EntryWidget, int32 ItemIdx) -> bool
+		{
+			if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
+				return false;
+			if (!IsSafeLiveObject(static_cast<UObject*>(EntryWidget)))
+				return false;
+			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
+				return false;
+
+			GItemSlotItemIndices[Slot] = ItemIdx;
+			GItemSlotEntryWidgets[Slot] = EntryWidget;
+			GItemSlotWasPressed[Slot] = false;
+
+			UJHGPCBtn_C* BtnJHItem = nullptr;
+			UJHGPCBtn_ActiveBG_C* ActiveBG = nullptr;
+			UJHItemDisplayElement* ItemDisplay = nullptr;
+			if (EntryWidget->IsA(UBPEntry_Item_WDT_C::StaticClass()))
 			{
-				auto* CandidateMainBorder = static_cast<UImage*>(Entry->ItemDisplay->CMP->IMG_Border);
-				if (CandidateMainBorder &&
-					IsSafeLiveObjectOfClass(static_cast<UObject*>(CandidateMainBorder), UImage::StaticClass()))
-					MainBorder = CandidateMainBorder;
+				auto* Entry = static_cast<UBPEntry_Item_WDT_C*>(EntryWidget);
+				BtnJHItem = Entry ? Entry->BTN_JHItem : nullptr;
+				ActiveBG = Entry ? Entry->JHGPCBtn_ActiveBG : nullptr;
+				ItemDisplay = Entry ? Entry->ItemDisplay : nullptr;
 			}
-		}
-
-		if (!Btn || !IsSafeLiveObjectOfClass(static_cast<UObject*>(Btn), UButton::StaticClass()))
-			continue;
-
-		int32 filtIdx = startIdx + i;
-		if (filtIdx < (int32)GFilteredIndices.size())
-		{
-			int32 itemIdx = GFilteredIndices[filtIdx];
-			GItemSlotItemIndices[i] = itemIdx;
-			CachedItem& CI = GAllItems[itemIdx];
-
-			Btn->SetIsEnabled(true);
-			Btn->SetVisibility(ESlateVisibility::Visible);
-			if (EntryWidget)
+			else if (EntryWidget->IsA(UBPEntry_Item_C::StaticClass()))
 			{
-				EntryWidget->SetVisibility(ESlateVisibility::Visible);
-				EntryWidget->SetIsEnabled(true);
+				auto* Entry = static_cast<UBPEntry_Item_C*>(EntryWidget);
+				BtnJHItem = Entry ? Entry->BTN_JHItem : nullptr;
+				ActiveBG = Entry ? Entry->JHGPCBtn_ActiveBG : nullptr;
+				ItemDisplay = Entry ? Entry->ItemDisplay : nullptr;
+			}
+			else
+			{
+				return false;
 			}
 
-			wchar_t Tip[96] = {};
-			swprintf_s(Tip, 96, L"%s [%d]", CI.Name, CI.DefId);
-			Btn->SetToolTipText(MakeText(Tip));
+			UImage* MainBorder = nullptr;
+			if (ItemDisplay && ItemDisplay->CMP)
+			{
+				auto* Display = ItemDisplay->CMP;
+				Display->SetVisibility(ESlateVisibility::HitTestInvisible);
+				ItemDisplay->SetVisibility(ESlateVisibility::HitTestInvisible);
 
-			if (Img)
+				if (Display->IMG_Item &&
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(Display->IMG_Item), UImage::StaticClass()))
+					GItemSlotImages[Slot] = static_cast<UImage*>(Display->IMG_Item);
+
+				if (Display->IMG_QualityBorder &&
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(Display->IMG_QualityBorder), UImage::StaticClass()))
+					GItemSlotQualityBorders[Slot] = static_cast<UImage*>(Display->IMG_QualityBorder);
+
+				if (Display->IMG_Border &&
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(Display->IMG_Border), UImage::StaticClass()))
+					MainBorder = static_cast<UImage*>(Display->IMG_Border);
+
+				if (Display->TXT_Count)
+					Display->TXT_Count->SetVisibility(ESlateVisibility::Collapsed);
+			}
+
+			if (ActiveBG && IsSafeLiveObject(static_cast<UObject*>(ActiveBG)))
+				ActiveBG->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+			if (BtnJHItem && IsSafeLiveObject(static_cast<UObject*>(BtnJHItem)))
+			{
+				if (ItemDisplay)
+					BtnJHItem->RegisterInternalActiveDisplay(static_cast<UWidget*>(ItemDisplay));
+
+				if (BtnJHItem->BtnMain &&
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(BtnJHItem->BtnMain), UButton::StaticClass()))
+					GItemSlotButtons[Slot] = static_cast<UButton*>(BtnJHItem->BtnMain);
+			}
+
+			const CachedItem& CI = GAllItems[ItemIdx];
+			if (GItemSlotButtons[Slot])
+			{
+				wchar_t Tip[96] = {};
+				swprintf_s(Tip, 96, L"%s [%d]", CI.Name, CI.DefId);
+				GItemSlotButtons[Slot]->SetToolTipText(MakeText(Tip));
+				GItemSlotButtons[Slot]->SetIsEnabled(true);
+			}
+
+			if (GItemSlotImages[Slot])
 			{
 				if (CI.HasIcon)
 				{
 					UTexture2D* IconTex = ResolveTextureFromSoftData(CI.IconData);
 					if (IconTex &&
-						IsSafeLiveObjectOfClass(static_cast<UObject*>(IconTex), UTexture2D::StaticClass()) &&
-						IsSafeLiveObjectOfClass(static_cast<UObject*>(Img), UImage::StaticClass()))
+						IsSafeLiveObjectOfClass(static_cast<UObject*>(IconTex), UTexture2D::StaticClass()))
 					{
-						Img->SetBrushFromTexture(IconTex, true);
-						Img->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+						GItemSlotImages[Slot]->SetBrushFromTexture(IconTex, true);
+						GItemSlotImages[Slot]->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 					}
 					else
 					{
-						Img->SetVisibility(ESlateVisibility::Collapsed);
+						GItemSlotImages[Slot]->SetVisibility(ESlateVisibility::Collapsed);
 					}
 				}
 				else
 				{
-					Img->SetVisibility(ESlateVisibility::Collapsed);
+					GItemSlotImages[Slot]->SetVisibility(ESlateVisibility::Collapsed);
 				}
 			}
 
@@ -710,42 +799,229 @@ void RefreshItemPage()
 				MainBorder->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 			}
 
-			if (Border)
+			if (GItemSlotQualityBorders[Slot])
 			{
 				UTexture2D* QTex = GetItemQualityBorderTexture(static_cast<uint8>(SafeQuality));
 				if (QTex &&
-					IsSafeLiveObjectOfClass(static_cast<UObject*>(QTex), UTexture2D::StaticClass()) &&
-					IsSafeLiveObjectOfClass(static_cast<UObject*>(Border), UImage::StaticClass()))
+					IsSafeLiveObjectOfClass(static_cast<UObject*>(QTex), UTexture2D::StaticClass()))
 				{
-					Border->SetBrushFromTexture(QTex, true);
-					Border->SetColorAndOpacity(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });
-					Border->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+					GItemSlotQualityBorders[Slot]->SetBrushFromTexture(QTex, true);
+					GItemSlotQualityBorders[Slot]->SetColorAndOpacity(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });
+					GItemSlotQualityBorders[Slot]->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 				}
 				else
 				{
-					Border->SetVisibility(ESlateVisibility::Collapsed);
+					GItemSlotQualityBorders[Slot]->SetVisibility(ESlateVisibility::Collapsed);
+				}
+			}
+
+			return true;
+		};
+
+		int32 SlotCount = 0;
+		const int32 DisplayMapCount = (DisplayedNum < MappedNum) ? DisplayedNum : MappedNum;
+		for (int32 i = 0; i < DisplayMapCount && i < ITEMS_PER_PAGE; ++i)
+		{
+			if (BindEntryToSlot(i, Displayed[i], PageItemIndices[i]))
+				++SlotCount;
+		}
+
+		int32 ScanMapped = 0;
+		int32 ScanFound = 0;
+		int32 ScanInGrid = 0;
+		int32 OrderMapped = 0;
+		if (SlotCount < MappedNum)
+		{
+			std::unordered_map<UObject*, int32> SpecToSlot;
+			SpecToSlot.reserve(GCurrentPageSpecs.size());
+			for (int32 i = 0; i < static_cast<int32>(GCurrentPageSpecs.size()) && i < ITEMS_PER_PAGE; ++i)
+			{
+				UItemInfoSpec* Spec = GCurrentPageSpecs[static_cast<size_t>(i)];
+				if (Spec && IsSafeLiveObject(static_cast<UObject*>(Spec)))
+					SpecToSlot.emplace(static_cast<UObject*>(Spec), i);
+			}
+
+			UObject* WorldCtx = static_cast<UObject*>(UWorld::GetWorld());
+			if (!WorldCtx)
+				WorldCtx = static_cast<UObject*>(GetCurrentGameInstance());
+			if (WorldCtx && !SpecToSlot.empty())
+			{
+				struct ViewRect
+				{
+					float MinX = 0.0f;
+					float MaxX = 0.0f;
+					float MinY = 0.0f;
+					float MaxY = 0.0f;
+					bool Valid = false;
+				};
+				auto TryGetViewportRect = [&](UWidget* Widget, ViewRect& Out) -> bool
+				{
+					if (!Widget || !IsSafeLiveObject(static_cast<UObject*>(Widget)))
+						return false;
+
+					const FGeometry Geo = Widget->GetCachedGeometry();
+					const FVector2D Size = USlateBlueprintLibrary::GetLocalSize(Geo);
+					if (Size.X <= 1.0f || Size.Y <= 1.0f)
+						return false;
+
+					FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+					USlateBlueprintLibrary::LocalToViewport(
+						WorldCtx, Geo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+					USlateBlueprintLibrary::LocalToViewport(
+						WorldCtx, Geo, Size, &PixelBR, &ViewBR);
+
+					Out.MinX = (ViewTL.X < ViewBR.X) ? ViewTL.X : ViewBR.X;
+					Out.MaxX = (ViewTL.X > ViewBR.X) ? ViewTL.X : ViewBR.X;
+					Out.MinY = (ViewTL.Y < ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+					Out.MaxY = (ViewTL.Y > ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+					Out.Valid = true;
+					return true;
+				};
+				auto IntersectsRect = [](const ViewRect& A, const ViewRect& B) -> bool
+				{
+					if (!A.Valid || !B.Valid)
+						return false;
+					if (A.MaxX < B.MinX || B.MaxX < A.MinX)
+						return false;
+					if (A.MaxY < B.MinY || B.MaxY < A.MinY)
+						return false;
+					return true;
+				};
+
+				ViewRect GridRect{};
+				const bool HasGridRect = TryGetViewportRect(static_cast<UWidget*>(GItemGridPanel), GridRect);
+
+				TArray<UUserWidget*> FoundWdtEntries;
+				TArray<UUserWidget*> FoundLegacyEntries;
+				UWidgetBlueprintLibrary::GetAllWidgetsOfClass(
+					WorldCtx, &FoundWdtEntries, UBPEntry_Item_WDT_C::StaticClass(), false);
+				UWidgetBlueprintLibrary::GetAllWidgetsOfClass(
+					WorldCtx, &FoundLegacyEntries, UBPEntry_Item_C::StaticClass(), false);
+				ScanFound = FoundWdtEntries.Num() + FoundLegacyEntries.Num();
+
+				bool SlotUsed[ITEMS_PER_PAGE] = {};
+				for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+					SlotUsed[i] = (GItemSlotEntryWidgets[i] != nullptr);
+
+				std::unordered_set<uintptr_t> SeenEntries;
+				std::vector<UUserWidget*> CandidateEntries;
+				CandidateEntries.reserve(static_cast<size_t>(ScanFound));
+				auto PushCandidate = [&](UUserWidget* W)
+				{
+					if (!IsSafeLiveObject(static_cast<UObject*>(W)))
+						return;
+
+					const uintptr_t Key = reinterpret_cast<uintptr_t>(W);
+					if (SeenEntries.find(Key) != SeenEntries.end())
+						return;
+					SeenEntries.insert(Key);
+
+					if (HasGridRect)
+					{
+						ViewRect EntryRect{};
+						if (!TryGetViewportRect(static_cast<UWidget*>(W), EntryRect))
+							return;
+						if (!IntersectsRect(GridRect, EntryRect))
+							return;
+					}
+
+					CandidateEntries.push_back(W);
+				};
+				for (UUserWidget* W : FoundWdtEntries) PushCandidate(W);
+				for (UUserWidget* W : FoundLegacyEntries) PushCandidate(W);
+				ScanInGrid = static_cast<int32>(CandidateEntries.size());
+
+				for (UUserWidget* Entry : CandidateEntries)
+				{
+					if (!Entry->IsA(UNeoUIReusableVisualEntry::StaticClass()))
+						continue;
+
+					auto* Reusable = static_cast<UNeoUIReusableVisualEntry*>(Entry);
+					UObject* BoundObj = Reusable ? Reusable->GetBindedDataObj() : nullptr;
+					auto It = SpecToSlot.find(BoundObj);
+					if (It == SpecToSlot.end())
+						continue;
+
+					const int32 Slot = It->second;
+					if (Slot < 0 || Slot >= ITEMS_PER_PAGE || SlotUsed[Slot])
+						continue;
+
+					const int32 ItemIdx = PageItemIndices[static_cast<size_t>(Slot)];
+					if (BindEntryToSlot(Slot, Entry, ItemIdx))
+					{
+						SlotUsed[Slot] = true;
+						++ScanMapped;
+					}
+				}
+
+				// 兜底：按界面位置(先Y后X)强行映射到当前页槽位，至少保证图标/tooltip/点击一致。
+				if (ScanMapped < MappedNum && !CandidateEntries.empty())
+				{
+					struct EntryPos
+					{
+						UUserWidget* Entry = nullptr;
+						float X = 0.0f;
+						float Y = 0.0f;
+					};
+					std::vector<EntryPos> Ordered;
+					Ordered.reserve(CandidateEntries.size());
+
+					for (UUserWidget* Entry : CandidateEntries)
+					{
+						ViewRect EntryRect{};
+						if (!TryGetViewportRect(static_cast<UWidget*>(Entry), EntryRect))
+							continue;
+						if (HasGridRect && !IntersectsRect(GridRect, EntryRect))
+							continue;
+
+						EntryPos P{};
+						P.Entry = Entry;
+						P.X = EntryRect.MinX;
+						P.Y = EntryRect.MinY;
+						Ordered.push_back(P);
+					}
+
+					std::stable_sort(
+						Ordered.begin(), Ordered.end(),
+						[](const EntryPos& A, const EntryPos& B)
+						{
+							const float dy = A.Y - B.Y;
+							if (dy > 1.5f || dy < -1.5f)
+								return A.Y < B.Y;
+							return A.X < B.X;
+						});
+
+					int32 OrderIdx = 0;
+					for (const EntryPos& P : Ordered)
+					{
+						while (OrderIdx < MappedNum && OrderIdx < ITEMS_PER_PAGE && SlotUsed[OrderIdx])
+							++OrderIdx;
+						if (OrderIdx >= MappedNum || OrderIdx >= ITEMS_PER_PAGE)
+							break;
+
+						const int32 ItemIdx = PageItemIndices[static_cast<size_t>(OrderIdx)];
+						if (BindEntryToSlot(OrderIdx, P.Entry, ItemIdx))
+						{
+							SlotUsed[OrderIdx] = true;
+							++OrderMapped;
+						}
+						++OrderIdx;
+					}
 				}
 			}
 		}
-		else
-		{
-			Btn->SetIsEnabled(false);
-			Btn->SetVisibility(ESlateVisibility::Visible);
-			if (EntryWidget)
-			{
-				EntryWidget->SetVisibility(ESlateVisibility::Visible);
-				EntryWidget->SetIsEnabled(false);
-			}
-			Btn->SetToolTipText(MakeText(L""));
-			if (Img)
-				Img->SetVisibility(ESlateVisibility::Collapsed);
-			if (Border)
-				Border->SetVisibility(ESlateVisibility::Collapsed);
-			if (MainBorder)
-				MainBorder->SetVisibility(ESlateVisibility::Collapsed);
-		}
 
-		GItemSlotWasPressed[i] = false;
+		LOGI_STREAM("ItemBrowser")
+			<< "[SDK] ItemGrid refresh: page=" << (GItemCurrentPage + 1)
+			<< "/" << GItemTotalPages
+			<< " dataSlots=" << BuiltSlots
+			<< " listItems=" << NumItemsInList
+			<< " displayedEntries=" << DisplayedNum
+			<< " mappedEntries=" << (SlotCount + ScanMapped + OrderMapped)
+			<< " scanFound=" << ScanFound
+			<< " scanInGrid=" << ScanInGrid
+			<< " scanMapped=" << ScanMapped
+			<< " orderMapped=" << OrderMapped << "\n";
 	}
 
 	if (GItemPageLabel)
@@ -900,10 +1176,24 @@ void PollItemBrowserHoverTips()
 					bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(Entry));
 					if (bHovered) ++HoverByEntryCount;
 				}
-				if (!bHovered && EntryValid && Entry->IsA(UBPEntry_Item_C::StaticClass()))
+				if (!bHovered && EntryValid &&
+					(Entry->IsA(UBPEntry_Item_C::StaticClass()) || Entry->IsA(UBPEntry_Item_WDT_C::StaticClass())))
 				{
-					auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
-					auto* GpcBtn = EntryBP ? EntryBP->BTN_JHItem : nullptr;
+					UJHGPCBtn_C* GpcBtn = nullptr;
+					UJHItemDisplayElement* ItemDisplay = nullptr;
+					if (Entry->IsA(UBPEntry_Item_WDT_C::StaticClass()))
+					{
+						auto* EntryWdt = static_cast<UBPEntry_Item_WDT_C*>(Entry);
+						GpcBtn = EntryWdt ? EntryWdt->BTN_JHItem : nullptr;
+						ItemDisplay = EntryWdt ? EntryWdt->ItemDisplay : nullptr;
+					}
+					else
+					{
+						auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
+						GpcBtn = EntryBP ? EntryBP->BTN_JHItem : nullptr;
+						ItemDisplay = EntryBP ? EntryBP->ItemDisplay : nullptr;
+					}
+
 					if (IsSafeLiveObject(static_cast<UObject*>(GpcBtn)))
 					{
 						bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(GpcBtn));
@@ -916,16 +1206,16 @@ void PollItemBrowserHoverTips()
 						}
 					}
 
-					if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(EntryBP->ItemDisplay)))
+					if (!bHovered && IsSafeLiveObject(static_cast<UObject*>(ItemDisplay)))
 					{
-						bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(EntryBP->ItemDisplay));
+						bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(ItemDisplay));
 						if (bHovered) ++HoverByDisplayElemCount;
 					}
 
-					if (!bHovered && EntryBP->ItemDisplay &&
-						IsSafeLiveObject(static_cast<UObject*>(EntryBP->ItemDisplay->CMP)))
+					if (!bHovered && ItemDisplay &&
+						IsSafeLiveObject(static_cast<UObject*>(ItemDisplay->CMP)))
 					{
-						auto* DisplayCmp = EntryBP->ItemDisplay->CMP;
+						auto* DisplayCmp = ItemDisplay->CMP;
 						bHovered = IsWidgetHoveredWithGeometry(static_cast<UWidget*>(DisplayCmp));
 						if (bHovered) ++HoverByDisplayCmpCount;
 
@@ -1200,6 +1490,13 @@ void PollItemBrowserHoverTips()
 // Clear item browser widget state (called when panel closes)
 void ClearItemBrowserState()
 {
+	for (UItemInfoSpec* Spec : GCurrentPageSpecs)
+	{
+		if (Spec && IsSafeLiveObject(static_cast<UObject*>(Spec)))
+			ClearGCRoot(static_cast<UObject*>(Spec));
+	}
+	GCurrentPageSpecs.clear();
+
 	HideCurrentItemTips();
 	if (GStandaloneItemTipWidget && IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget)))
 	{
@@ -1223,6 +1520,7 @@ void ClearItemBrowserState()
 	GItemAddQuantity = 1;
 
 	GItemGridPanel = nullptr;
+	GItemListView = nullptr;
 	for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
 	{
 		GItemSlotButtons[i] = nullptr;

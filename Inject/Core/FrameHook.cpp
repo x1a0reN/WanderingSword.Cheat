@@ -6,7 +6,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <string>
 
 #include "CheatState.hpp"
 #include "FrameHook.hpp"
@@ -15,7 +14,6 @@
 #include "TabContent.hpp"
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
-#include "SDK/BPEntry_Item_classes.hpp"
 #include "SDK/JH_structs.hpp"
 #include "SDK/JH_parameters.hpp"
 #include "SDK/JH_classes.hpp"
@@ -36,175 +34,6 @@ namespace
 			GPostRenderInFlight.fetch_sub(1, std::memory_order_acq_rel);
 		}
 	};
-
-	using ItemEntryProcessEventFn = void(__fastcall*)(UObject*, UFunction*, void*);
-	VTableHook GItemEntryProcessEventHook;
-	ItemEntryProcessEventFn GOriginalItemEntryProcessEvent = nullptr;
-	bool GItemEntryProcessEventHookInstalled = false;
-
-	bool IsItemEntryClickedEvent(UFunction* Function)
-	{
-		if (!Function)
-			return false;
-
-		const std::string Name = Function->GetName();
-		const bool ClickLike =
-			(Name.find("Clicked") != std::string::npos) ||
-			(Name.find("OnClicked") != std::string::npos) ||
-			(Name.find("BtnClick") != std::string::npos);
-		if (!ClickLike)
-			return false;
-
-		return (Name.find("BTN_JHItem") != std::string::npos) ||
-			(Name.find("JHNeoUIGamepadConfirmButton") != std::string::npos) ||
-			(Name.find("K2Node_ComponentBoundEvent") != std::string::npos);
-	}
-
-	int32 ResolveItemSlotByEntryObject(UObject* EntryObj)
-	{
-		if (!EntryObj)
-			return -1;
-
-		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
-		{
-			auto* Entry = GItemSlotEntryWidgets[i];
-			if (!Entry || !IsSafeLiveObject(static_cast<UObject*>(Entry)))
-				continue;
-
-			auto* EntryObjAtSlot = static_cast<UObject*>(Entry);
-			if (EntryObjAtSlot == EntryObj)
-			{
-				const int32 itemIdx = GItemSlotItemIndices[i];
-				if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
-					return -1;
-				return i;
-			}
-
-			if (!Entry->IsA(UBPEntry_Item_C::StaticClass()))
-				continue;
-
-			auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
-			auto* GpcBtn = EntryBP->BTN_JHItem;
-			if (GpcBtn && IsSafeLiveObject(static_cast<UObject*>(GpcBtn)))
-			{
-				if (static_cast<UObject*>(GpcBtn) == EntryObj)
-				{
-					const int32 itemIdx = GItemSlotItemIndices[i];
-					if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
-						return -1;
-					return i;
-				}
-				if (GpcBtn->BtnMain && IsSafeLiveObject(static_cast<UObject*>(GpcBtn->BtnMain)) &&
-					static_cast<UObject*>(GpcBtn->BtnMain) == EntryObj)
-				{
-					const int32 itemIdx = GItemSlotItemIndices[i];
-					if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
-						return -1;
-					return i;
-				}
-			}
-		}
-		return -1;
-	}
-
-	bool AddItemBySlotFromEvent(int32 Slot, const char* TriggerTag)
-	{
-		if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
-			return false;
-
-		const int32 itemIdx = GItemSlotItemIndices[Slot];
-		if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
-			return false;
-
-		const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
-		CachedItem& Item = GAllItems[itemIdx];
-		UItemFuncLib::AddItem(Item.DefId, Quantity);
-		LOGI_STREAM("FrameHook") << "[SDK] AddItem(" << (TriggerTag ? TriggerTag : "unknown")
-			<< "): slot=" << Slot
-			<< " defId=" << Item.DefId
-			<< " x" << Quantity << "\n";
-		return true;
-	}
-
-	void __fastcall HookedBPEntryItemProcessEvent(UObject* Obj, UFunction* Function, void* Params)
-	{
-		(void)Params;
-		if (GOriginalItemEntryProcessEvent)
-			GOriginalItemEntryProcessEvent(Obj, Function, Params);
-
-		if (!InternalWidgetVisible)
-			return;
-		if (!Obj || !Function)
-			return;
-		if (!IsSafeLiveObject(Obj))
-			return;
-
-		const int32 Slot = ResolveItemSlotByEntryObject(Obj);
-		if (Slot < 0)
-			return;
-		if (!IsItemEntryClickedEvent(Function))
-		{
-			static std::unordered_set<std::string> sSeenItemEventNames;
-			if (sSeenItemEventNames.size() < 32)
-			{
-				const std::string FuncName = Function->GetName();
-				if (sSeenItemEventNames.insert(FuncName).second)
-				{
-					LOGI_STREAM("FrameHook") << "[SDK] ItemEntry ProcessEvent observed: " << FuncName << "\n";
-				}
-			}
-			return;
-		}
-
-		AddItemBySlotFromEvent(Slot, "processevent");
-	}
-
-	void EnsureItemEntryProcessEventHook()
-	{
-		if (GItemEntryProcessEventHookInstalled)
-			return;
-
-		UObject* EntryObj = nullptr;
-		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
-		{
-			auto* Entry = GItemSlotEntryWidgets[i];
-			if (!Entry || !IsSafeLiveObject(static_cast<UObject*>(Entry)))
-				continue;
-			if (!Entry->IsA(UBPEntry_Item_C::StaticClass()))
-				continue;
-
-			auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
-			if (EntryBP->BTN_JHItem && IsSafeLiveObject(static_cast<UObject*>(EntryBP->BTN_JHItem)))
-			{
-				EntryObj = static_cast<UObject*>(EntryBP->BTN_JHItem);
-				break;
-			}
-
-			EntryObj = static_cast<UObject*>(Entry);
-			break;
-		}
-		if (!EntryObj)
-			return;
-
-		GItemEntryProcessEventHook = VTableHook(EntryObj, Offsets::ProcessEventIdx);
-		GOriginalItemEntryProcessEvent = GItemEntryProcessEventHook.Install<ItemEntryProcessEventFn>(HookedBPEntryItemProcessEvent);
-		GItemEntryProcessEventHookInstalled = (GOriginalItemEntryProcessEvent != nullptr);
-		if (GItemEntryProcessEventHookInstalled)
-		{
-			LOGI_STREAM("FrameHook") << "[SDK] ItemEntry ProcessEvent hooked at index " << Offsets::ProcessEventIdx << "\n";
-		}
-	}
-
-	void RemoveItemEntryProcessEventHook()
-	{
-		if (!GItemEntryProcessEventHookInstalled)
-			return;
-
-		GItemEntryProcessEventHook.Remove();
-		GOriginalItemEntryProcessEvent = nullptr;
-		GItemEntryProcessEventHookInstalled = false;
-		LOGI_STREAM("FrameHook") << "[SDK] ItemEntry ProcessEvent unhooked\n";
-	}
 
 	bool EnsureLiveInternalWidgetForFrame()
 	{
@@ -1056,7 +885,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	if (GIsUnloading.load(std::memory_order_relaxed))
 	{
-		RemoveItemEntryProcessEventHook();
 		if (!GUnloadCleanupDone.exchange(true, std::memory_order_acq_rel))
 		{
 			APlayerController* PC = GetFirstLocalPlayerController();
@@ -1219,17 +1047,15 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	ExitWasPressed = ExitPressed;
 
-	// 鈹€鈹€ Item browser per-frame polling 鈹€鈹€
+	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;
-	static bool sItemHoverClickWasDown = false;
-	static int32 sItemHoverPressedSlot = -1;
+	static UObject* sLastConsumedListSelection = nullptr;
 	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
 		const DWORD ItemUiNow = GetTickCount();
 		const bool RunItemUiPoll = (sLastItemUiPollTick == 0) || ((ItemUiNow - sLastItemUiPollTick) >= 16);
 		if (RunItemUiPoll)
 		{
-			EnsureItemEntryProcessEventHook();
 			sLastItemUiPollTick = ItemUiNow;
 			PollCollapsiblePanelsInput();
 
@@ -1379,132 +1205,72 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			}
 			GItemNextWasPressed = NextPressed;
 
-			auto AddItemBySlot = [&](int32 Slot, const char* TriggerTag) -> bool
+			if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemListView), UListView::StaticClass()))
 			{
-				if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
-					return false;
-
-				const int32 itemIdx = GItemSlotItemIndices[Slot];
-				if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
-					return false;
-
-				const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
-				CachedItem& item = GAllItems[itemIdx];
-				UItemFuncLib::AddItem(item.DefId, Quantity);
-				LOGI_STREAM("FrameHook") << "[SDK] AddItem(" << (TriggerTag ? TriggerTag : "unknown")
-					<< "): slot=" << Slot
-					<< " defId=" << item.DefId
-					<< " x" << Quantity << "\n";
-				return true;
-			};
-
-			bool AddedByButtonEdge = false;
-			for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
-			{
-				auto* Btn = GItemSlotButtons[i];
-				if (!IsSafeLiveObject(static_cast<UObject*>(Btn)))
-					continue;
-
-				bool Pressed = Btn->IsPressed();
-				if (GItemSlotWasPressed[i] && !Pressed)
+				auto AddItemBySlot = [&](int32 Slot, const char* TriggerTag) -> bool
 				{
-					AddedByButtonEdge = AddItemBySlot(i, "button-edge") || AddedByButtonEdge;
+					if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
+						return false;
+					const int32 ItemIdx = GItemSlotItemIndices[Slot];
+					if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
+						return false;
+
+					const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
+					UItemFuncLib::AddItem(GAllItems[ItemIdx].DefId, Quantity);
+					LOGI_STREAM("FrameHook") << "[SDK] AddItem(" << (TriggerTag ? TriggerTag : "slot")
+						<< "): slot=" << Slot
+						<< " defId=" << GAllItems[ItemIdx].DefId
+						<< " x" << Quantity << "\n";
+					return true;
+				};
+
+				UObject* Selected = GItemListView->BP_GetSelectedItem();
+				const bool SelectionValid = IsSafeLiveObjectOfClass(Selected, UItemInfoSpec::StaticClass());
+				const bool SelectionChanged = SelectionValid && (Selected != sLastConsumedListSelection);
+				if (SelectionChanged)
+				{
+					auto* Spec = static_cast<UItemInfoSpec*>(Selected);
+					const int32 DefId = Spec->ItemDefId;
+					if (DefId > 0)
+					{
+						const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
+						UItemFuncLib::AddItem(DefId, Quantity);
+						LOGI_STREAM("FrameHook") << "[SDK] AddItem(list-click): defId=" << DefId
+							<< " x" << Quantity << "\n";
+					}
+					GItemListView->BP_ClearSelection();
+					sLastConsumedListSelection = Selected;
 				}
-				GItemSlotWasPressed[i] = Pressed;
-			}
+				else if (!SelectionValid)
+				{
+					sLastConsumedListSelection = nullptr;
+				}
 
-			auto IsGameWindowForeground = []() -> bool
-			{
-				HWND ForegroundWnd = GetForegroundWindow();
-				if (!ForegroundWnd)
-					return false;
-				wchar_t ForegroundClass[256] = {};
-				GetClassNameW(ForegroundWnd, ForegroundClass, 256);
-				return wcsstr(ForegroundClass, L"UnrealWindow") != nullptr ||
-					wcsstr(ForegroundClass, L"WindowsGame") != nullptr ||
-					wcsstr(ForegroundClass, L"Unity") != nullptr;
-			};
-
-			auto ResolveHoveredSlotByGeometry = [&]() -> int32
-			{
-				UWorld* World = UWorld::GetWorld();
-				if (!World)
-					return -1;
-
-				UObject* ViewportContext = static_cast<UObject*>(World);
-				const FVector2D MouseVP = UWidgetLayoutLibrary::GetMousePositionOnViewport(ViewportContext);
-
+				// 兜底：若 ListView selection 流程失效，回退到按钮按下/抬起边沿检测，保障左键点击可用。
 				for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 				{
-					const int32 itemIdx = GItemSlotItemIndices[i];
-					if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+					auto* Btn = GItemSlotButtons[i];
+					if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Btn), UButton::StaticClass()))
 						continue;
 
-					UWidget* SlotWidget = nullptr;
-					auto* Entry = GItemSlotEntryWidgets[i];
-					if (Entry && IsSafeLiveObject(static_cast<UObject*>(Entry)))
-						SlotWidget = static_cast<UWidget*>(Entry);
-					else
-					{
-						auto* Btn = GItemSlotButtons[i];
-						if (Btn && IsSafeLiveObject(static_cast<UObject*>(Btn)))
-							SlotWidget = static_cast<UWidget*>(Btn);
-					}
-					if (!SlotWidget || !IsSafeLiveObject(static_cast<UObject*>(SlotWidget)))
-						continue;
-
-					const FGeometry SlotGeo = SlotWidget->GetCachedGeometry();
-					const FVector2D SlotSize = USlateBlueprintLibrary::GetLocalSize(SlotGeo);
-					if (SlotSize.X <= 1.0f || SlotSize.Y <= 1.0f)
-						continue;
-
-					FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
-					USlateBlueprintLibrary::LocalToViewport(
-						ViewportContext, SlotGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
-					USlateBlueprintLibrary::LocalToViewport(
-						ViewportContext, SlotGeo, SlotSize, &PixelBR, &ViewBR);
-
-					const float MinX = (ViewTL.X < ViewBR.X) ? ViewTL.X : ViewBR.X;
-					const float MaxX = (ViewTL.X > ViewBR.X) ? ViewTL.X : ViewBR.X;
-					const float MinY = (ViewTL.Y < ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
-					const float MaxY = (ViewTL.Y > ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
-					if (MouseVP.X >= MinX && MouseVP.X <= MaxX && MouseVP.Y >= MinY && MouseVP.Y <= MaxY)
-						return i;
+					const bool Pressed = Btn->IsPressed();
+					if (GItemSlotWasPressed[i] && !Pressed)
+						AddItemBySlot(i, "button-edge");
+					GItemSlotWasPressed[i] = Pressed;
 				}
-				return -1;
-			};
-
-			// 兜底：仅允许“真实格子控件悬停 + 同一槽位按下抬起”触发，避免矩形命中误触。
-			const bool LeftDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-			const int32 HoveredSlot = IsGameWindowForeground() ? ResolveHoveredSlotByGeometry() : -1;
-			if (LeftDown && !sItemHoverClickWasDown)
-			{
-				sItemHoverPressedSlot = HoveredSlot;
 			}
-			else if (!LeftDown && sItemHoverClickWasDown)
-			{
-				if (!AddedByButtonEdge &&
-					sItemHoverPressedSlot >= 0 &&
-					HoveredSlot >= 0 &&
-					HoveredSlot == sItemHoverPressedSlot)
-				{
-					AddItemBySlot(HoveredSlot, "hover-hit");
-				}
-				sItemHoverPressedSlot = -1;
-			}
-			sItemHoverClickWasDown = LeftDown;
 		}
 	}
 	else
 	{
-		RemoveItemEntryProcessEventHook();
 		sLastItemUiPollTick = 0;
-		sItemHoverClickWasDown = false;
-		sItemHoverPressedSlot = -1;
+		sLastConsumedListSelection = nullptr;
 		GItemPrevWasPressed = false;
 		GItemNextWasPressed = false;
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 			GItemSlotWasPressed[i] = false;
+		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemListView), UListView::StaticClass()))
+			GItemListView->BP_ClearSelection();
 	}
 
 	const bool CanReadTab1FromUI =
@@ -1540,7 +1306,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			sLastHoverPollTick = HoverPollNow;
 			// 临时禁用：用于验证物品 Tab 悬浮 Tip 轮询是否为卡顿主因
-			// PollItemBrowserHoverTips();
+			PollItemBrowserHoverTips();
 		}
 	}
 

@@ -160,6 +160,16 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	
 	auto* BrowserPanel = CreateCollapsiblePanel(PC, L"物品浏览器");
 	UPanelWidget* BrowserBox = BrowserPanel ? BrowserPanel->CT_Contents : nullptr;
+	if (BrowserBox)
+	{
+		const int32 OldChildren = BrowserBox->GetChildrenCount();
+		if (OldChildren > 0)
+		{
+			BrowserBox->ClearChildren();
+			LOGI_STREAM("Tab1Items")
+				<< "[SDK] ItemBrowser panel cleared template children: " << OldChildren << "\n";
+		}
+	}
 
 	BuildItemCache();
 	GItemQuantityEdit = nullptr;
@@ -413,160 +423,99 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		}
 	}
 
-	GItemGridPanel = static_cast<UUniformGridPanel*>(CreateRawWidget(UUniformGridPanel::StaticClass(), Outer));
-	if (GItemGridPanel)
+	GItemGridPanel = nullptr;
+	GItemListView = nullptr;
+	for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 	{
-		int32 EntryCreatedCount = 0;
-		int32 ValidSlotCount = 0;
-		int32 EntryNullCount = 0;
-		int32 BtnJHItemNullCount = 0;
-		int32 BtnMainNullCount = 0;
-		int32 ItemDisplayNullCount = 0;
-		int32 DisplayCmpNullCount = 0;
-		int32 ImgNullCount = 0;
-		int32 InvalidDetailLogs = 0;
-		constexpr int32 kMaxInvalidDetailLogs = 8;
+		GItemSlotButtons[i] = nullptr;
+		GItemSlotImages[i] = nullptr;
+		GItemSlotQualityBorders[i] = nullptr;
+		GItemSlotEntryWidgets[i] = nullptr;
+		GItemSlotItemIndices[i] = -1;
+		GItemSlotWasPressed[i] = false;
+	}
 
-		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+	UWidget* GridRootWidget = nullptr;
+	UListView* BuiltListView = nullptr;
+	bool bUsingPlainTile = false;
+
+	// 优先使用纯 UTileView，避免 BP_ItemGridWDT 在当前版本下出现 entry 不生成的问题。
+	auto* PlainTile = static_cast<UTileView*>(CreateRawWidget(UTileView::StaticClass(), Outer));
+	if (PlainTile && IsSafeLiveObjectOfClass(static_cast<UObject*>(PlainTile), UTileView::StaticClass()))
+	{
+		GridRootWidget = static_cast<UWidget*>(PlainTile);
+		BuiltListView = static_cast<UListView*>(PlainTile);
+		bUsingPlainTile = true;
+	}
+	else
+	{
+		// 回退到 BP_ItemGridWDT。
+		auto* ItemGridTemplate = static_cast<UObject*>(UBP_ItemGridWDT_C::GetDefaultObj());
+		auto* ItemGrid = static_cast<UBP_ItemGridWDT_C*>(
+			CreateRawWidgetFromTemplate(
+				UBP_ItemGridWDT_C::StaticClass(),
+				Outer,
+				ItemGridTemplate,
+				"Tab1.ItemGridWDT"));
+		if (!ItemGrid)
+			ItemGrid = static_cast<UBP_ItemGridWDT_C*>(CreateRawWidget(UBP_ItemGridWDT_C::StaticClass(), Outer));
+		if (ItemGrid && IsSafeLiveObject(static_cast<UObject*>(ItemGrid)))
 		{
-			GItemSlotButtons[i] = nullptr;
-			GItemSlotImages[i] = nullptr;
-			GItemSlotQualityBorders[i] = nullptr;
-			GItemSlotEntryWidgets[i] = nullptr;
-			GItemSlotItemIndices[i] = -1;
-			GItemSlotWasPressed[i] = false;
+			GridRootWidget = static_cast<UWidget*>(ItemGrid);
+			BuiltListView = static_cast<UListView*>(ItemGrid);
+		}
+	}
+
+	if (GridRootWidget && BuiltListView)
+	{
+		GItemGridPanel = GridRootWidget;
+		GItemListView = BuiltListView;
+		MarkAsGCRoot(static_cast<UObject*>(GridRootWidget));
+
+		// 强制指定 Entry 类，避免错误 entry blueprint 导致显示错乱。
+		UClass* EntryCls = UObject::FindClassFast("BPEntry_Item_WDT_C");
+		if (!EntryCls)
+			EntryCls = UObject::FindClass("BPEntry_Item_WDT_C");
+		if (EntryCls)
+			GItemListView->EntryWidgetClass = EntryCls;
+
+		GItemListView->SetSelectionMode(ESelectionMode::Single);
+		GItemListView->BP_ClearSelection();
+		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemListView), UTileView::StaticClass()))
+		{
+			auto* Tile = static_cast<UTileView*>(GItemListView);
+			Tile->SetEntryWidth(72.0f);
+			Tile->SetEntryHeight(88.0f);
 		}
 
-		GItemGridPanel->SetMinDesiredSlotWidth(68.0f);
-		GItemGridPanel->SetMinDesiredSlotHeight(84.0f);
-		GItemGridPanel->SetSlotPadding(FMargin{ 3.0f, 6.0f, 3.0f, 6.0f });
-		if (BrowserBox) BrowserBox->AddChild(GItemGridPanel);
-		else Container->AddChild(GItemGridPanel);
+		UWidget* GridHostWidget = GridRootWidget;
+		auto* GridHostSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
+		if (GridHostSize)
+		{
+			// TileView 在 VerticalBox 中若无稳定高度，容易布局塌缩为 0，导致不生成可见 Entry。
+			GridHostSize->SetHeightOverride(420.0f);
+			GridHostSize->SetContent(GridRootWidget);
+			GridHostWidget = static_cast<UWidget*>(GridHostSize);
+		}
+
+		if (BrowserBox) BrowserBox->AddChild(GridHostWidget);
+		else Container->AddChild(GridHostWidget);
 		Count++;
-
-		for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
-		{
-			UButton* Btn = nullptr;
-			UImage* Img = nullptr;
-			UImage* QualityBorder = nullptr;
-			UUserWidget* EntryWidget = nullptr;
-
-			auto* Entry = static_cast<UBPEntry_Item_C*>(
-				UWidgetBlueprintLibrary::Create(PC, UBPEntry_Item_C::StaticClass(), PC));
-			if (Entry)
-			{
-				++EntryCreatedCount;
-				MarkAsGCRoot(Entry);
-				EntryWidget = Entry;
-				Entry->Construct();
-
-				if (!Entry->ItemDisplay)
-				{
-					++ItemDisplayNullCount;
-				}
-				else if (!Entry->ItemDisplay->CMP)
-				{
-					++DisplayCmpNullCount;
-				}
-				else
-				{
-					auto* Display = Entry->ItemDisplay->CMP;
-					Img = static_cast<UImage*>(Display->IMG_Item);
-					QualityBorder = static_cast<UImage*>(Display->IMG_QualityBorder);
-					if (!Img)
-						++ImgNullCount;
-
-					if (Display->IMG_SolidBG)
-					{
-						Display->IMG_SolidBG->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-						Display->IMG_SolidBG->SetColorAndOpacity(FLinearColor{ 0.0f, 0.0f, 0.0f, 0.85f });
-					}
-					if (Display->TXT_Count)
-						Display->TXT_Count->SetVisibility(ESlateVisibility::Collapsed);
-
-					// 修复 Hit-Test 遮挡：ItemDisplay/CMP 覆盖在 BTN_JHItem 上方，
-					// 默认 Visible 会拦截鼠标事件，导致 BtnMain 收不到点击。
-					// 设为 SelfHitTestInvisible 使鼠标事件穿透到下方的按钮层。
-					Display->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-					Entry->ItemDisplay->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-				}
-
-				if (Entry->JHGPCBtn_ActiveBG)
-					Entry->JHGPCBtn_ActiveBG->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-
-				if (!Entry->BTN_JHItem)
-				{
-					++BtnJHItemNullCount;
-				}
-				else if (!Entry->BTN_JHItem->BtnMain)
-				{
-					++BtnMainNullCount;
-				}
-				else
-				{
-					Btn = static_cast<UButton*>(Entry->BTN_JHItem->BtnMain);
-				}
-			}
-			else
-			{
-				++EntryNullCount;
-			}
-
-			if (!EntryWidget || !Btn || !Img)
-			{
-				if (InvalidDetailLogs < kMaxInvalidDetailLogs)
-				{
-					LOGW_STREAM("Tab1Items")
-						<< "[SDK] ItemSlot invalid slot=" << i
-						<< " entry=" << (EntryWidget ? "Y" : "N")
-						<< " BTN_JHItem=" << ((Entry && Entry->BTN_JHItem) ? "Y" : "N")
-						<< " BtnMain=" << ((Entry && Entry->BTN_JHItem && Entry->BTN_JHItem->BtnMain) ? "Y" : "N")
-						<< " ItemDisplay=" << ((Entry && Entry->ItemDisplay) ? "Y" : "N")
-						<< " CMP=" << ((Entry && Entry->ItemDisplay && Entry->ItemDisplay->CMP) ? "Y" : "N")
-						<< " IMG_Item=" << (Img ? "Y" : "N")
-						<< "\n";
-					++InvalidDetailLogs;
-				}
-
-				GItemSlotButtons[i] = nullptr;
-				GItemSlotImages[i] = nullptr;
-				GItemSlotQualityBorders[i] = nullptr;
-				GItemSlotEntryWidgets[i] = nullptr;
-				GItemSlotItemIndices[i] = -1;
-				GItemSlotWasPressed[i] = false;
-				continue;
-			}
-
-			int32 Row = i / ITEM_GRID_COLS;
-			int32 Col = i % ITEM_GRID_COLS;
-			GItemGridPanel->AddChildToUniformGrid(static_cast<UWidget*>(EntryWidget), Row, Col);
-
-			GItemSlotButtons[i] = Btn;
-			GItemSlotImages[i] = Img;
-			GItemSlotQualityBorders[i] = QualityBorder;
-			GItemSlotEntryWidgets[i] = EntryWidget;
-			GItemSlotItemIndices[i] = -1;
-			GItemSlotWasPressed[i] = false;
-			++ValidSlotCount;
-		}
-
 		LOGI_STREAM("Tab1Items")
-			<< "[SDK] ItemGrid build summary: totalSlots=" << ITEMS_PER_PAGE
-			<< " entryCreated=" << EntryCreatedCount
-			<< " validSlots=" << ValidSlotCount
-			<< " entryNull=" << EntryNullCount
-			<< " btnJHItemNull=" << BtnJHItemNullCount
-			<< " btnMainNull=" << BtnMainNullCount
-			<< " itemDisplayNull=" << ItemDisplayNullCount
-			<< " displayCmpNull=" << DisplayCmpNullCount
-			<< " imgNull=" << ImgNullCount
-			<< "\n";
-
-		if (ValidSlotCount == 0)
-		{
-			LOGE_STREAM("Tab1Items")
-				<< "[SDK] ItemGrid has no valid slot; BTN_JHItem/BtnMain chain is not usable\n";
-		}
+			<< "[SDK] ItemGrid created: widget=0x" << std::hex << reinterpret_cast<uintptr_t>(GridRootWidget)
+			<< " listView=0x" << std::hex << reinterpret_cast<uintptr_t>(GItemListView)
+			<< " source=" << (bUsingPlainTile ? "PlainTileView" : "BP_ItemGridWDT")
+			<< " entryClass=0x" << std::hex
+			<< reinterpret_cast<uintptr_t>(GItemListView ? GItemListView->EntryWidgetClass.Get() : nullptr)
+			<< " entryClassName="
+			<< ((GItemListView && GItemListView->EntryWidgetClass.Get())
+				? GItemListView->EntryWidgetClass.Get()->GetName().c_str()
+				: "null")
+			<< std::dec << "\n";
+	}
+	else
+	{
+		LOGE_STREAM("Tab1Items") << "[SDK] ItemGrid create failed (BP_ItemGridWDT_C)\n";
 	}
 
 	if (GItemPagerRow)

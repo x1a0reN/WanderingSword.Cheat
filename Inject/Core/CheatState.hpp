@@ -86,7 +86,8 @@ extern bool GItemNextWasPressed;                  // 涓嬩竴椤垫寜閽笂
 extern UHorizontalBox* GItemQuantityRow;          // 娣诲姞鏁伴噺杈撳叆琛屽鍣?
 extern UEditableTextBox* GItemQuantityEdit;       // 娣诲姞鏁伴噺杈撳叆妗?
 extern int32 GItemAddQuantity;                    // 褰撳墠娣诲姞鏁伴噺鍊?
-extern UUniformGridPanel* GItemGridPanel;         // 6x4 鐗╁搧鍥炬爣缃戞牸
+extern UWidget* GItemGridPanel;                   // 物品网格根控件（当前使用 List/TileView）
+extern UListView* GItemListView;                  // 物品网格 ListView（BP_ItemGridWDT）
 extern UButton* GItemSlotButtons[ITEMS_PER_PAGE]; // 24 涓墿鍝佹Ы鎸夐挳
 extern UImage* GItemSlotImages[ITEMS_PER_PAGE];   // 24 涓墿鍝佹Ы鍥炬爣
 extern UImage* GItemSlotQualityBorders[ITEMS_PER_PAGE];

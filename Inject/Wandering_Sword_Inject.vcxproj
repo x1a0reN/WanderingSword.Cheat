@@ -79,6 +79,7 @@
     <ClCompile Include="..\SDK\BPVE_JHConfigVideoItem2_functions.cpp" />
     <ClCompile Include="..\SDK\BPVE_JHConfigVolumeItem2_functions.cpp" />
     <ClCompile Include="..\SDK\BPEntry_Item_functions.cpp" />
+    <ClCompile Include="..\SDK\BP_ItemGridWDT_functions.cpp" />
   </ItemGroup>
 
 
