@@ -180,7 +180,7 @@ namespace
 	// 角色选择下拉框
 	UBPVE_JHConfigVideoItem2_C* GTab0RoleSelectDD = nullptr;
 	std::vector<int32> GTab0RoleSelectNPCIds;      // 对应每个选项的 NPCId
-	std::vector<std::wstring> GTab0RoleSelectNames; // 角色名字
+	std::vector<FText> GTab0RoleSelectNames;       // 角色名字 (FText)
 	int32 GTab0SelectedRoleIdx = -1;                // 当前选中的角色索引
 	int32 GTab0LastSelectedRoleIdx = -1;            // 上一次选中的角色索引
 
@@ -640,14 +640,20 @@ namespace
 		if (!TeamManager)
 			return;
 
-		auto ProcessTeamArray = [&](TArray<UTeamInfo*>& Infos)
+		std::cout << "[SDK] RefreshTab0RoleSelectOptions: TeamInfos count=" << TeamManager->TeamInfos.Num()
+		          << ", FightTeamInfos count=" << TeamManager->FightTeamInfos.Num() << "\n";
+
+		auto ProcessTeamArray = [&](TArray<UTeamInfo*>& Infos, const char* ArrayName)
 		{
 			const int32 N = Infos.Num();
+			std::cout << "[SDK] Processing " << ArrayName << ", count=" << N << "\n";
 			for (int32 i = 0; i < N; ++i)
 			{
 				UTeamInfo* Info = Infos[i];
 				if (!Info || !IsSafeLiveObject(static_cast<UObject*>(Info)))
 					continue;
+				std::cout << "[SDK] " << ArrayName << "[" << i << "]: NPCId=" << Info->NPCId << "\n";
+
 				if (Info->NPCId < 0)
 					continue;
 
@@ -664,19 +670,19 @@ namespace
 				if (bDuplicate)
 					continue;
 
-				// 获取角色名字
+				// 获取角色名字 - 使用 GetNPCNameById 获取正确的名字
 				FText Name = UNPCFuncLib::GetNPCNameById(Info->NPCId);
-				std::string NameStr8 = Name.ToString();
-				std::wstring NameStr = AsciiToWide(NameStr8);
 
 				GTab0RoleSelectNPCIds.push_back(Info->NPCId);
-				GTab0RoleSelectNames.push_back(NameStr);
+				GTab0RoleSelectNames.push_back(Name);
+				std::cout << "[SDK] Added role: NPCId=" << Info->NPCId << "\n";
 			}
 		};
 
 		// 先处理队伍列表，再处理战斗队伍列表
-		ProcessTeamArray(TeamManager->TeamInfos);
-		ProcessTeamArray(TeamManager->FightTeamInfos);
+		ProcessTeamArray(TeamManager->TeamInfos, "TeamInfos");
+		ProcessTeamArray(TeamManager->FightTeamInfos, "FightTeamInfos");
+		std::cout << "[SDK] Total roles found: " << GTab0RoleSelectNPCIds.size() << "\n";
 	}
 
 	// 前向声明
@@ -1204,6 +1210,7 @@ namespace
 		if (GTab0RoleSelectDD && IsValidTab0Dropdown(GTab0RoleSelectDD))
 		{
 			int32 CurRoleIdx = GetComboSelectedIndexFast(GTab0RoleSelectDD->CB_Main);
+			std::cout << "[SDK] PollTab0RoleDropdowns: CurRoleIdx=" << CurRoleIdx << ", LastIdx=" << GTab0LastSelectedRoleIdx << "\n";
 			if (CurRoleIdx >= 0 && CurRoleIdx != GTab0LastSelectedRoleIdx)
 			{
 				GTab0SelectedRoleIdx = CurRoleIdx;
@@ -1214,12 +1221,20 @@ namespace
 				GTab0MoneyMultiplierLastPercent = -1.0f;
 				GTab0SkillExpMultiplierLastPercent = -1.0f;
 				GTab0ManaCostMultiplierLastPercent = -1.0f;
-				// 输出角色名字（窄字符）
-				std::string NarrowName;
-				const auto& WideName = GTab0RoleSelectNames[CurRoleIdx];
-				for (wchar_t wc : WideName) NarrowName += static_cast<char>(wc);
-				std::cout << "[SDK] Tab0 Role changed to: " << NarrowName.c_str() << "\n";
+				// 输出选中的角色信息
+				if (CurRoleIdx >= 0 && CurRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
+				{
+					int32 SelectedNPCId = GTab0RoleSelectNPCIds[CurRoleIdx];
+					const FText& SelectedName = GTab0RoleSelectNames[CurRoleIdx];
+					std::cout << "[SDK] Tab0 Role changed: index=" << CurRoleIdx
+					          << ", NPCId=" << SelectedNPCId
+					          << ", name=" << SelectedName.ToString().c_str() << "\n";
+				}
 			}
+		}
+		else
+		{
+			std::cout << "[SDK] PollTab0RoleDropdowns: GTab0RoleSelectDD=" << (void*)GTab0RoleSelectDD << "\n";
 		}
 
 		auto ReadIndex = [](UBPVE_JHConfigVideoItem2_C* Item) -> int32
@@ -2343,11 +2358,17 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	{
 		GTab0RoleSelectDD->CB_Main->ClearOptions();
 		for (const auto& Name : GTab0RoleSelectNames)
-			GTab0RoleSelectDD->CB_Main->AddOption(FString(Name.c_str()));
+		{
+			// FText.ToString() returns std::string (UTF-8), convert to wstring then to FString
+			std::string NameStr8 = Name.ToString();
+			std::wstring NameStr = AsciiToWide(NameStr8);
+			GTab0RoleSelectDD->CB_Main->AddOption(FString(NameStr.c_str()));
+		}
 		if (GetComboOptionCountFast(GTab0RoleSelectDD->CB_Main) > 0)
 			GTab0RoleSelectDD->CB_Main->SetSelectedIndex(0);
 		GTab0SelectedRoleIdx = 0;
 		GTab0LastSelectedRoleIdx = 0;
+		std::cout << "[SDK] Created role dropdown with " << GTab0RoleSelectNames.size() << " options\n";
 	}
 	if (RoleSelectBox)
 		RoleSelectBox->AddChild(GTab0RoleSelectDD);
