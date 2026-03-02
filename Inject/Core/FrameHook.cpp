@@ -134,7 +134,6 @@ namespace
 		bool ItemGainMultiplier = false;
 		int32 ItemGainMultiplierValue = 2;
 		bool AllItemsSellable = false;
-		bool IncludeQuestItems = false;
 		bool DropRate100 = false;
 		bool CraftEffectMultiplier = false;
 		float CraftItemIncrementMultiplier = 2.0f;
@@ -411,7 +410,7 @@ namespace
 
 			const bool IsQuestItem = (Row->ItemType == EItemSubType::QuestItem);
 
-			if (Cfg.AllItemsSellable && (Cfg.IncludeQuestItems || !IsQuestItem))
+			if (Cfg.AllItemsSellable)
 			{
 				Row->bCantSell = false;
 				if (Row->SellPrice <= 0.0f)
@@ -682,13 +681,6 @@ namespace
 			Cfg.AllItemsSellable = NewAllItemsSellable;
 		}
 
-		const bool NewIncludeQuestItems = ReadToggleValue(GTab1IncludeQuestItemsToggle, Cfg.IncludeQuestItems);
-		if (NewIncludeQuestItems != Cfg.IncludeQuestItems)
-		{
-			LOGI_STREAM("FrameHook") << "[SDK] IncludeQuestItems: " << (NewIncludeQuestItems ? "ON" : "OFF") << "\n";
-			Cfg.IncludeQuestItems = NewIncludeQuestItems;
-		}
-
 		const bool NewDropRate100 = ReadToggleValue(GTab1DropRate100Toggle, Cfg.DropRate100);
 		if (NewDropRate100 != Cfg.DropRate100)
 		{
@@ -808,16 +800,6 @@ namespace
 		}
 
 		// 包括任务物品
-		static bool LastIncludeQuestItems = false;
-		if (Config.IncludeQuestItems != LastIncludeQuestItems)
-		{
-			if (Config.IncludeQuestItems)
-				EnableIncludeQuestItems();
-			else
-				DisableIncludeQuestItems();
-			LastIncludeQuestItems = Config.IncludeQuestItems;
-		}
-
 		// 更新全局开关
 		GItemNoDecreaseEnabled.store(Config.ItemNoDecrease, std::memory_order_release);
 

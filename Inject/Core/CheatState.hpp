@@ -106,7 +106,6 @@ extern UBPVE_JHConfigVideoItem2_C* GTab1ItemNoDecreaseToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1ItemGainMultiplierToggle;
 extern UBPVE_JHConfigVolumeItem2_C* GTab1ItemGainMultiplierSlider;
 extern UBPVE_JHConfigVideoItem2_C* GTab1AllItemsSellableToggle;
-extern UBPVE_JHConfigVideoItem2_C* GTab1IncludeQuestItemsToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1DropRate100Toggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1CraftEffectMultiplierToggle;
 extern UBPVE_JHConfigVolumeItem2_C* GTab1CraftItemIncrementSlider;
@@ -157,7 +156,3 @@ void DisableItemGainMultiplierHook();
 // 所有物品可出售
 void EnableAllItemsSellable();
 void DisableAllItemsSellable();
-
-// 包括任务物品
-void EnableIncludeQuestItems();
-void DisableIncludeQuestItems();

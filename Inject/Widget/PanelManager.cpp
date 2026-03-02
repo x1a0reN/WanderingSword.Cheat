@@ -103,7 +103,6 @@ void ClearRuntimeWidgetState()
 	GTab1ItemGainMultiplierToggle = nullptr;
 	GTab1ItemGainMultiplierSlider = nullptr;
 	GTab1AllItemsSellableToggle = nullptr;
-	GTab1IncludeQuestItemsToggle = nullptr;
 	GTab1DropRate100Toggle = nullptr;
 	GTab1CraftEffectMultiplierToggle = nullptr;
 	GTab1CraftItemIncrementSlider = nullptr;

@@ -9,7 +9,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab1ItemGainMultiplierToggle = nullptr;
 	GTab1ItemGainMultiplierSlider = nullptr;
 	GTab1AllItemsSellableToggle = nullptr;
-	GTab1IncludeQuestItemsToggle = nullptr;
 	GTab1DropRate100Toggle = nullptr;
 	GTab1CraftEffectMultiplierToggle = nullptr;
 	GTab1CraftItemIncrementSlider = nullptr;
@@ -32,7 +31,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			if (wcscmp(Title, L"物品不减") == 0) GTab1ItemNoDecreaseToggle = Item;
 			else if (wcscmp(Title, L"物品获得加倍") == 0) GTab1ItemGainMultiplierToggle = Item;
 			else if (wcscmp(Title, L"所有物品可出售") == 0) GTab1AllItemsSellableToggle = Item;
-			else if (wcscmp(Title, L"包括任务物品") == 0) GTab1IncludeQuestItemsToggle = Item;
 			else if (wcscmp(Title, L"掉落率100%") == 0) GTab1DropRate100Toggle = Item;
 			else if (wcscmp(Title, L"锻造制衣效果加倍") == 0) GTab1CraftEffectMultiplierToggle = Item;
 			else if (wcscmp(Title, L"无视物品使用次数") == 0) GTab1IgnoreItemUseCountToggle = Item;
@@ -97,7 +95,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		AddToggle(CoreBox, L"物品不减");
 		AddToggle(CoreBox, L"物品获得加倍");
 		AddToggle(CoreBox, L"所有物品可出售");
-		AddToggle(CoreBox, L"包括任务物品");
 		AddToggle(CoreBox, L"掉落率100%");
 		AddToggle(CoreBox, L"锻造制衣效果加倍");
 
@@ -117,7 +114,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		AddToggle(nullptr, L"物品获得加倍");
 		AddSlider(nullptr, L"加倍倍数");
 		AddToggle(nullptr, L"所有物品可出售");
-		AddToggle(nullptr, L"包括任务物品");
 		AddToggle(nullptr, L"掉落率100%");
 		AddToggle(nullptr, L"锻造制衣效果加倍");
 		AddSlider(nullptr, L"道具增量效果倍率");
@@ -556,8 +552,8 @@ namespace
 
     // 所有物品可出售特征码
     const char* kAllItemsSellablePattern = "80 ?? ?? 3C 75 ?? 32 C0 C3 80 ?? 83 00 00 00 00 0F 94 C0 C3";
-    // 包括任务物品特征码
-    const char* kIncludeQuestItemsPattern = "48 8B ?? 70 80 78 40 3C";
+    // 任务物品可出售特征码
+    const char* kQuestItemsSellablePattern = "48 8B ?? 70 80 78 40 3C";
 
     // 功能：如果 Num < 0，则设为 0（防止负数扣除）
     const unsigned char kItemNoDecreaseTrampolineCode[] = {
@@ -776,25 +772,60 @@ void DisableItemGainMultiplierHook()
     GTab1ItemGainMultiplierHookId = UINT32_MAX;
 }
 
-// 所有物品可出售
+// 所有物品可出售（合并任务物品）
 void EnableAllItemsSellable()
 {
+    uintptr_t foundAddr = 0;
+    uintptr_t foundAddr2 = 0;
+
+    // 1) 搜索所有物品可出售特征码
     if (GAllItemsSellableAddr == 0)
     {
-        uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
+        foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] AllItemsSellable AobScan failed (pattern可能已随版本变化)\n";
             return;
         }
-        GAllItemsSellableAddr = foundAddr + 0x10;  // canSell+10
+        GAllItemsSellableAddr = foundAddr + 0x10;
         LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable found at: 0x" << std::hex << GAllItemsSellableAddr << std::dec << "\n";
     }
+    else
+    {
+        // 已缓存地址，直接使用
+        foundAddr = GAllItemsSellableAddr - 0x10;
+    }
 
-    // ENABLE: mov al, 1; nop (0C 被写成 C1 了，应该是 0C 01 90)
+    // ENABLE: mov al, 1; nop
     const unsigned char enableBytes[] = { 0x0C, 0x01, 0x90 };
     InlineHook::HookManager::WriteMemory(GAllItemsSellableAddr, enableBytes, sizeof(enableBytes));
     LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable enabled\n";
+
+    // 2) 搜索任务物品可出售特征码并启用
+    if (GIncludeQuestItemsAddr == 0)
+    {
+        foundAddr2 = ScanModulePatternRobust("JH-Win64-Shipping.exe", kQuestItemsSellablePattern);
+        if (foundAddr2 == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] QuestItemsSellable AobScan failed\n";
+        }
+        else
+        {
+            GIncludeQuestItemsAddr = foundAddr + 0x6;
+            GIncludeQuestItemsAddr2 = foundAddr2 + 0x7;
+            LOGI_STREAM("Tab1Items") << "[SDK] QuestItemsSellable found at: 0x" << std::hex << foundAddr2 << std::dec << "\n";
+        }
+    }
+
+    // ENABLE: 任务物品可出售
+    if (GIncludeQuestItemsAddr != 0)
+    {
+        const unsigned char enableByte1[] = { 0x0C, 0x01 };
+        const unsigned char enableByte2[] = { 0xFF };
+        InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr, enableByte1, sizeof(enableByte1));
+        InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, enableByte2, sizeof(enableByte2));
+        LOGI_STREAM("Tab1Items") << "[SDK] QuestItemsSellable enabled\n";
+    }
 }
 
 void DisableAllItemsSellable()
@@ -806,41 +837,15 @@ void DisableAllItemsSellable()
     const unsigned char disableBytes[] = { 0x0F, 0x94, 0xC0 };
     InlineHook::HookManager::WriteMemory(GAllItemsSellableAddr, disableBytes, sizeof(disableBytes));
     LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable disabled\n";
-}
 
-// 包括任务物品
-void EnableIncludeQuestItems()
-{
-    if (GIncludeQuestItemsAddr == 0)
+    // DISABLE: 任务物品可出售
+    if (GIncludeQuestItemsAddr != 0)
     {
-        uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIncludeQuestItemsPattern);
-        if (foundAddr == 0)
-        {
-            LOGE_STREAM("Tab1Items") << "[SDK] IncludeQuestItems AobScan failed (pattern可能已随版本变化)\n";
-            return;
-        }
-        GIncludeQuestItemsAddr = foundAddr + 0x6;   // canSell+6
-        GIncludeQuestItemsAddr2 = foundAddr + 0x7; // canSell2+7
-        LOGI_STREAM("Tab1Items") << "[SDK] IncludeQuestItems found at: 0x" << std::hex << foundAddr << std::dec << "\n";
+        const unsigned char disableByte1[] = { 0x32, 0xC0 };
+        const unsigned char disableByte2[] = { 0x3C };
+        InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr, disableByte1, sizeof(disableByte1));
+        InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, disableByte2, sizeof(disableByte2));
+        LOGI_STREAM("Tab1Items") << "[SDK] QuestItemsSellable disabled\n";
     }
-
-    // ENABLE: mov al, 1; 写入FF
-    const unsigned char enableByte1[] = { 0x0C,0x01 };
-    const unsigned char enableByte2[] = { 0xFF };
-    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr, enableByte1, sizeof(enableByte1));
-    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, enableByte2, sizeof(enableByte2));
-    LOGI_STREAM("Tab1Items") << "[SDK] IncludeQuestItems enabled\n";
 }
 
-void DisableIncludeQuestItems()
-{
-    if (GIncludeQuestItemsAddr == 0)
-        return;
-
-    // DISABLE: xor al, al; 写入3C
-    const unsigned char disableByte1[] = { 0x32, 0xC0 };
-    const unsigned char disableByte2[] = { 0x3C };
-    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr, disableByte1, sizeof(disableByte1));
-    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, disableByte2, sizeof(disableByte2));
-    LOGI_STREAM("Tab1Items") << "[SDK] IncludeQuestItems disabled\n";
-}

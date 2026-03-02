@@ -61,7 +61,6 @@ UBPVE_JHConfigVideoItem2_C* GTab1ItemNoDecreaseToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1ItemGainMultiplierToggle = nullptr;
 UBPVE_JHConfigVolumeItem2_C* GTab1ItemGainMultiplierSlider = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1AllItemsSellableToggle = nullptr;
-UBPVE_JHConfigVideoItem2_C* GTab1IncludeQuestItemsToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1DropRate100Toggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1CraftEffectMultiplierToggle = nullptr;
 UBPVE_JHConfigVolumeItem2_C* GTab1CraftItemIncrementSlider = nullptr;
