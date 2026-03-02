@@ -183,23 +183,11 @@ namespace
 		if (!IsLiveComboBox(Combo))
 			return -1;
 
-		const int32 Count = Combo->DefaultOptions.Num();
+		const int32 Count = Combo->GetOptionCount();
 		if (Count <= 0)
 			return -1;
 
-		const FString& Selected = Combo->SelectedOption;
-		const wchar_t* SelectedWs = Selected.CStr();
-		if (!SelectedWs || !SelectedWs[0])
-			return 0;
-
-		for (int32 i = 0; i < Count; ++i)
-		{
-			if (!Combo->DefaultOptions.IsValidIndex(i))
-				continue;
-			if (Combo->DefaultOptions[i] == Selected)
-				return i;
-		}
-		return 0;
+		return Combo->GetSelectedIndex();
 	}
 
 	bool ReadToggleValue(UBPVE_JHConfigVideoItem2_C* Toggle, bool DefaultValue)
