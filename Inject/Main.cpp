@@ -124,6 +124,7 @@ DWORD MainThread(HMODULE Module)
 	// 初始化物品不减 Hook（保存原始字节和分配跳板，但不安装hook）
 	// 偏移地址: 0x1206A70
 	HMODULE hGame = GetModuleHandleA("JH-Win64-Shipping.exe");
+	HANDLE hProcess = GetCurrentProcess();
 	if (hGame)
 	{
 		GChangeItemNumAddr = reinterpret_cast<uintptr_t>(hGame) + 0x1206A70;
@@ -132,14 +133,32 @@ DWORD MainThread(HMODULE Module)
 		// 保存原始代码 (前5字节)
 		std::memcpy(GOriginalChangeItemNumBytes, reinterpret_cast<void*>(GChangeItemNumAddr), 5);
 
-		// 分配跳板内存
-		GHookTrampoline = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		// 在游戏模块附近分配跳板内存 (使用VirtualAllocEx确保在进程内分配)
+		// 尝试在目标地址附近分配：基址+0x10000000
+		uintptr_t PreferredAddr = reinterpret_cast<uintptr_t>(hGame) + 0x10000000;
+		GHookTrampoline = VirtualAllocEx(hProcess, reinterpret_cast<void*>(PreferredAddr), 4096,
+			MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+		// 如果失败，使用任意地址
+		if (!GHookTrampoline)
+		{
+			GHookTrampoline = VirtualAllocEx(hProcess, nullptr, 4096,
+				MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		}
+
 		if (!GHookTrampoline)
 		{
 			std::cout << "[SDK] Failed to allocate trampoline memory\n";
 		}
 		else
 		{
+			std::cout << "[SDK] Trampoline address: " << std::hex << GHookTrampoline << std::dec << "\n";
+
+			// 计算并显示跳转偏移
+			int32_t JmpToTrampolineOffset = static_cast<int32_t>(
+				reinterpret_cast<uintptr_t>(GHookTrampoline) - GChangeItemNumAddr - 5);
+			std::cout << "[SDK] Jmp to trampoline offset: " << std::hex << JmpToTrampolineOffset << std::dec << "\n";
+
 			// 写入跳板代码
 			unsigned char* Trampoline = static_cast<unsigned char*>(GHookTrampoline);
 			size_t Offset = 0;
@@ -175,6 +194,7 @@ DWORD MainThread(HMODULE Module)
 			std::memcpy(&Trampoline[Offset], &JmpBackOffset, 4);
 			Offset += 4;
 
+			std::cout << "[SDK] Jmp back offset: " << std::hex << JmpBackOffset << std::dec << "\n";
 			std::cout << "[SDK] ChangeItemNum trampoline prepared\n";
 		}
 	}
