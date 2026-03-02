@@ -43,6 +43,25 @@ std::string WideToUtf8(const wchar_t* WText)
 	return Utf8;
 }
 
+std::wstring Utf8ToWide(const char* Text)
+{
+	if (!Text || !Text[0])
+		return std::wstring();
+
+	const int SrcLen = static_cast<int>(strlen(Text));
+	int WideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, Text, SrcLen, nullptr, 0);
+	if (WideLen <= 0)
+	{
+		WideLen = MultiByteToWideChar(CP_UTF8, 0, Text, SrcLen, nullptr, 0);
+		if (WideLen <= 0)
+			return std::wstring();
+	}
+
+	std::wstring Wide(static_cast<size_t>(WideLen), L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, Text, SrcLen, Wide.data(), WideLen);
+	return Wide;
+}
+
 std::string BuildTimestamp()
 {
 	using namespace std::chrono;
@@ -67,6 +86,23 @@ void WriteConsole(const std::string& Line)
 		return;
 	if (GetFileType(StdoutHandle) == FILE_TYPE_UNKNOWN)
 		return;
+
+	DWORD ConsoleMode = 0;
+	if (GetConsoleMode(StdoutHandle, &ConsoleMode))
+	{
+		const std::wstring WideLine = Utf8ToWide(Line.c_str());
+		if (!WideLine.empty())
+		{
+			DWORD WrittenChars = 0;
+			WriteConsoleW(
+				StdoutHandle,
+				WideLine.data(),
+				static_cast<DWORD>(WideLine.size()),
+				&WrittenChars,
+				nullptr);
+			return;
+		}
+	}
 
 	DWORD Written = 0;
 	WriteFile(
