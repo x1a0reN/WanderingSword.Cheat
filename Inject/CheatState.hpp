@@ -141,5 +141,6 @@ extern std::atomic<bool> GItemNoDecreaseEnabled;
 
 // 物品不减 Inline Hook
 extern uintptr_t GChangeItemNumAddr;
-extern unsigned char GOriginalChangeItemNumBytes[14];  // 保存原始入口字节
+extern unsigned char GOriginalChangeItemNumBytes[5];  // 保存原始入口字节(5字节)
+extern void* GHookTrampoline;  // Hook 跳板内存
 extern bool GInlineHookInstalled;

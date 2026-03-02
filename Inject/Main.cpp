@@ -29,6 +29,13 @@ static void RemoveAllHooks()
 			std::cout << "[SDK] ChangeItemNum inline hook removed\n";
 		}
 		GInlineHookInstalled = false;
+
+		// 释放跳板内存
+		if (GHookTrampoline)
+		{
+			VirtualFree(GHookTrampoline, 0, MEM_RELEASE);
+			GHookTrampoline = nullptr;
+		}
 	}
 }
 
@@ -93,36 +100,76 @@ DWORD MainThread(HMODULE Module)
 		GChangeItemNumAddr = reinterpret_cast<uintptr_t>(hGame) + 0x1206A70;
 		std::cout << "[SDK] ChangeItemNum target address: " << std::hex << GChangeItemNumAddr << std::dec << "\n";
 
-		// Hook 逻辑:
-		// cmp r8d, 0        ; 比较 Num 参数
-		// jnl +0xF6         ; 如果 Num >= 0，跳转到原始代码
-		// xor r8d, r8d      ; Num < 0 时设为 0（不减物品）
-		// jmp +0xEE         ; 跳转到原始代码
-		// (原始代码从 +5 开始)
-
-		unsigned char HookCode[] = {
-			0x41, 0x83, 0xF8, 0x00,       // cmp r8d, 0
-			0x0F, 0x8D, 0xF6, 0x00, 0x00, 0x00, // jnl +0xF6 (跳转到原始代码)
-			0x45, 0x31, 0xC0,               // xor r8d, r8d (设为0)
-			0xE9, 0xEE, 0x00, 0x00, 0x00   // jmp +0xEE (跳转到原始代码)
-		};
-
-		DWORD OldProtect;
-		if (VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, PAGE_EXECUTE_READWRITE, &OldProtect))
+		// 分配跳板内存
+		GHookTrampoline = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		if (!GHookTrampoline)
 		{
-			// 保存原始代码 (前14字节足够)
-			std::memcpy(GOriginalChangeItemNumBytes, reinterpret_cast<void*>(GChangeItemNumAddr), 14);
-
-			// 写入 Hook 代码 (18字节)
-			std::memcpy(reinterpret_cast<void*>(GChangeItemNumAddr), HookCode, sizeof(HookCode));
-
-			VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, OldProtect, &OldProtect);
-			GInlineHookInstalled = true;
-			std::cout << "[SDK] ChangeItemNum inline hook installed\n";
+			std::cout << "[SDK] Failed to allocate trampoline memory\n";
 		}
 		else
 		{
-			std::cout << "[SDK] Failed to install ChangeItemNum inline hook (VirtualProtect failed)\n";
+			// Hook 逻辑 (在跳板中执行):
+			// cmp r8d, 0        ; 比较 Num 参数
+			// jnl +0x20         ; 如果 Num >= 0，跳转到原始代码 (jmp back)
+			// xor r8d, r8d      ; Num < 0 时设为 0（不减物品）
+			// jmp +0x17         ; 跳转到原始代码 (jmp back)
+			// (原始代码从 +5 开始，需要 jmp back)
+
+			// 计算跳回地址: GChangeItemNumAddr + 5
+			uintptr_t JmpBackAddr = GChangeItemNumAddr + 5;
+			int32_t JmpBackOffset = static_cast<int32_t>(JmpBackAddr - (reinterpret_cast<uintptr_t>(GHookTrampoline) + 4 + 6 + 3 + 6));
+			// offset = target - (current + 6) for near relative jmp
+
+			unsigned char* Trampoline = static_cast<unsigned char*>(GHookTrampoline);
+			size_t Offset = 0;
+
+			// cmp r8d, 0
+			Trampoline[Offset++] = 0x41;
+			Trampoline[Offset++] = 0x83;
+			Trampoline[Offset++] = 0xF8;
+			Trampoline[Offset++] = 0x00;
+
+			// jnl +offset (跳转到 jmp back)
+			// 计算 jnl 跳转 offset: 从 Offset 位置到 JmpBackOffset
+			int32_t JnlOffset = static_cast<int32_t>(JmpBackAddr - (GChangeItemNumAddr + 4 + 6 + 3 + 5));
+			Trampoline[Offset++] = 0x0F;
+			Trampoline[Offset++] = 0x8D;
+			std::memcpy(&Trampoline[Offset], &JnlOffset, 4);
+			Offset += 4;
+
+			// xor r8d, r8d
+			Trampoline[Offset++] = 0x45;
+			Trampoline[Offset++] = 0x31;
+			Trampoline[Offset++] = 0xC0;
+
+			// jmp back to original code (+5)
+			Trampoline[Offset++] = 0xE9;
+			std::memcpy(&Trampoline[Offset], &JnlOffset, 4);
+			Offset += 4;
+
+			// 保存原始代码 (前5字节)
+			std::memcpy(GOriginalChangeItemNumBytes, reinterpret_cast<void*>(GChangeItemNumAddr), 5);
+
+			// 修改原函数入口: jmp GHookTrampoline
+			DWORD OldProtect;
+			if (VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, PAGE_EXECUTE_READWRITE, &OldProtect))
+			{
+				// 写入 jmp 指令跳转到跳板
+				unsigned char JmpToTrampoline[] = {
+					0xE9, 0x00, 0x00, 0x00, 0x00  // jmp rel32
+				};
+				int32_t TrampolineOffset = static_cast<int32_t>(reinterpret_cast<uintptr_t>(GHookTrampoline) - GChangeItemNumAddr - 5);
+				std::memcpy(&JmpToTrampoline[1], &TrampolineOffset, 4);
+				std::memcpy(reinterpret_cast<void*>(GChangeItemNumAddr), JmpToTrampoline, 5);
+
+				VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, OldProtect, &OldProtect);
+				GInlineHookInstalled = true;
+				std::cout << "[SDK] ChangeItemNum inline hook installed\n";
+			}
+			else
+			{
+				std::cout << "[SDK] Failed to patch function entry\n";
+			}
 		}
 	}
 	else

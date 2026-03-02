@@ -15,7 +15,8 @@ std::atomic<bool> GItemNoDecreaseEnabled = false;
 
 // 物品不减 Inline Hook 变量
 uintptr_t GChangeItemNumAddr = 0;
-unsigned char GOriginalChangeItemNumBytes[14] = {};
+unsigned char GOriginalChangeItemNumBytes[5] = {};  // 保存原始入口字节(5字节)
+void* GHookTrampoline = nullptr;  // Hook 跳板内存
 bool GInlineHookInstalled = false;
 
 UNeoUIButtonBase* GCachedBtnExit = nullptr;
