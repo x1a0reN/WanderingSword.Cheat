@@ -689,29 +689,99 @@ namespace
 
 	void ReadTab1ConfigFromUI(FTab1RuntimeConfig& Cfg)
 	{
-		Cfg.ItemNoDecrease = ReadToggleValue(GTab1ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
-		Cfg.ItemGainMultiplier = ReadToggleValue(GTab1ItemGainMultiplierToggle, Cfg.ItemGainMultiplier);
-		Cfg.AllItemsSellable = ReadToggleValue(GTab1AllItemsSellableToggle, Cfg.AllItemsSellable);
-		Cfg.IncludeQuestItems = ReadToggleValue(GTab1IncludeQuestItemsToggle, Cfg.IncludeQuestItems);
-		Cfg.DropRate100 = ReadToggleValue(GTab1DropRate100Toggle, Cfg.DropRate100);
-		Cfg.CraftEffectMultiplier = ReadToggleValue(GTab1CraftEffectMultiplierToggle, Cfg.CraftEffectMultiplier);
-		Cfg.IgnoreItemUseCount = ReadToggleValue(GTab1IgnoreItemUseCountToggle, Cfg.IgnoreItemUseCount);
-		Cfg.IgnoreItemRequirements = ReadToggleValue(GTab1IgnoreItemRequirementsToggle, Cfg.IgnoreItemRequirements);
+		// 读取开关选项
+		const bool NewItemNoDecrease = ReadToggleValue(GTab1ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
+		if (NewItemNoDecrease != Cfg.ItemNoDecrease)
+		{
+			std::cout << "[SDK] 物品不减: " << (NewItemNoDecrease ? "开启" : "关闭") << "\n";
+			Cfg.ItemNoDecrease = NewItemNoDecrease;
+		}
 
+		const bool NewItemGainMultiplier = ReadToggleValue(GTab1ItemGainMultiplierToggle, Cfg.ItemGainMultiplier);
+		if (NewItemGainMultiplier != Cfg.ItemGainMultiplier)
+		{
+			std::cout << "[SDK] 物品获得倍数: " << (NewItemGainMultiplier ? "开启" : "关闭") << "\n";
+			Cfg.ItemGainMultiplier = NewItemGainMultiplier;
+		}
+
+		const bool NewAllItemsSellable = ReadToggleValue(GTab1AllItemsSellableToggle, Cfg.AllItemsSellable);
+		if (NewAllItemsSellable != Cfg.AllItemsSellable)
+		{
+			std::cout << "[SDK] 物品全可出售: " << (NewAllItemsSellable ? "开启" : "关闭") << "\n";
+			Cfg.AllItemsSellable = NewAllItemsSellable;
+		}
+
+		const bool NewIncludeQuestItems = ReadToggleValue(GTab1IncludeQuestItemsToggle, Cfg.IncludeQuestItems);
+		if (NewIncludeQuestItems != Cfg.IncludeQuestItems)
+		{
+			std::cout << "[SDK] 包含任务物品: " << (NewIncludeQuestItems ? "开启" : "关闭") << "\n";
+			Cfg.IncludeQuestItems = NewIncludeQuestItems;
+		}
+
+		const bool NewDropRate100 = ReadToggleValue(GTab1DropRate100Toggle, Cfg.DropRate100);
+		if (NewDropRate100 != Cfg.DropRate100)
+		{
+			std::cout << "[SDK] 掉落概率100%: " << (NewDropRate100 ? "开启" : "关闭") << "\n";
+			Cfg.DropRate100 = NewDropRate100;
+		}
+
+		const bool NewCraftEffectMultiplier = ReadToggleValue(GTab1CraftEffectMultiplierToggle, Cfg.CraftEffectMultiplier);
+		if (NewCraftEffectMultiplier != Cfg.CraftEffectMultiplier)
+		{
+			std::cout << "[SDK] 装备特效倍数: " << (NewCraftEffectMultiplier ? "开启" : "关闭") << "\n";
+			Cfg.CraftEffectMultiplier = NewCraftEffectMultiplier;
+		}
+
+		const bool NewIgnoreItemUseCount = ReadToggleValue(GTab1IgnoreItemUseCountToggle, Cfg.IgnoreItemUseCount);
+		if (NewIgnoreItemUseCount != Cfg.IgnoreItemUseCount)
+		{
+			std::cout << "[SDK] 忽略物品使用次数: " << (NewIgnoreItemUseCount ? "开启" : "关闭") << "\n";
+			Cfg.IgnoreItemUseCount = NewIgnoreItemUseCount;
+		}
+
+		const bool NewIgnoreItemRequirements = ReadToggleValue(GTab1IgnoreItemRequirementsToggle, Cfg.IgnoreItemRequirements);
+		if (NewIgnoreItemRequirements != Cfg.IgnoreItemRequirements)
+		{
+			std::cout << "[SDK] 忽略物品需求: " << (NewIgnoreItemRequirements ? "开启" : "关闭") << "\n";
+			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
+		}
+
+		// 读取滑块数值
 		const float GainPercent = ReadSliderPercent(GTab1ItemGainMultiplierSlider, static_cast<float>(Cfg.ItemGainMultiplierValue));
-		Cfg.ItemGainMultiplierValue = SliderPercentToIntMultiplier(GainPercent);
+		const int32 NewGainValue = SliderPercentToIntMultiplier(GainPercent);
+		if (NewGainValue != Cfg.ItemGainMultiplierValue)
+		{
+			std::cout << "[SDK] 物品获得倍数: " << NewGainValue << "x\n";
+			Cfg.ItemGainMultiplierValue = NewGainValue;
+		}
 
 		const float IncrementPercent = ReadSliderPercent(
 			GTab1CraftItemIncrementSlider,
 			(Cfg.CraftItemIncrementMultiplier - 1.0f) / 0.09f);
-		Cfg.CraftItemIncrementMultiplier = SliderPercentToFloatMultiplier(IncrementPercent);
+		const float NewIncrementValue = SliderPercentToFloatMultiplier(IncrementPercent);
+		if (std::fabs(NewIncrementValue - Cfg.CraftItemIncrementMultiplier) > 0.001f)
+		{
+			std::cout << "[SDK] 装备产出数量倍数: " << NewIncrementValue << "x\n";
+			Cfg.CraftItemIncrementMultiplier = NewIncrementValue;
+		}
 
 		const float ExtraPercent = ReadSliderPercent(
 			GTab1CraftExtraEffectSlider,
 			(Cfg.CraftExtraEffectMultiplier - 1.0f) / 0.09f);
-		Cfg.CraftExtraEffectMultiplier = SliderPercentToFloatMultiplier(ExtraPercent);
+		const float NewExtraValue = SliderPercentToFloatMultiplier(ExtraPercent);
+		if (std::fabs(NewExtraValue - Cfg.CraftExtraEffectMultiplier) > 0.001f)
+		{
+			std::cout << "[SDK] 装备额外特效倍数: " << NewExtraValue << "x\n";
+			Cfg.CraftExtraEffectMultiplier = NewExtraValue;
+		}
 
-		Cfg.MaxExtraAffixes = ReadIntegerEditValue(GTab1MaxExtraAffixesEdit, Cfg.MaxExtraAffixes, 0, 32);
+		// 读取整数输入
+		const int32 NewMaxExtraAffixes = ReadIntegerEditValue(GTab1MaxExtraAffixesEdit, Cfg.MaxExtraAffixes, 0, 32);
+		if (NewMaxExtraAffixes != Cfg.MaxExtraAffixes)
+		{
+			std::cout << "[SDK] 最大额外词条: " << NewMaxExtraAffixes << "\n";
+			Cfg.MaxExtraAffixes = NewMaxExtraAffixes;
+		}
 	}
 
 	void PollAndApplyTab1Features(bool CanReadFromUI)
@@ -1325,6 +1395,10 @@ void __stdcall HookedProcessEvent(void* This, void* Function, void* Parms)
 				// 只有当 Num < 0 时才拦截（减少物品）
 				if (Params->Num < 0)
 				{
+					// 输出拦截日志
+					std::cout << "[SDK] ChangeItemNum intercepted: Num=" << Params->Num << ", ID=..."
+						<< Params->ID.A << "-" << Params->ID.B << "\n";
+
 					// 设置返回值为 true（表示操作成功），但不执行原函数
 					Params->ReturnValue = true;
 					return;
