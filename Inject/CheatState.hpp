@@ -136,10 +136,10 @@ extern UBPVE_JHConfigVideoItem2_C* GTeammateReplaceDD;      // 鎸囧畾闃熷�
 extern UBPVE_JHConfigVideoItem2_C* GQuestToggle;   // 鎺ュ埌/瀹屾垚浠诲姟寮€鍏?
 extern UBPVE_JHConfigVideoItem2_C* GQuestTypeDD;   // 鎵ц绫诲瀷涓嬫媺妗?(鎺ュ埌/瀹屾垚)
 
-// 鐗╁搧涓嶅噺鍔熻兘寮€鍏筹紙渚涘弽ProcessEvent Hook 璇诲彇锛?
+// 物品不减功能开关（供 Inline Hook 读取）
 extern std::atomic<bool> GItemNoDecreaseEnabled;
 
-// 鐗╁搧绠＄悊鍣↗rocessEvent Hook
-using ProcessEventFn = void(__fastcall*)(void* /* this */, void* /* Function */, void* /* Parms */);
-extern ProcessEventFn OriginalProcessEvent;
-extern VTableHook GItemManagerProcessEventHook;
+// 物品不减 Inline Hook
+extern uintptr_t GChangeItemNumAddr;
+extern unsigned char GOriginalChangeItemNumBytes[14];  // 保存原始入口字节
+extern bool GInlineHookInstalled;

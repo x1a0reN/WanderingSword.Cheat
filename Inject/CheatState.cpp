@@ -13,9 +13,10 @@ std::atomic<int32> GPostRenderInFlight = 0;
 // 物品不减功能开关
 std::atomic<bool> GItemNoDecreaseEnabled = false;
 
-// ProcessEvent Hook 变量
-ProcessEventFn OriginalProcessEvent = nullptr;
-VTableHook GItemManagerProcessEventHook;
+// 物品不减 Inline Hook 变量
+uintptr_t GChangeItemNumAddr = 0;
+unsigned char GOriginalChangeItemNumBytes[14] = {};
+bool GInlineHookInstalled = false;
 
 UNeoUIButtonBase* GCachedBtnExit = nullptr;
 std::vector<UObject*> GRootedObjects;

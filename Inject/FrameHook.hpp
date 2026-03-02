@@ -8,7 +8,3 @@
 /// - 动态 Tab 6/7/8 点击切换: 检测按钮 IsPressed 并切换内容可见性
 /// - 外部关闭检测: 蓝图逻辑关闭面板时自动恢复游戏状态
 void __fastcall HookedGVCPostRender(void* This, void* Canvas);
-
-/// UItemManager::ProcessEvent 的 VTable Hook 实现。
-/// 用于拦截 ChangeItemNum 等物品操作函数，实现物品不减功能
-void __stdcall HookedProcessEvent(void* This, void* Function, void* Parms);

@@ -1375,41 +1375,4 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 }
 
-// 物品管理器 ProcessEvent Hook：拦截 ChangeItemNum 实现物品不减
-void __stdcall HookedProcessEvent(void* This, void* Function, void* Parms)
-{
-	// 检查是否是物品不减功能启用
-	if (GItemNoDecreaseEnabled.load(std::memory_order_acquire))
-	{
-		// 获取 Function 对象
-		UFunction* Func = reinterpret_cast<UFunction*>(Function);
-		if (Func)
-		{
-			// 检查函数名是否是 ChangeItemNum
-			std::string FuncName = Func->GetName();
-			if (FuncName == "ChangeItemNum")
-			{
-				// 使用 SDK 中的参数结构访问参数 (SDK::Params 命名空间)
-				auto* Params = reinterpret_cast<SDK::Params::ItemManager_ChangeItemNum*>(Parms);
-
-				// 只有当 Num < 0 时才拦截（减少物品）
-				if (Params->Num < 0)
-				{
-					// 输出拦截日志
-					std::cout << "[SDK] ChangeItemNum intercepted: Num=" << Params->Num << ", ID=..."
-						<< Params->ID.A << "-" << Params->ID.B << "\n";
-
-					// 设置返回值为 true（表示操作成功），但不执行原函数
-					Params->ReturnValue = true;
-					return;
-				}
-			}
-		}
-	}
-
-	// 未拦截，调用原始函数
-	if (OriginalProcessEvent)
-		OriginalProcessEvent(This, Function, Parms);
-}
-
 // -- Main Thread --
