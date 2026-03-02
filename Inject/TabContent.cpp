@@ -651,6 +651,19 @@ namespace
 				if (Info->NPCId < 0)
 					continue;
 
+				// 去重：检查是否已存在相同 NPCId
+				bool bDuplicate = false;
+				for (int32 ExistingId : GTab0RoleSelectNPCIds)
+				{
+					if (ExistingId == Info->NPCId)
+					{
+						bDuplicate = true;
+						break;
+					}
+				}
+				if (bDuplicate)
+					continue;
+
 				// 获取角色名字
 				FText Name = UNPCFuncLib::GetNPCNameById(Info->NPCId);
 				std::string NameStr8 = Name.ToString();
@@ -2324,20 +2337,23 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* RoleSelectBox = RoleSelectPanel ? RoleSelectPanel->CT_Contents : nullptr;
 	if (!GTab0RoleSelectNames.empty())
 	{
-		auto* Item = CreateVideoItem(PC, L"当前角色");
-		if (Item && Item->CB_Main)
-		{
-			Item->CB_Main->ClearOptions();
-			for (const auto& Name : GTab0RoleSelectNames)
-				Item->CB_Main->AddOption(FString(Name.c_str()));
-			if (GetComboOptionCountFast(Item->CB_Main) > 0)
-				Item->CB_Main->SetSelectedIndex(0);
-			GTab0SelectedRoleIdx = 0;
-			GTab0LastSelectedRoleIdx = 0;
-		}
-		if (RoleSelectBox) RoleSelectBox->AddChild(Item);
-		else Container->AddChild(Item);
-		GTab0RoleSelectDD = Item;
+	// 使用 CreateVideoItemWithOptions 的方式创建带选项的下拉框
+	GTab0RoleSelectDD = CreateVideoItemWithOptions(PC, L"当前角色", {});
+	if (GTab0RoleSelectDD && GTab0RoleSelectDD->CB_Main)
+	{
+		GTab0RoleSelectDD->CB_Main->ClearOptions();
+		for (const auto& Name : GTab0RoleSelectNames)
+			GTab0RoleSelectDD->CB_Main->AddOption(FString(Name.c_str()));
+		if (GetComboOptionCountFast(GTab0RoleSelectDD->CB_Main) > 0)
+			GTab0RoleSelectDD->CB_Main->SetSelectedIndex(0);
+		GTab0SelectedRoleIdx = 0;
+		GTab0LastSelectedRoleIdx = 0;
+	}
+	if (RoleSelectBox)
+		RoleSelectBox->AddChild(GTab0RoleSelectDD);
+	else if (GTab0RoleSelectDD)
+		Container->AddChild(GTab0RoleSelectDD);
+	if (GTab0RoleSelectDD)
 		Count++;
 	}
 	AddPanelWithFixedGap(RoleSelectPanel, 0.0f, 10.0f);
