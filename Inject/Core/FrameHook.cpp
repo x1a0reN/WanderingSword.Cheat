@@ -813,6 +813,28 @@ namespace
 			LastItemGainMultiplierHook = WantItemGainMultiplierHook;
 		}
 
+		// 所有物品可出售
+		static bool LastAllItemsSellable = false;
+		if (Config.AllItemsSellable != LastAllItemsSellable)
+		{
+			if (Config.AllItemsSellable)
+				EnableAllItemsSellable();
+			else
+				DisableAllItemsSellable();
+			LastAllItemsSellable = Config.AllItemsSellable;
+		}
+
+		// 包括任务物品
+		static bool LastIncludeQuestItems = false;
+		if (Config.IncludeQuestItems != LastIncludeQuestItems)
+		{
+			if (Config.IncludeQuestItems)
+				EnableIncludeQuestItems();
+			else
+				DisableIncludeQuestItems();
+			LastIncludeQuestItems = Config.IncludeQuestItems;
+		}
+
 		// 更新全局开关
 		GItemNoDecreaseEnabled.store(Config.ItemNoDecrease, std::memory_order_release);
 

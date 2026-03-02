@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Windows.h>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <array>
@@ -517,6 +518,10 @@ disasm_done:
 static constexpr uint32_t kFlagModRm = F_MODRM;
 static constexpr uint32_t kFlagRelative = F_RELATIVE;
 static constexpr uint32_t kFlagError = F_ERROR;
+static constexpr uint32_t kFlagImm8 = F_IMM8;
+static constexpr uint32_t kFlagImm16 = F_IMM16;
+static constexpr uint32_t kFlagImm32 = F_IMM32;
+static constexpr uint32_t kFlagDisp32 = F_DISP32;
 
 #undef C_NONE
 #undef C_MODRM
@@ -965,6 +970,60 @@ private:
         return true;
     }
 
+    static bool SafeWriteMemory(uintptr_t address, const void* data, size_t size, bool flushInstructionCache = true) {
+        if (!data || size == 0) {
+            return false;
+        }
+
+        uintptr_t cursor = address;
+        const uint8_t* src = reinterpret_cast<const uint8_t*>(data);
+        size_t remaining = size;
+
+        while (remaining > 0) {
+            MEMORY_BASIC_INFORMATION mbi = {};
+            if (!VirtualQuery(reinterpret_cast<void*>(cursor), &mbi, sizeof(mbi))) {
+                return false;
+            }
+
+            if (mbi.State != MEM_COMMIT) {
+                return false;
+            }
+
+            const DWORD protect = mbi.Protect;
+            if (protect & (PAGE_NOACCESS | PAGE_GUARD)) {
+                return false;
+            }
+
+            const uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+            const uintptr_t regionOffset = cursor - regionBase;
+            if (regionOffset >= mbi.RegionSize) {
+                return false;
+            }
+
+            const size_t writableInRegion = static_cast<size_t>(mbi.RegionSize - regionOffset);
+            const size_t chunk = (std::min)(remaining, writableInRegion);
+
+            DWORD oldProtect = 0;
+            if (!VirtualProtect(reinterpret_cast<void*>(cursor), chunk, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+                return false;
+            }
+
+            std::memcpy(reinterpret_cast<void*>(cursor), src, chunk);
+
+            DWORD restoredProtect = 0;
+            VirtualProtect(reinterpret_cast<void*>(cursor), chunk, oldProtect, &restoredProtect);
+
+            cursor += chunk;
+            src += chunk;
+            remaining -= chunk;
+        }
+
+        if (flushInstructionCache) {
+            FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(address), size);
+        }
+        return true;
+    }
+
     static bool DecodeInstruction64(const uint8_t* code, size_t maxLen, DecodedInstruction& out) {
         out = {};
         if (!code || maxLen == 0) {
@@ -1017,27 +1076,172 @@ private:
         return true;
     }
 
-    static void* AllocateTrampolineNearTarget(HANDLE hProcess, uintptr_t targetAddr) {
-        const uintptr_t preferredAddr = (targetAddr & 0xFFFFFFFF00000000ULL) | 0x10000000ULL;
-        void* trampoline = VirtualAllocEx(
+    static uintptr_t AlignDown(uintptr_t value, uintptr_t alignment) {
+        if (alignment == 0) {
+            return value;
+        }
+        return value & ~(alignment - 1);
+    }
+
+    static uintptr_t AlignUp(uintptr_t value, uintptr_t alignment) {
+        if (alignment == 0) {
+            return value;
+        }
+        const uintptr_t rem = value & (alignment - 1);
+        if (rem == 0) {
+            return value;
+        }
+        const uintptr_t add = alignment - rem;
+        if (value > (std::numeric_limits<uintptr_t>::max)() - add) {
+            return value;
+        }
+        return value + add;
+    }
+
+    static void* TryAllocTrampolineAt(HANDLE hProcess, uintptr_t address) {
+        return VirtualAllocEx(
             hProcess,
-            reinterpret_cast<void*>(preferredAddr),
+            reinterpret_cast<void*>(address),
             kTrampolineSize,
             MEM_COMMIT | MEM_RESERVE,
             PAGE_EXECUTE_READWRITE
         );
+    }
 
+    static void* TryAllocNearRel32Trampoline(HANDLE hProcess, uintptr_t targetAddr, uintptr_t candidate) {
+        void* trampoline = TryAllocTrampolineAt(hProcess, candidate);
         if (!trampoline) {
-            trampoline = VirtualAllocEx(
-                hProcess,
-                nullptr,
-                kTrampolineSize,
-                MEM_COMMIT | MEM_RESERVE,
-                PAGE_EXECUTE_READWRITE
-            );
+            return nullptr;
+        }
+
+        int32_t rel = 0;
+        if (!TryMakeRel32(targetAddr + kRelJumpSize, reinterpret_cast<uintptr_t>(trampoline), rel)) {
+            VirtualFree(trampoline, 0, MEM_RELEASE);
+            return nullptr;
         }
 
         return trampoline;
+    }
+
+    static void* AllocateTrampolineNearTarget(HANDLE hProcess, uintptr_t targetAddr) {
+        SYSTEM_INFO sys = {};
+        GetSystemInfo(&sys);
+
+        const uintptr_t granularity = (sys.dwAllocationGranularity > 0)
+            ? static_cast<uintptr_t>(sys.dwAllocationGranularity)
+            : static_cast<uintptr_t>(0x10000);
+        const uintptr_t minApp = reinterpret_cast<uintptr_t>(sys.lpMinimumApplicationAddress);
+        const uintptr_t maxApp = reinterpret_cast<uintptr_t>(sys.lpMaximumApplicationAddress);
+        const uintptr_t rel32Range = 0x7FFFFFFFULL;
+
+        const uintptr_t lowBound = (targetAddr > rel32Range) ? (targetAddr - rel32Range) : minApp;
+        const uintptr_t highBound = (targetAddr < (std::numeric_limits<uintptr_t>::max)() - rel32Range)
+            ? (targetAddr + rel32Range)
+            : maxApp;
+        const uintptr_t highExclusive = (highBound < (std::numeric_limits<uintptr_t>::max)())
+            ? (highBound + 1)
+            : highBound;
+
+        uintptr_t center = AlignDown(targetAddr, granularity);
+        if (center < lowBound) {
+            center = AlignDown(lowBound, granularity);
+        }
+        if (center > highBound) {
+            center = AlignDown(highBound, granularity);
+        }
+
+        const uintptr_t maxSpanUp = (highBound > center) ? (highBound - center) : 0;
+        const uintptr_t maxSpanDown = (center > lowBound) ? (center - lowBound) : 0;
+        const uintptr_t maxSpan = (std::max)(maxSpanUp, maxSpanDown);
+
+        for (uintptr_t span = 0; span <= maxSpan; span += granularity) {
+            uintptr_t candidates[2] = {};
+            size_t candidateCount = 0;
+
+            if (span <= maxSpanUp) {
+                candidates[candidateCount++] = center + span;
+            }
+            if (span != 0 && span <= maxSpanDown) {
+                candidates[candidateCount++] = center - span;
+            }
+
+            for (size_t i = 0; i < candidateCount; ++i) {
+                const uintptr_t candidate = candidates[i];
+                if (candidate < lowBound || candidate > highBound) {
+                    continue;
+                }
+
+                void* trampoline = TryAllocNearRel32Trampoline(hProcess, targetAddr, candidate);
+                if (!trampoline) {
+                    continue;
+                }
+                return trampoline;
+            }
+        }
+
+        // Fallback pass: enumerate MEM_FREE regions in rel32 window, then probe inside each region.
+        uintptr_t cursor = lowBound;
+        while (cursor < highExclusive) {
+            MEMORY_BASIC_INFORMATION mbi = {};
+            if (!VirtualQuery(reinterpret_cast<void*>(cursor), &mbi, sizeof(mbi))) {
+                if (cursor > (std::numeric_limits<uintptr_t>::max)() - granularity) {
+                    break;
+                }
+                cursor += granularity;
+                continue;
+            }
+
+            const uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+            uintptr_t regionEnd = regionBase + mbi.RegionSize;
+            if (regionEnd <= regionBase || regionEnd <= cursor) {
+                if (cursor > (std::numeric_limits<uintptr_t>::max)() - granularity) {
+                    break;
+                }
+                cursor += granularity;
+                continue;
+            }
+
+            const uintptr_t scanBegin = (std::max)(regionBase, lowBound);
+            const uintptr_t scanEnd = (std::min)(regionEnd, highExclusive);
+
+            if (mbi.State == MEM_FREE && scanEnd > scanBegin && (scanEnd - scanBegin) >= kTrampolineSize) {
+                const uintptr_t probeMin = AlignUp(scanBegin, granularity);
+                const uintptr_t probeMax = AlignDown(scanEnd - kTrampolineSize, granularity);
+
+                if (probeMin <= probeMax) {
+                    uintptr_t preferred = AlignDown(targetAddr, granularity);
+                    if (preferred < probeMin) preferred = probeMin;
+                    if (preferred > probeMax) preferred = probeMax;
+
+                    const uintptr_t upSpan = (probeMax > preferred) ? (probeMax - preferred) : 0;
+                    const uintptr_t downSpan = (preferred > probeMin) ? (preferred - probeMin) : 0;
+                    const uintptr_t probeSpan = (std::max)(upSpan, downSpan);
+
+                    for (uintptr_t span = 0; span <= probeSpan; span += granularity) {
+                        uintptr_t probes[2] = {};
+                        size_t probeCount = 0;
+
+                        if (span <= upSpan) {
+                            probes[probeCount++] = preferred + span;
+                        }
+                        if (span != 0 && span <= downSpan) {
+                            probes[probeCount++] = preferred - span;
+                        }
+
+                        for (size_t i = 0; i < probeCount; ++i) {
+                            void* trampoline = TryAllocNearRel32Trampoline(hProcess, targetAddr, probes[i]);
+                            if (trampoline) {
+                                return trampoline;
+                            }
+                        }
+                    }
+                }
+            }
+
+            cursor = regionEnd;
+        }
+
+        return nullptr;
     }
 
     static bool BuildJumpPatch(uintptr_t from, uintptr_t to, size_t patchSize, uint8_t* outPatch) {
@@ -1068,7 +1272,299 @@ private:
         return true;
     }
 
+    static bool BuildAbsJumpPatch(uintptr_t to, size_t patchSize, uint8_t* outPatch) {
+        if (!outPatch || patchSize < kAbsJumpSize) {
+            return false;
+        }
+
+        std::memset(outPatch, 0x90, patchSize);
+        outPatch[0] = 0xFF;
+        outPatch[1] = 0x25;
+        outPatch[2] = 0x00;
+        outPatch[3] = 0x00;
+        outPatch[4] = 0x00;
+        outPatch[5] = 0x00;
+        std::memcpy(outPatch + 6, &to, sizeof(to));
+        return true;
+    }
+
+    static size_t GetInstructionImmSize(uint32_t flags) {
+        if (flags & ExternalHde64::kFlagImm8) return 1;
+        if (flags & ExternalHde64::kFlagImm16) return 2;
+        if (flags & ExternalHde64::kFlagImm32) return 4;
+        return 0;
+    }
+
+    static bool IsShortJccOpcode(uint8_t op0) {
+        return op0 >= 0x70 && op0 <= 0x7F;
+    }
+
+    static bool IsNearJccOpcode(uint8_t op0, uint8_t op1) {
+        return op0 == 0x0F && op1 >= 0x80 && op1 <= 0x8F;
+    }
+
+    static bool AppendBytesToTrampoline(unsigned char* trampoline, size_t& trampOffset, const void* data, size_t len) {
+        if (!trampoline || !data || len == 0) {
+            return false;
+        }
+        if (trampOffset + len > kTrampolineSize) {
+            return false;
+        }
+        std::memcpy(trampoline + trampOffset, data, len);
+        trampOffset += len;
+        return true;
+    }
+
+    static bool AppendAbsJumpToTrampoline(unsigned char* trampoline, size_t& trampOffset, uintptr_t to) {
+        uint8_t patch[kAbsJumpSize] = {};
+        if (!BuildAbsJumpPatch(to, sizeof(patch), patch)) {
+            return false;
+        }
+        return AppendBytesToTrampoline(trampoline, trampOffset, patch, sizeof(patch));
+    }
+
+    static bool AppendAbsCallToTrampoline(unsigned char* trampoline, size_t& trampOffset, uintptr_t to) {
+        // mov r11, imm64 ; call r11
+        const uint8_t seqPrefix[] = { 0x49, 0xBB };
+        const uint8_t seqCall[] = { 0x41, 0xFF, 0xD3 };
+        if (!AppendBytesToTrampoline(trampoline, trampOffset, seqPrefix, sizeof(seqPrefix))) {
+            return false;
+        }
+        if (!AppendBytesToTrampoline(trampoline, trampOffset, &to, sizeof(to))) {
+            return false;
+        }
+        if (!AppendBytesToTrampoline(trampoline, trampOffset, seqCall, sizeof(seqCall))) {
+            return false;
+        }
+        return true;
+    }
+
+    static bool RelocateRelativeInstruction(
+        const uint8_t* srcInsn,
+        const ExternalHde64::hde64s& hs,
+        uintptr_t srcInsnAddr,
+        uintptr_t dstInsnAddr,
+        unsigned char* trampoline,
+        size_t& trampOffset) {
+
+        if (!srcInsn || hs.len == 0) {
+            return false;
+        }
+
+        const uint8_t op0 = srcInsn[0];
+        const uint8_t op1 = (hs.len > 1) ? srcInsn[1] : 0;
+        const size_t immSize = GetInstructionImmSize(hs.flags);
+        if (immSize == 0 || immSize > hs.len) {
+            return false;
+        }
+
+        int64_t oldDisp = 0;
+        if (immSize == 1) {
+            oldDisp = static_cast<int8_t>(srcInsn[hs.len - 1]);
+        }
+        else if (immSize == 2) {
+            int16_t v = 0;
+            std::memcpy(&v, srcInsn + hs.len - 2, sizeof(v));
+            oldDisp = v;
+        }
+        else if (immSize == 4) {
+            int32_t v = 0;
+            std::memcpy(&v, srcInsn + hs.len - 4, sizeof(v));
+            oldDisp = v;
+        }
+        else {
+            return false;
+        }
+
+        const uintptr_t branchTarget = static_cast<uintptr_t>(static_cast<int64_t>(srcInsnAddr + hs.len) + oldDisp);
+
+        // CALL rel
+        if (op0 == 0xE8) {
+            int32_t rel32 = 0;
+            uint8_t seq[5] = { 0xE8, 0, 0, 0, 0 };
+            if (TryMakeRel32(dstInsnAddr + sizeof(seq), branchTarget, rel32)) {
+                std::memcpy(seq + 1, &rel32, sizeof(rel32));
+                return AppendBytesToTrampoline(trampoline, trampOffset, seq, sizeof(seq));
+            }
+            return AppendAbsCallToTrampoline(trampoline, trampOffset, branchTarget);
+        }
+
+        // JMP rel8/rel32
+        if (op0 == 0xE9 || op0 == 0xEB) {
+            int32_t rel32 = 0;
+            uint8_t seq[5] = { 0xE9, 0, 0, 0, 0 };
+            if (TryMakeRel32(dstInsnAddr + sizeof(seq), branchTarget, rel32)) {
+                std::memcpy(seq + 1, &rel32, sizeof(rel32));
+                return AppendBytesToTrampoline(trampoline, trampOffset, seq, sizeof(seq));
+            }
+            return AppendAbsJumpToTrampoline(trampoline, trampOffset, branchTarget);
+        }
+
+        // Jcc short/near
+        if (IsShortJccOpcode(op0) || IsNearJccOpcode(op0, op1)) {
+            uint8_t cond = 0;
+            if (IsShortJccOpcode(op0)) {
+                cond = static_cast<uint8_t>(op0 & 0x0F);
+            }
+            else {
+                cond = static_cast<uint8_t>(op1 & 0x0F);
+            }
+
+            int32_t rel32 = 0;
+            uint8_t nearJcc[6] = { 0x0F, static_cast<uint8_t>(0x80 | cond), 0, 0, 0, 0 };
+            if (TryMakeRel32(dstInsnAddr + sizeof(nearJcc), branchTarget, rel32)) {
+                std::memcpy(nearJcc + 2, &rel32, sizeof(rel32));
+                return AppendBytesToTrampoline(trampoline, trampOffset, nearJcc, sizeof(nearJcc));
+            }
+
+            // Fallback: inverse-jcc skip abs-jmp
+            const uint8_t invCond = static_cast<uint8_t>(cond ^ 0x1);
+            if (IsShortJccOpcode(op0)) {
+                // j!cc +14 ; abs jmp target
+                const uint8_t invShort[2] = { static_cast<uint8_t>(0x70 | invCond), 0x0E };
+                if (!AppendBytesToTrampoline(trampoline, trampOffset, invShort, sizeof(invShort))) {
+                    return false;
+                }
+                return AppendAbsJumpToTrampoline(trampoline, trampOffset, branchTarget);
+            }
+
+            // near jcc: j!cc +14 ; abs jmp target
+            const uint8_t invNearPrefix[2] = { 0x0F, static_cast<uint8_t>(0x80 | invCond) };
+            int32_t skip = 14;
+            if (!AppendBytesToTrampoline(trampoline, trampOffset, invNearPrefix, sizeof(invNearPrefix))) {
+                return false;
+            }
+            if (!AppendBytesToTrampoline(trampoline, trampOffset, &skip, sizeof(skip))) {
+                return false;
+            }
+            return AppendAbsJumpToTrampoline(trampoline, trampOffset, branchTarget);
+        }
+
+        return false;
+    }
+
+    static bool RelocateRipRelativeDisp32(
+        const uint8_t* srcInsn,
+        const ExternalHde64::hde64s& hs,
+        uintptr_t srcInsnAddr,
+        uintptr_t dstInsnAddr,
+        unsigned char* trampoline,
+        size_t& trampOffset) {
+
+        if (!srcInsn || hs.len == 0 || hs.len > 15) {
+            return false;
+        }
+
+        uint8_t buf[16] = {};
+        std::memcpy(buf, srcInsn, hs.len);
+
+        const size_t immSize = GetInstructionImmSize(hs.flags);
+        if (hs.len < (4 + immSize)) {
+            return false;
+        }
+        const size_t dispOff = hs.len - immSize - 4;
+
+        int32_t oldDisp = 0;
+        std::memcpy(&oldDisp, buf + dispOff, sizeof(oldDisp));
+        const uintptr_t memTarget = static_cast<uintptr_t>(static_cast<int64_t>(srcInsnAddr + hs.len) + oldDisp);
+
+        int32_t newDisp = 0;
+        if (!TryMakeRel32(dstInsnAddr + hs.len, memTarget, newDisp)) {
+            return false;
+        }
+        std::memcpy(buf + dispOff, &newDisp, sizeof(newDisp));
+
+        return AppendBytesToTrampoline(trampoline, trampOffset, buf, hs.len);
+    }
+
+    static bool BuildRelocatedOriginalCode(
+        uintptr_t originalBase,
+        const uint8_t* originalBytes,
+        size_t originalLen,
+        uintptr_t trampolineBase,
+        unsigned char* trampoline,
+        size_t& outWritten) {
+
+        outWritten = 0;
+        if (!originalBytes || !trampoline || originalLen == 0) {
+            return false;
+        }
+
+        size_t consumed = 0;
+        while (consumed < originalLen) {
+            ExternalHde64::hde64s hs = {};
+            const uint8_t* srcInsn = originalBytes + consumed;
+            const unsigned int len = ExternalHde64::hde64_disasm(srcInsn, &hs);
+            if (len == 0 || hs.len == 0 || hs.len > 15 || (hs.flags & ExternalHde64::kFlagError)) {
+                return false;
+            }
+            if (consumed + hs.len > originalLen) {
+                return false;
+            }
+
+            const uintptr_t srcInsnAddr = originalBase + consumed;
+            const uintptr_t dstInsnAddr = trampolineBase + outWritten;
+
+            bool handled = false;
+            if (hs.flags & ExternalHde64::kFlagRelative) {
+                handled = RelocateRelativeInstruction(srcInsn, hs, srcInsnAddr, dstInsnAddr, trampoline, outWritten);
+            }
+            else if ((hs.flags & ExternalHde64::kFlagModRm) && hs.modrm_mod == 0 && hs.modrm_rm == 5 &&
+                (hs.flags & ExternalHde64::kFlagDisp32)) {
+                handled = RelocateRipRelativeDisp32(srcInsn, hs, srcInsnAddr, dstInsnAddr, trampoline, outWritten);
+            }
+            else {
+                handled = AppendBytesToTrampoline(trampoline, outWritten, srcInsn, hs.len);
+            }
+
+            if (!handled) {
+                return false;
+            }
+
+            consumed += hs.len;
+        }
+
+        return true;
+    }
+
 public:
+    static bool ReadMemory(uintptr_t address, void* outBuffer, size_t size) {
+        if (!outBuffer || size == 0) {
+            return false;
+        }
+        return SafeReadMemory(address, outBuffer, size);
+    }
+
+    static std::vector<uint8_t> ReadMemory(uintptr_t address, size_t size) {
+        std::vector<uint8_t> bytes;
+        if (size == 0) {
+            return bytes;
+        }
+
+        bytes.resize(size);
+        if (!SafeReadMemory(address, bytes.data(), size)) {
+            bytes.clear();
+        }
+        return bytes;
+    }
+
+    template <typename TValue>
+    static bool ReadValue(uintptr_t address, TValue& outValue) {
+        return SafeReadMemory(address, &outValue, sizeof(TValue));
+    }
+
+    static bool WriteMemory(uintptr_t address, const void* data, std::size_t numBytes, bool flushInstructionCache = true) {
+        return SafeWriteMemory(address, data, numBytes, flushInstructionCache);
+    }
+
+    template <typename TValue>
+    static bool WriteValue(uintptr_t address, const TValue& value, bool flushInstructionCache = true) {
+        return SafeWriteMemory(address, &value, sizeof(TValue), flushInstructionCache);
+    }
+
+    // FillMemory disabled due to Windows.h macro conflict
+    // static bool FillMemory(uintptr_t address, uint8_t value, std::size_t cb, bool flushInstructionCache = true) {
+
     static std::vector<uintptr_t> AobScan(const char* pattern, size_t maxResults = 1,
         uintptr_t rangeStart = 0, uintptr_t rangeEnd = 0, bool executableOnly = false) {
 
@@ -1270,15 +1766,25 @@ public:
         }
 
         HANDLE hProcess = GetCurrentProcess();
-        const uintptr_t trampolineAddr = reinterpret_cast<uintptr_t>(AllocateTrampolineNearTarget(hProcess, targetAddr));
+        uintptr_t trampolineAddr = reinterpret_cast<uintptr_t>(AllocateTrampolineNearTarget(hProcess, targetAddr));
+        bool requireRel32Hook = true;
         if (!trampolineAddr) {
-            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to allocate trampoline\n";
-            return false;
+            void* farTrampoline = VirtualAllocEx(
+                hProcess,
+                nullptr,
+                kTrampolineSize,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_EXECUTE_READWRITE);
+            trampolineAddr = reinterpret_cast<uintptr_t>(farTrampoline);
+            requireRel32Hook = false;
+            if (!trampolineAddr) {
+                LOGE_STREAM("InlineHook") << "[InlineHook] Failed to allocate trampoline (near and far both failed)\n";
+                return false;
+            }
+            LOGW_STREAM("InlineHook") << "[InlineHook] Near trampoline not found, fallback to absolute-entry hook\n";
         }
 
-        int32_t relCheck = 0;
-        const bool canUseRel32ToTrampoline = TryMakeRel32(targetAddr + kRelJumpSize, trampolineAddr, relCheck);
-        const size_t minPatchRequired = canUseRel32ToTrampoline ? kRelJumpSize : kAbsJumpSize;
+        const size_t minPatchRequired = requireRel32Hook ? kRelJumpSize : kAbsJumpSize;
 
         size_t patchSize = 0;
         if (!CalculatePatchSize(prologueBytes, sizeof(prologueBytes), minPatchRequired, patchSize)) {
@@ -1300,8 +1806,12 @@ public:
         unsigned char* trampoline = reinterpret_cast<unsigned char*>(entry.Trampoline);
         size_t trampOffset = 0;
 
-        std::memcpy(trampoline + trampOffset, entry.OriginalBytes, entry.PatchSize);
-        trampOffset += entry.PatchSize;
+        if (!BuildRelocatedOriginalCode(entry.TargetAddr, entry.OriginalBytes, entry.PatchSize,
+            entry.Trampoline, trampoline, trampOffset)) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to relocate original instructions into trampoline\n";
+            VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
+            return false;
+        }
 
         if (trampolineCode && trampolineCodeSize > 0) {
             if (trampOffset + trampolineCodeSize + kAbsJumpSize > kTrampolineSize) {
@@ -1331,10 +1841,24 @@ public:
         (void)trampOffset;
 
         uint8_t hookPatch[kMaxStolenBytes] = {};
-        if (!BuildJumpPatch(entry.TargetAddr, entry.Trampoline, entry.PatchSize, hookPatch)) {
-            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to build hook jump patch\n";
-            VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
-            return false;
+        if (requireRel32Hook) {
+            if (!BuildJumpPatch(entry.TargetAddr, entry.Trampoline, entry.PatchSize, hookPatch)) {
+                LOGE_STREAM("InlineHook") << "[InlineHook] Failed to build hook jump patch\n";
+                VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
+                return false;
+            }
+            if (hookPatch[0] != 0xE9) {
+                LOGE_STREAM("InlineHook") << "[InlineHook] Hook patch is not rel32 (5-byte) jump, abort install\n";
+                VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
+                return false;
+            }
+        }
+        else {
+            if (!BuildAbsJumpPatch(entry.Trampoline, entry.PatchSize, hookPatch)) {
+                LOGE_STREAM("InlineHook") << "[InlineHook] Failed to build absolute hook patch\n";
+                VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
+                return false;
+            }
         }
 
         bool installSuccess = true;

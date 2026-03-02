@@ -545,9 +545,19 @@ namespace
     uintptr_t GItemGainMultiplierOffset = 0;
     volatile LONG GItemGainMultiplierAsmValue = 2;
 
+    // 所有物品可出售
+    uintptr_t GAllItemsSellableAddr = 0;
+    uintptr_t GIncludeQuestItemsAddr = 0;
+    uintptr_t GIncludeQuestItemsAddr2 = 0;
+
     // 物品不减特征码
     const char* kItemNoDecreasePattern = "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 41 0F B6 F1 41 8B E8 48 8B FA 48 8B D9";
     const char* kItemGainMultiplierPattern = "0B 50 30 0B 50 2C 0B 50 28";
+
+    // 所有物品可出售特征码
+    const char* kAllItemsSellablePattern = "80 ?? ?? 3C 75 ?? 32 C0 C3 80 ?? 83 00 00 00 00 0F 94 C0 C3";
+    // 包括任务物品特征码
+    const char* kIncludeQuestItemsPattern = "48 8B ?? 70 80 78 40 3C";
 
     // 功能：如果 Num < 0，则设为 0（防止负数扣除）
     const unsigned char kItemNoDecreaseTrampolineCode[] = {
@@ -725,4 +735,73 @@ void DisableItemGainMultiplierHook()
     }
 
     GTab1ItemGainMultiplierHookId = UINT32_MAX;
+}
+
+// 所有物品可出售
+void EnableAllItemsSellable()
+{
+    if (GAllItemsSellableAddr == 0)
+    {
+        uintptr_t foundAddr = InlineHook::HookManager::AobScanModuleFirst("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] AllItemsSellable AobScan failed\n";
+            return;
+        }
+        GAllItemsSellableAddr = foundAddr + 0x10;  // canSell+10
+        LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable found at: 0x" << std::hex << GAllItemsSellableAddr << std::dec << "\n";
+    }
+
+    // ENABLE: mov al, 1; nop
+    const unsigned char enableBytes[] = { 0xC1, 0x90 };
+    InlineHook::HookManager::WriteMemory(GAllItemsSellableAddr, enableBytes, sizeof(enableBytes));
+    LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable enabled\n";
+}
+
+void DisableAllItemsSellable()
+{
+    if (GAllItemsSellableAddr == 0)
+        return;
+
+    // DISABLE: setz al
+    const unsigned char disableBytes[] = { 0x0F, 0x94, 0xC0 };
+    InlineHook::HookManager::WriteMemory(GAllItemsSellableAddr, disableBytes, sizeof(disableBytes));
+    LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable disabled\n";
+}
+
+// 包括任务物品
+void EnableIncludeQuestItems()
+{
+    if (GIncludeQuestItemsAddr == 0)
+    {
+        uintptr_t foundAddr = InlineHook::HookManager::AobScanModuleFirst("JH-Win64-Shipping.exe", kIncludeQuestItemsPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] IncludeQuestItems AobScan failed\n";
+            return;
+        }
+        GIncludeQuestItemsAddr = foundAddr + 0x6;   // canSell+6
+        GIncludeQuestItemsAddr2 = foundAddr + 0x7; // canSell2+7
+        LOGI_STREAM("Tab1Items") << "[SDK] IncludeQuestItems found at: 0x" << std::hex << foundAddr << std::dec << "\n";
+    }
+
+    // ENABLE: mov al, 1; 写入FF
+    const unsigned char enableByte1[] = { 0xC1 };
+    const unsigned char enableByte2[] = { 0xFF };
+    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr, enableByte1, sizeof(enableByte1));
+    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, enableByte2, sizeof(enableByte2));
+    LOGI_STREAM("Tab1Items") << "[SDK] IncludeQuestItems enabled\n";
+}
+
+void DisableIncludeQuestItems()
+{
+    if (GIncludeQuestItemsAddr == 0)
+        return;
+
+    // DISABLE: xor al, al; 写入3C
+    const unsigned char disableByte1[] = { 0x32, 0xC0 };
+    const unsigned char disableByte2[] = { 0x3C };
+    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr, disableByte1, sizeof(disableByte1));
+    InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, disableByte2, sizeof(disableByte2));
+    LOGI_STREAM("Tab1Items") << "[SDK] IncludeQuestItems disabled\n";
 }

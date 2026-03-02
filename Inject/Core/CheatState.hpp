@@ -153,3 +153,11 @@ void DisableItemNoDecreaseHook();
 void SetItemGainMultiplierHookValue(int32 Value);
 void EnableItemGainMultiplierHook();
 void DisableItemGainMultiplierHook();
+
+// 所有物品可出售
+void EnableAllItemsSellable();
+void DisableAllItemsSellable();
+
+// 包括任务物品
+void EnableIncludeQuestItems();
+void DisableIncludeQuestItems();
