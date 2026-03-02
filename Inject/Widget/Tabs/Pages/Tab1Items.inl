@@ -752,8 +752,8 @@ void EnableAllItemsSellable()
         LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable found at: 0x" << std::hex << GAllItemsSellableAddr << std::dec << "\n";
     }
 
-    // ENABLE: mov al, 1; nop
-    const unsigned char enableBytes[] = { 0xC1, 0x90 };
+    // ENABLE: mov al, 1; nop (0C 被写成 C1 了，应该是 0C 01 90)
+    const unsigned char enableBytes[] = { 0x0C, 0x01, 0x90 };
     InlineHook::HookManager::WriteMemory(GAllItemsSellableAddr, enableBytes, sizeof(enableBytes));
     LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable enabled\n";
 }
