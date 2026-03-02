@@ -144,3 +144,7 @@ extern uintptr_t GChangeItemNumAddr;
 extern unsigned char GOriginalChangeItemNumBytes[5];  // 保存原始入口字节(5字节)
 extern void* GHookTrampoline;  // Hook 跳板内存
 extern bool GInlineHookInstalled;
+
+// 动态启用/禁用物品不减 Hook
+void EnableItemNoDecreaseHook();
+void DisableItemNoDecreaseHook();

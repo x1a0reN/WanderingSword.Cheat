@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <iostream>
 #include <cstdio>
 
@@ -7,6 +7,46 @@
 #include "Logging.hpp"
 #include "FrameHook.hpp"
 #include "PanelManager.hpp"
+
+// 启用物品不减 Hook
+static void EnableItemNoDecreaseHook()
+{
+	if (!GChangeItemNumAddr || !GHookTrampoline || GInlineHookInstalled)
+		return;
+
+	DWORD OldProtect;
+	if (VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+		// 写入 jmp 指令跳转到跳板
+		unsigned char JmpToTrampoline[] = {
+			0xE9, 0x00, 0x00, 0x00, 0x00  // jmp rel32
+		};
+		int32_t TrampolineOffset = static_cast<int32_t>(reinterpret_cast<uintptr_t>(GHookTrampoline) - GChangeItemNumAddr - 5);
+		std::memcpy(&JmpToTrampoline[1], &TrampolineOffset, 4);
+		std::memcpy(reinterpret_cast<void*>(GChangeItemNumAddr), JmpToTrampoline, 5);
+
+		VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, OldProtect, &OldProtect);
+		GInlineHookInstalled = true;
+		std::cout << "[SDK] ItemNoDecrease hook enabled\n";
+	}
+}
+
+// 禁用物品不减 Hook
+static void DisableItemNoDecreaseHook()
+{
+	if (!GChangeItemNumAddr || !GInlineHookInstalled)
+		return;
+
+	DWORD OldProtect;
+	if (VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+		// 恢复原始字节
+		std::memcpy(reinterpret_cast<void*>(GChangeItemNumAddr), GOriginalChangeItemNumBytes, 5);
+		VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, OldProtect, &OldProtect);
+		GInlineHookInstalled = false;
+		std::cout << "[SDK] ItemNoDecrease hook disabled\n";
+	}
+}
 
 static void RemoveAllHooks()
 {
@@ -17,25 +57,14 @@ static void RemoveAllHooks()
 	OriginalGVCPostRender = nullptr;
 	std::cout << "[SDK] GVC PostRender unhooked\n";
 
-	// Inline Hook 卸载
-	if (GInlineHookInstalled)
-	{
-		DWORD OldProtect;
-		if (VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, PAGE_EXECUTE_READWRITE, &OldProtect))
-		{
-			// 恢复原始字节: mov [rsp+08],rbx (5 bytes)
-			std::memcpy(reinterpret_cast<void*>(GChangeItemNumAddr), GOriginalChangeItemNumBytes, 5);
-			VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, OldProtect, &OldProtect);
-			std::cout << "[SDK] ChangeItemNum inline hook removed\n";
-		}
-		GInlineHookInstalled = false;
+	// 禁用物品不减 Hook
+	DisableItemNoDecreaseHook();
 
-		// 释放跳板内存
-		if (GHookTrampoline)
-		{
-			VirtualFree(GHookTrampoline, 0, MEM_RELEASE);
-			GHookTrampoline = nullptr;
-		}
+	// 释放跳板内存
+	if (GHookTrampoline)
+	{
+		VirtualFree(GHookTrampoline, 0, MEM_RELEASE);
+		GHookTrampoline = nullptr;
 	}
 }
 
@@ -92,13 +121,16 @@ DWORD MainThread(HMODULE Module)
 		std::cout << "[SDK] GVCPostRenderIdx not detected (-1), hook skipped\n";
 	}
 
-	// 安装物品不减 Inline Hook
+	// 初始化物品不减 Hook（保存原始字节和分配跳板，但不安装hook）
 	// 偏移地址: 0x1206A70
 	HMODULE hGame = GetModuleHandleA("JH-Win64-Shipping.exe");
 	if (hGame)
 	{
 		GChangeItemNumAddr = reinterpret_cast<uintptr_t>(hGame) + 0x1206A70;
 		std::cout << "[SDK] ChangeItemNum target address: " << std::hex << GChangeItemNumAddr << std::dec << "\n";
+
+		// 保存原始代码 (前5字节)
+		std::memcpy(GOriginalChangeItemNumBytes, reinterpret_cast<void*>(GChangeItemNumAddr), 5);
 
 		// 分配跳板内存
 		GHookTrampoline = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -108,68 +140,35 @@ DWORD MainThread(HMODULE Module)
 		}
 		else
 		{
-			// Hook 逻辑 (在跳板中执行):
-			// cmp r8d, 0        ; 比较 Num 参数
-			// jnl +0x20         ; 如果 Num >= 0，跳转到原始代码 (jmp back)
-			// xor r8d, r8d      ; Num < 0 时设为 0（不减物品）
-			// jmp +0x17         ; 跳转到原始代码 (jmp back)
-			// (原始代码从 +5 开始，需要 jmp back)
-
-			// 计算跳回地址: GChangeItemNumAddr + 5
-			uintptr_t JmpBackAddr = GChangeItemNumAddr + 5;
-			int32_t JmpBackOffset = static_cast<int32_t>(JmpBackAddr - (reinterpret_cast<uintptr_t>(GHookTrampoline) + 4 + 6 + 3 + 6));
-			// offset = target - (current + 6) for near relative jmp
-
+			// 写入跳板代码
 			unsigned char* Trampoline = static_cast<unsigned char*>(GHookTrampoline);
 			size_t Offset = 0;
 
-			// cmp r8d, 0
+			// cmp r8d, 0        ; 比较 Num 参数
 			Trampoline[Offset++] = 0x41;
 			Trampoline[Offset++] = 0x83;
 			Trampoline[Offset++] = 0xF8;
 			Trampoline[Offset++] = 0x00;
 
-			// jnl +offset (跳转到 jmp back)
-			// 计算 jnl 跳转 offset: 从 Offset 位置到 JmpBackOffset
-			int32_t JnlOffset = static_cast<int32_t>(JmpBackAddr - (GChangeItemNumAddr + 4 + 6 + 3 + 5));
+			// jge +13 (跳过xor)
 			Trampoline[Offset++] = 0x0F;
 			Trampoline[Offset++] = 0x8D;
-			std::memcpy(&Trampoline[Offset], &JnlOffset, 4);
+			int32_t JgeOffset = 13;
+			std::memcpy(&Trampoline[Offset], &JgeOffset, 4);
 			Offset += 4;
 
-			// xor r8d, r8d
+			// xor r8d, r8d    ; Num < 0 时设为 0
 			Trampoline[Offset++] = 0x45;
 			Trampoline[Offset++] = 0x31;
 			Trampoline[Offset++] = 0xC0;
 
-			// jmp back to original code (+5)
+			// jmp back to original +5
 			Trampoline[Offset++] = 0xE9;
-			std::memcpy(&Trampoline[Offset], &JnlOffset, 4);
+			int32_t JmpBackOffset = static_cast<int32_t>((GChangeItemNumAddr + 5) - (reinterpret_cast<uintptr_t>(GHookTrampoline) + Offset + 4));
+			std::memcpy(&Trampoline[Offset], &JmpBackOffset, 4);
 			Offset += 4;
 
-			// 保存原始代码 (前5字节)
-			std::memcpy(GOriginalChangeItemNumBytes, reinterpret_cast<void*>(GChangeItemNumAddr), 5);
-
-			// 修改原函数入口: jmp GHookTrampoline
-			DWORD OldProtect;
-			if (VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, PAGE_EXECUTE_READWRITE, &OldProtect))
-			{
-				// 写入 jmp 指令跳转到跳板
-				unsigned char JmpToTrampoline[] = {
-					0xE9, 0x00, 0x00, 0x00, 0x00  // jmp rel32
-				};
-				int32_t TrampolineOffset = static_cast<int32_t>(reinterpret_cast<uintptr_t>(GHookTrampoline) - GChangeItemNumAddr - 5);
-				std::memcpy(&JmpToTrampoline[1], &TrampolineOffset, 4);
-				std::memcpy(reinterpret_cast<void*>(GChangeItemNumAddr), JmpToTrampoline, 5);
-
-				VirtualProtect(reinterpret_cast<void*>(GChangeItemNumAddr), 14, OldProtect, &OldProtect);
-				GInlineHookInstalled = true;
-				std::cout << "[SDK] ChangeItemNum inline hook installed\n";
-			}
-			else
-			{
-				std::cout << "[SDK] Failed to patch function entry\n";
-			}
+			std::cout << "[SDK] ChangeItemNum trampoline prepared\n";
 		}
 	}
 	else

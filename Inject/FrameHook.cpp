@@ -790,7 +790,18 @@ namespace
 		if (CanReadFromUI)
 			ReadTab1ConfigFromUI(Config);
 
-		// 更新全局开关，供 ProcessEvent Hook 读取
+		// 根据开关状态动态启用/禁用 Hook
+		static bool LastItemNoDecrease = false;
+		if (Config.ItemNoDecrease != LastItemNoDecrease)
+		{
+			if (Config.ItemNoDecrease)
+				EnableItemNoDecreaseHook();
+			else
+				DisableItemNoDecreaseHook();
+			LastItemNoDecrease = Config.ItemNoDecrease;
+		}
+
+		// 更新全局开关
 		GItemNoDecreaseEnabled.store(Config.ItemNoDecrease, std::memory_order_release);
 
 		UItemResManager* ResMgr = UManagerFuncLib::GetItemResManager();

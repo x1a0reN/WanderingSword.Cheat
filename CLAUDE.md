@@ -7,6 +7,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a cheat/internal mod for the game "逸剑风云决" (Wandering Sword) V1.24.32. It uses DLL injection via version.dll proxy hijacking combined with Unreal Engine 4 SDK to create an in-game cheat menu by hijacking the game's built-in settings panel.
 
+## Rules
+
+1. **Never Delete Any Files**: Under no circumstances shall any file be deleted or commands executed that would result in file deletion.
+2. **Compile After Code Modifications**: Every time code modifications are made, the following compile command must be executed:
+   ```bash
+   & 'D:\Program Files\Visual Studio 2026\MSBuild\Current\Bin\MSBuild.exe' 'D:\Projects\WanderingSword.Cheat\Inject\Wandering_Sword_Inject.vcxproj' /t:Build /p:Configuration=Release /p:Platform=x64 /m:1
+   ```
+   If a DLL is being used and an error occurs stating that the DLL is occupied, stop the process and notify me.
+3. **Automatic Chinese GitHub Commit**: After modifying any code, automatically submit a commit to GitHub in Chinese. **Do not include a signature in the commit.**
+4. **Do Not Modify Existing Correct Code**: Do not modify previously correct code unless necessary for implementing a new feature. If modification of existing code is required, it must be explicitly mentioned, as changes could potentially introduce errors in previously correct functionality.
+
+
 ## Build Commands
 
 ```bash
@@ -71,13 +83,61 @@ HOME pressed → ToggleInternalWidget()
 - 进度.md contains detailed development progress and pitfalls
 - 轮询点与掉帧分析.md contains performance analysis for UI polling
 
-## New Rules
+## Inline Hook 坑点记录
 
-1. **Never Delete Any Files**: Under no circumstances shall any file be deleted or commands executed that would result in file deletion.
-2. **Compile After Code Modifications**: Every time code modifications are made, the following compile command must be executed:
-   ```bash
-   & 'D:\Program Files\Visual Studio 2026\MSBuild\Current\Bin\MSBuild.exe' 'D:\Projects\WanderingSword.Cheat\Inject\Wandering_Sword_Inject.vcxproj' /t:Build /p:Configuration=Release /p:Platform=x64 /m:1
-   ```
-   If a DLL is being used and an error occurs stating that the DLL is occupied, stop the process and notify me.
-3. **Automatic Chinese GitHub Commit**: After modifying any code, automatically submit a commit to GitHub in Chinese. **Do not include a signature in the commit.**
-4. **Do Not Modify Existing Correct Code**: Do not modify previously correct code unless necessary for implementing a new feature. If modification of existing code is required, it must be explicitly mentioned, as changes could potentially introduce errors in previously correct functionality.
+在实现物品不减功能（地址：`JH-Win64-Shipping.exe+1206A70`）时遇到的坑点：
+
+### 1. 必须使用跳板内存
+**错误做法**: 直接覆盖原地址的字节
+```cpp
+// 错误！直接在原地址写入jmp，但原地址后续的指令会被破坏
+memcpy(address, jmp_instruction, 5);
+```
+
+**正确做法**: 使用 `VirtualAlloc` 分配可执行内存作为跳板
+```cpp
+GHookTrampoline = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+```
+
+### 2. 正确计算相对跳转偏移量
+x64 near jmp 指令格式: `E9 xx xx xx xx` (相对偏移)
+```cpp
+// 正确公式: offset = target - (current + 5)
+int32_t JmpOffset = reinterpret_cast<uintptr_t>(Trampoline) - (Address + 5);
+memcpy(&JmpInstruction[1], &JmpOffset, 4);
+```
+
+### 3. 默认不安装 Hook
+**错误**: DLL加载时直接安装hook，导致功能未启用也被hook
+
+**正确**: 只初始化（保存原始字节、分配跳板），不安装hook。只有在用户启用功能时才调用 `EnableItemNoDecreaseHook()`
+
+### 4. 正确还原 Hook
+禁用功能时必须恢复原始字节：
+```cpp
+void DisableItemNoDecreaseHook() {
+    if (!GInlineHookInstalled) return;
+    DWORD OldProtect;
+    VirtualProtect(address, 14, PAGE_EXECUTE_READWRITE, &OldProtect);
+    memcpy(address, GOriginalChangeItemNumBytes, 5);  // 还原原始字节
+    VirtualProtect(address, 14, OldProtect, &OldProtect);
+    GInlineHookInstalled = false;
+}
+```
+
+### 5. 动态启用/禁用逻辑
+在FrameHook中根据开关状态动态控制：
+```cpp
+if (Config.ItemNoDecrease != LastItemNoDecrease) {
+    if (Config.ItemNoDecrease)
+        EnableItemNoDecreaseHook();
+    else
+        DisableItemNoDecreaseHook();
+    LastItemNoDecrease = Config.ItemNoDecrease;
+}
+```
+
+### 6. x64 调用约定
+- 参数顺序: rcx, rdx, r8, r9 (第1-4个参数)
+- 第5+参数使用栈传递
+- 64位指令需要用 `0x41` 前缀访问 r8-r15 寄存器
