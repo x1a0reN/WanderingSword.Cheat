@@ -693,65 +693,65 @@ namespace
 		const bool NewItemNoDecrease = ReadToggleValue(GTab1ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
 		if (NewItemNoDecrease != Cfg.ItemNoDecrease)
 		{
-			std::cout << "[SDK] 物品不减: " << (NewItemNoDecrease ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] ItemNoDecrease: " << (NewItemNoDecrease ? "ON" : "OFF") << "\n";
 			Cfg.ItemNoDecrease = NewItemNoDecrease;
 		}
 
 		const bool NewItemGainMultiplier = ReadToggleValue(GTab1ItemGainMultiplierToggle, Cfg.ItemGainMultiplier);
 		if (NewItemGainMultiplier != Cfg.ItemGainMultiplier)
 		{
-			std::cout << "[SDK] 物品获得倍数: " << (NewItemGainMultiplier ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] ItemGainMultiplier: " << (NewItemGainMultiplier ? "ON" : "OFF") << "\n";
 			Cfg.ItemGainMultiplier = NewItemGainMultiplier;
 		}
 
 		const bool NewAllItemsSellable = ReadToggleValue(GTab1AllItemsSellableToggle, Cfg.AllItemsSellable);
 		if (NewAllItemsSellable != Cfg.AllItemsSellable)
 		{
-			std::cout << "[SDK] 物品全可出售: " << (NewAllItemsSellable ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] AllItemsSellable: " << (NewAllItemsSellable ? "ON" : "OFF") << "\n";
 			Cfg.AllItemsSellable = NewAllItemsSellable;
 		}
 
 		const bool NewIncludeQuestItems = ReadToggleValue(GTab1IncludeQuestItemsToggle, Cfg.IncludeQuestItems);
 		if (NewIncludeQuestItems != Cfg.IncludeQuestItems)
 		{
-			std::cout << "[SDK] 包含任务物品: " << (NewIncludeQuestItems ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] IncludeQuestItems: " << (NewIncludeQuestItems ? "ON" : "OFF") << "\n";
 			Cfg.IncludeQuestItems = NewIncludeQuestItems;
 		}
 
 		const bool NewDropRate100 = ReadToggleValue(GTab1DropRate100Toggle, Cfg.DropRate100);
 		if (NewDropRate100 != Cfg.DropRate100)
 		{
-			std::cout << "[SDK] 掉落概率100%: " << (NewDropRate100 ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] DropRate100: " << (NewDropRate100 ? "ON" : "OFF") << "\n";
 			Cfg.DropRate100 = NewDropRate100;
 		}
 
 		const bool NewCraftEffectMultiplier = ReadToggleValue(GTab1CraftEffectMultiplierToggle, Cfg.CraftEffectMultiplier);
 		if (NewCraftEffectMultiplier != Cfg.CraftEffectMultiplier)
 		{
-			std::cout << "[SDK] 装备特效倍数: " << (NewCraftEffectMultiplier ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] CraftEffectMultiplier: " << (NewCraftEffectMultiplier ? "ON" : "OFF") << "\n";
 			Cfg.CraftEffectMultiplier = NewCraftEffectMultiplier;
 		}
 
 		const bool NewIgnoreItemUseCount = ReadToggleValue(GTab1IgnoreItemUseCountToggle, Cfg.IgnoreItemUseCount);
 		if (NewIgnoreItemUseCount != Cfg.IgnoreItemUseCount)
 		{
-			std::cout << "[SDK] 忽略物品使用次数: " << (NewIgnoreItemUseCount ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] IgnoreItemUseCount: " << (NewIgnoreItemUseCount ? "ON" : "OFF") << "\n";
 			Cfg.IgnoreItemUseCount = NewIgnoreItemUseCount;
 		}
 
 		const bool NewIgnoreItemRequirements = ReadToggleValue(GTab1IgnoreItemRequirementsToggle, Cfg.IgnoreItemRequirements);
 		if (NewIgnoreItemRequirements != Cfg.IgnoreItemRequirements)
 		{
-			std::cout << "[SDK] 忽略物品需求: " << (NewIgnoreItemRequirements ? "开启" : "关闭") << "\n";
+			std::cout << "[SDK] IgnoreItemRequirements: " << (NewIgnoreItemRequirements ? "ON" : "OFF") << "\n";
 			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
 		}
 
-		// 读取滑块数值
+		// Sliders
 		const float GainPercent = ReadSliderPercent(GTab1ItemGainMultiplierSlider, static_cast<float>(Cfg.ItemGainMultiplierValue));
 		const int32 NewGainValue = SliderPercentToIntMultiplier(GainPercent);
 		if (NewGainValue != Cfg.ItemGainMultiplierValue)
 		{
-			std::cout << "[SDK] 物品获得倍数: " << NewGainValue << "x\n";
+			std::cout << "[SDK] ItemGainMultiplier: " << NewGainValue << "x\n";
 			Cfg.ItemGainMultiplierValue = NewGainValue;
 		}
 
@@ -761,7 +761,7 @@ namespace
 		const float NewIncrementValue = SliderPercentToFloatMultiplier(IncrementPercent);
 		if (std::fabs(NewIncrementValue - Cfg.CraftItemIncrementMultiplier) > 0.001f)
 		{
-			std::cout << "[SDK] 装备产出数量倍数: " << NewIncrementValue << "x\n";
+			std::cout << "[SDK] CraftItemIncrement: " << NewIncrementValue << "x\n";
 			Cfg.CraftItemIncrementMultiplier = NewIncrementValue;
 		}
 
@@ -771,15 +771,15 @@ namespace
 		const float NewExtraValue = SliderPercentToFloatMultiplier(ExtraPercent);
 		if (std::fabs(NewExtraValue - Cfg.CraftExtraEffectMultiplier) > 0.001f)
 		{
-			std::cout << "[SDK] 装备额外特效倍数: " << NewExtraValue << "x\n";
+			std::cout << "[SDK] CraftExtraEffect: " << NewExtraValue << "x\n";
 			Cfg.CraftExtraEffectMultiplier = NewExtraValue;
 		}
 
-		// 读取整数输入
+		// Integer input
 		const int32 NewMaxExtraAffixes = ReadIntegerEditValue(GTab1MaxExtraAffixesEdit, Cfg.MaxExtraAffixes, 0, 32);
 		if (NewMaxExtraAffixes != Cfg.MaxExtraAffixes)
 		{
-			std::cout << "[SDK] 最大额外词条: " << NewMaxExtraAffixes << "\n";
+			std::cout << "[SDK] MaxExtraAffixes: " << NewMaxExtraAffixes << "\n";
 			Cfg.MaxExtraAffixes = NewMaxExtraAffixes;
 		}
 	}
