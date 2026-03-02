@@ -176,10 +176,10 @@ DWORD MainThread(HMODULE Module)
 			Trampoline[Offset++] = 0xF8;
 			Trampoline[Offset++] = 0x00;
 
-			// jge +13 (跳过xor)
+			// jge +3 (跳过xor，跳转到jmp back指令)
 			Trampoline[Offset++] = 0x0F;
 			Trampoline[Offset++] = 0x8D;
-			int32_t JgeOffset = 13;
+			int32_t JgeOffset = 3;
 			std::memcpy(&Trampoline[Offset], &JgeOffset, 4);
 			Offset += 4;
 
