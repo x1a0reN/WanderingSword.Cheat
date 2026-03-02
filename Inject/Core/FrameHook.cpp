@@ -743,22 +743,25 @@ namespace
 			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
 		}
 
-		// Sliders - 滑块值范围1-10，直接读取
-		const int32 NewGainValue = static_cast<int32>(ReadSliderPercent(GTab1ItemGainMultiplierSlider, 2.0f) + 0.5f);
+		// Sliders - 滑块值1-10直接作为倍数
+		const float SliderGainValue = ReadSliderPercent(GTab1ItemGainMultiplierSlider, 2.0f);
+		const int32 NewGainValue = static_cast<int32>(SliderGainValue + 0.5f);
 		if (NewGainValue != Cfg.ItemGainMultiplierValue)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] ItemGainMultiplier: " << NewGainValue << "x\n";
 			Cfg.ItemGainMultiplierValue = NewGainValue;
 		}
 
-		const float NewIncrementValue = ReadSliderPercent(GTab1CraftItemIncrementSlider, 2.0f);
+		const float SliderIncrementValue = ReadSliderPercent(GTab1CraftItemIncrementSlider, 2.0f);
+		const float NewIncrementValue = SliderIncrementValue;
 		if (std::fabs(NewIncrementValue - Cfg.CraftItemIncrementMultiplier) > 0.001f)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] CraftItemIncrement: " << NewIncrementValue << "x\n";
 			Cfg.CraftItemIncrementMultiplier = NewIncrementValue;
 		}
 
-		const float NewExtraValue = ReadSliderPercent(GTab1CraftExtraEffectSlider, 2.0f);
+		const float SliderExtraValue = ReadSliderPercent(GTab1CraftExtraEffectSlider, 2.0f);
+		const float NewExtraValue = SliderExtraValue;
 		if (std::fabs(NewExtraValue - Cfg.CraftExtraEffectMultiplier) > 0.001f)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] CraftExtraEffect: " << NewExtraValue << "x\n";
@@ -1094,17 +1097,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 					CurValue = Slider->GetValue();
 					if (Item->TXT_CurrentValue)
 					{
-						// 统一显示为1-10整数：先归一化到0-1，再乘以10
-						float MinV = Slider->MinValue;
-						float MaxV = Slider->MaxValue;
-						float Norm = 0.0f;
-						if (MaxV > MinV)
-						{
-							Norm = (CurValue - MinV) / (MaxV - MinV);
-						}
-						if (Norm < 0.0f) Norm = 0.0f;
-						if (Norm > 1.0f) Norm = 1.0f;
-						int32 DisplayValue = static_cast<int32>(Norm * 10.0f + 0.5f);
+						// 滑块值1-10，直接显示
+						int32 DisplayValue = static_cast<int32>(CurValue + 0.5f);
 						if (DisplayValue < 1) DisplayValue = 1;
 						if (DisplayValue > 10) DisplayValue = 10;
 						wchar_t Buf[16] = {};
