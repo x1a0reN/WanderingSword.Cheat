@@ -1126,7 +1126,7 @@ namespace
 		if (Clamped > 10.0f) Clamped = 10.0f;
 
 		wchar_t Buf[32] = {};
-		swprintf_s(Buf, 32, L"%d", static_cast<int32>(std::round(Clamped)));
+		swprintf_s(Buf, 32, L"%.1f", Clamped);  // 显示1位小数
 		Item->TXT_CurrentValue->SetText(MakeText(Buf));
 	}
 
@@ -1161,7 +1161,7 @@ namespace
 		USlider* Slider = Item->VolumeSlider;
 		Slider->MinValue = 1.0f;
 		Slider->MaxValue = 10.0f;
-		Slider->StepSize = 1.0f;
+		Slider->StepSize = 0.1f;  // 小数步进
 		SetVolumeItemPercent(Item, 1.0f);
 	}
 
@@ -1327,7 +1327,7 @@ namespace
 				return;
 			}
 
-			if (std::fabs(Percent - LastPercent) >= 0.5f)
+			if (std::fabs(Percent - LastPercent) >= 0.05f)  // 检测小数变化
 			{
 				ApplyTab0MultiplierAttribute(Ctx, AttrName, Percent);
 				LastPercent = Percent;

@@ -614,6 +614,7 @@ private:
         size_t FastAnchorIndex = 0;
         uint8_t FastAnchorByte = 0;
         bool HasFastAnchor = false;
+        bool CanUseShiftTable = false;
     };
 
     static constexpr size_t kMaxStolenBytes = 32;
@@ -750,12 +751,24 @@ private:
         outPattern.ShiftTable.fill(1);
 
         if (outPattern.HasFastAnchor) {
-            const size_t defaultShift = outPattern.FastAnchorIndex + 1;
-            outPattern.ShiftTable.fill(defaultShift);
-
+            bool hasWildcardOrMaskedBeforeAnchor = false;
             for (size_t i = 0; i < outPattern.FastAnchorIndex; ++i) {
-                if (outPattern.ByteMasks[i] == 0xFF) {
-                    outPattern.ShiftTable[outPattern.Bytes[i]] = outPattern.FastAnchorIndex - i;
+                if (outPattern.ByteMasks[i] != 0xFF) {
+                    hasWildcardOrMaskedBeforeAnchor = true;
+                    break;
+                }
+            }
+
+            // 对含前置通配符/掩码的模式，传统跳表会产生漏检，改为保守步进保证正确性。
+            outPattern.CanUseShiftTable = !hasWildcardOrMaskedBeforeAnchor;
+            if (outPattern.CanUseShiftTable) {
+                const size_t defaultShift = outPattern.FastAnchorIndex + 1;
+                outPattern.ShiftTable.fill(defaultShift);
+
+                for (size_t i = 0; i < outPattern.FastAnchorIndex; ++i) {
+                    if (outPattern.ByteMasks[i] == 0xFF) {
+                        outPattern.ShiftTable[outPattern.Bytes[i]] = outPattern.FastAnchorIndex - i;
+                    }
                 }
             }
         }
@@ -855,7 +868,7 @@ private:
         while (i <= lastOffset) {
             const uint8_t probe = data[i + anchor];
             if (probe != anchorByte) {
-                i += pattern.ShiftTable[probe];
+                i += pattern.CanUseShiftTable ? pattern.ShiftTable[probe] : 1;
                 continue;
             }
 

@@ -566,27 +566,61 @@ namespace
         0x45, 0x31, 0xC0                      // xor r8d, r8d
     };
 
-    // 逻辑：
-    // 1) mov r10,[rax+70]
-    // 2) cmp byte ptr [r10+84],0   ; 只对指定来源生效
-    // 3) je skip
-    // 4) mov r11, &GItemGainMultiplierAsmValue
-    // 5) mov r11d,[r11]
-    // 6) mov [rax+40],r11d
     const unsigned char kItemGainMultiplierTrampolineTemplate[] = {
-        0x41, 0x50,                         			// push r8
-        0x4C, 0x8B, 0x40, 0x70,                         // mov r8,[rax+70]
-        0x41, 0x80, 0xBA, 0x84, 0x00, 0x00, 0x00, 0x00,// cmp byte ptr [r10+84],00
-        0x0F, 0x84, 0x11, 0x00, 0x00, 0x00,            // je +0x11
-        0x49, 0xBB,                                     // mov r11, imm64
+        0x41, 0x50,                                      // push r8
+        0x4C, 0x8B, 0x40, 0x70,                          // mov r8,[rax+70]
+        0x41, 0x80, 0xB8, 0x84, 0x00, 0x00, 0x00, 0x00, // cmp byte ptr [r8+84],00
+        0x0F, 0x84, 0x15, 0x00, 0x00, 0x00,             // je +0x15 (jump to pop r8)
+        0x41, 0x53,                                      // push r11
+        0x49, 0xBB,                                      // mov r11, imm64
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00,             // imm64 low
-        0x00, 0x00,                                     // imm64 high
-        0x45, 0x8B, 0x1B,                               // mov r11d,[r11]
+        0x00, 0x00,                                      // imm64 high
+        0x45, 0x8B, 0x1B,                                // mov r11d,[r11]
         0x44, 0x89, 0x58, 0x40,                          // mov [rax+40],r11d
+        0x41, 0x5B,                                      // pop r11
         0x41, 0x58                                       // pop r8
     };
-    constexpr size_t kItemGainMulImm64Offset = 20;
+    // Template offset of imm64 in "49 BB imm64"
+    constexpr size_t kItemGainMulImm64Offset = 24;
+
+    uintptr_t ScanModulePatternRobust(const char* moduleName, const char* pattern)
+    {
+        if (!moduleName || !pattern)
+            return 0;
+
+        // 1) 优先扫可执行段
+        uintptr_t addr = InlineHook::HookManager::AobScanModuleFirst(moduleName, pattern, true);
+        if (addr != 0)
+            return addr;
+
+        // 2) 再扫模块可读段
+        addr = InlineHook::HookManager::AobScanModuleFirst(moduleName, pattern, false);
+        if (addr != 0)
+            return addr;
+
+        // 3) 回退：按模块地址范围做通用扫描（绕过模块节区过滤逻辑）
+        HMODULE hModule = GetModuleHandleA(moduleName);
+        if (!hModule)
+            return 0;
+
+        const uintptr_t base = reinterpret_cast<uintptr_t>(hModule);
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+        if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE)
+            return 0;
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + static_cast<uintptr_t>(dos->e_lfanew));
+        if (!nt || nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.SizeOfImage == 0)
+            return 0;
+
+        const uintptr_t end = base + static_cast<uintptr_t>(nt->OptionalHeader.SizeOfImage);
+        if (end <= base)
+            return 0;
+
+        return InlineHook::HookManager::AobScanFirst(pattern, base, end, false);
+    }
 }
+
+void EnableItemGainMultiplierHook();
+void DisableItemGainMultiplierHook();
 
 void EnableItemNoDecreaseHook()
 {
@@ -661,7 +695,10 @@ void SetItemGainMultiplierHookValue(int32 Value)
         Value = 1;
     if (Value > 10)
         Value = 10;
-    InterlockedExchange(&GItemGainMultiplierAsmValue, static_cast<LONG>(Value));
+    const LONG oldValue = InterlockedExchange(&GItemGainMultiplierAsmValue, static_cast<LONG>(Value));
+    if (oldValue == Value)
+        return;
+
     LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier value set to: " << Value << "\n";
 }
 
@@ -697,8 +734,8 @@ void EnableItemGainMultiplierHook()
 
     unsigned char code[sizeof(kItemGainMultiplierTrampolineTemplate)] = {};
     std::memcpy(code, kItemGainMultiplierTrampolineTemplate, sizeof(code));
-    const uintptr_t valueAddr = reinterpret_cast<uintptr_t>(&GItemGainMultiplierAsmValue);
-    std::memcpy(code + kItemGainMulImm64Offset, &valueAddr, sizeof(valueAddr));
+    const uintptr_t gainValueAddr = reinterpret_cast<uintptr_t>(&GItemGainMultiplierAsmValue);
+    std::memcpy(code + kItemGainMulImm64Offset, &gainValueAddr, sizeof(gainValueAddr));
 
     uint32_t hookId = UINT32_MAX;
     const bool success = InlineHook::HookManager::InstallHook(
@@ -713,7 +750,7 @@ void EnableItemGainMultiplierHook()
     {
         GTab1ItemGainMultiplierHookId = hookId;
         LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier hook enabled, ID: " << hookId
-            << ", valueAddr=0x" << std::hex << valueAddr << std::dec << "\n";
+            << ", valueAddr=0x" << std::hex << gainValueAddr << std::dec << "\n";
     }
     else
     {
@@ -744,10 +781,10 @@ void EnableAllItemsSellable()
 {
     if (GAllItemsSellableAddr == 0)
     {
-        uintptr_t foundAddr = InlineHook::HookManager::AobScanModuleFirst("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
+        uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
         if (foundAddr == 0)
         {
-            LOGE_STREAM("Tab1Items") << "[SDK] AllItemsSellable AobScan failed\n";
+            LOGE_STREAM("Tab1Items") << "[SDK] AllItemsSellable AobScan failed (pattern可能已随版本变化)\n";
             return;
         }
         GAllItemsSellableAddr = foundAddr + 0x10;  // canSell+10
@@ -776,10 +813,10 @@ void EnableIncludeQuestItems()
 {
     if (GIncludeQuestItemsAddr == 0)
     {
-        uintptr_t foundAddr = InlineHook::HookManager::AobScanModuleFirst("JH-Win64-Shipping.exe", kIncludeQuestItemsPattern);
+        uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIncludeQuestItemsPattern);
         if (foundAddr == 0)
         {
-            LOGE_STREAM("Tab1Items") << "[SDK] IncludeQuestItems AobScan failed\n";
+            LOGE_STREAM("Tab1Items") << "[SDK] IncludeQuestItems AobScan failed (pattern可能已随版本变化)\n";
             return;
         }
         GIncludeQuestItemsAddr = foundAddr + 0x6;   // canSell+6
