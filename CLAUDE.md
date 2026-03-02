@@ -155,7 +155,7 @@ if (Config.ItemNoDecrease != LastItemNoDecrease) {
 - 跳板1中可能需要保存/恢复寄存器（如 `mov [rsp+08],rbx`）
 
 ### 7. 使用 InlineHook.hpp 封装库
-项目提供了 `Inject/InlineHook.hpp` 封装库，使用示例：
+项目提供了 `InlineHook.hpp` 封装库（与 `VTHook.hpp` 同级），使用示例：
 ```cpp
 #include "InlineHook.hpp"
 

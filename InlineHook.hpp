@@ -15,14 +15,14 @@ struct HookConfig {
     const char* ModuleName;      // 模块名，如 "JH-Win64-Shipping.exe"
     uint32_t Offset;             // 偏移地址
     const void* HookFunc;        // Hook 函数地址
-    size_t JmpBackOffset;       // 跳回原函数的偏移（相对于被 Hook 地址+5）
+    size_t JmpBackOffset;        // 跳回原函数的偏移（相对于被 Hook 地址+5）
 };
 
 /// Inline Hook 实例
-classInlineHook {
+class InlineHook {
 private:
     uintptr_t m_TargetAddr = 0;      // 目标地址
-    uintptr_t m_Trampoline = 0;       // 跳板地址
+    uintptr_t m_Trampoline = 0;      // 跳板地址
     uint8_t m_OriginalBytes[16] = {}; // 原始字节
     bool m_Installed = false;         // 是否已安装
     size_t m_PatchSize = 5;           // Hook 补丁大小
