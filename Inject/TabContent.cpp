@@ -173,6 +173,10 @@ namespace
 	constexpr ULONGLONG kTab0CleanupIntervalMs = 500ULL;
 	ULONGLONG GTab0LastCleanupTick = 0;
 
+	// 滑块和下拉框轮询降频: 每100ms运行一次
+	constexpr ULONGLONG kTab0UiPollIntervalMs = 100ULL;
+	ULONGLONG GTab0LastUiPollTick = 0;
+
 	constexpr bool kTab0VerboseLog = false;
 	bool GTab0InitTraceEnabled = false;
 	UBPVE_JHConfigVolumeItem2_C* GTab0MoneyMultiplierItem = nullptr;
@@ -196,19 +200,9 @@ namespace
 	bool GTab0ManaCostMinusWasPressed = false;
 	bool GTab0ManaCostPlusWasPressed = false;
 
+	// Tab0Trace 已禁用，所有调用变成空操作
 	template <typename... TParts>
-	void Tab0Trace(const char* Step, const TParts&... Parts)
-	{
-		if (!GTab0InitTraceEnabled)
-			return;
-		std::ostringstream Oss;
-		(Oss << ... << Parts);
-		const std::string Tail = Oss.str();
-		std::cout << "[SDK][Tab0Trace] step=" << (Step ? Step : "Unknown");
-		if (!Tail.empty())
-			std::cout << " " << Tail;
-		std::cout << "\n";
-	}
+	void Tab0Trace(const char* Step, const TParts&...) {}
 
 	const char* Tab0FieldToString(ETab0Field Field)
 	{
@@ -2140,6 +2134,7 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0FocusCacheEdit = nullptr;       // 重置焦点缓存
 	GTab0FocusCacheTick = 0;             // 重置缓存时间戳
 	GTab0LastCleanupTick = 0;            // 重置清理时间戳
+	GTab0LastUiPollTick = 0;             // 重置UI轮询时间戳
 	GTab0MoneyMultiplierItem = nullptr;
 	GTab0SkillExpMultiplierItem = nullptr;
 	GTab0ManaCostMultiplierItem = nullptr;
@@ -2395,10 +2390,15 @@ void PollTab0CharacterInput(bool bTab0Active)
 	if (!PC)
 		Tab0Trace("InputPoll.Controller", "reason=PlayerControllerNull");
 
-	// Tab0 三个倍率滑块：实时同步到游戏属性	Tab0Trace("InputPoll.RatioPoll", "phase=Begin");
-	PollTab0RatioSliders(PC);
-	Tab0Trace("InputPoll.RatioPoll", "phase=End");
-	PollTab0RoleDropdowns(PC, true);
+	// 降频轮询: 每100ms运行一次滑块和下拉框轮询
+	const bool bDoUiPoll = !GTab0LastUiPollTick || (Now - GTab0LastUiPollTick) >= kTab0UiPollIntervalMs;
+	if (bDoUiPoll)
+	{
+		// Tab0 三个倍率滑块：实时同步到游戏属性
+		PollTab0RatioSliders(PC);
+		PollTab0RoleDropdowns(PC, true);
+		GTab0LastUiPollTick = Now;
+	}
 
 	// 方案2: 焦点缓存 - 只有在 EnterTriggered 或缓存过期时才扫描焦点
 	// 计算缓存是否过期
