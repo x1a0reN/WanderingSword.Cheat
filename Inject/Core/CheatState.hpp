@@ -153,6 +153,14 @@ void SetItemGainMultiplierHookValue(int32 Value);
 void EnableItemGainMultiplierHook();
 void DisableItemGainMultiplierHook();
 
+// 锻造制衣效果加倍 Inline Hook
+void SetCraftItemIncrementHookValue(float Value);
+void SetCraftExtraEffectHookValue(float Value);
+void EnableCraftEffectMultiplierHook();
+void DisableCraftEffectMultiplierHook();
+
 // 所有物品可出售
 void EnableAllItemsSellable();
 void DisableAllItemsSellable();
+void EnableDropRate100Patch();
+void DisableDropRate100Patch();

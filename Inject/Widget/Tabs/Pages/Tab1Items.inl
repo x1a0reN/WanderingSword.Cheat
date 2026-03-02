@@ -416,6 +416,17 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GItemGridPanel = static_cast<UUniformGridPanel*>(CreateRawWidget(UUniformGridPanel::StaticClass(), Outer));
 	if (GItemGridPanel)
 	{
+		int32 EntryCreatedCount = 0;
+		int32 ValidSlotCount = 0;
+		int32 EntryNullCount = 0;
+		int32 BtnJHItemNullCount = 0;
+		int32 BtnMainNullCount = 0;
+		int32 ItemDisplayNullCount = 0;
+		int32 DisplayCmpNullCount = 0;
+		int32 ImgNullCount = 0;
+		int32 InvalidDetailLogs = 0;
+		constexpr int32 kMaxInvalidDetailLogs = 8;
+
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 		{
 			GItemSlotButtons[i] = nullptr;
@@ -444,14 +455,26 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 				UWidgetBlueprintLibrary::Create(PC, UBPEntry_Item_C::StaticClass(), PC));
 			if (Entry)
 			{
+				++EntryCreatedCount;
 				MarkAsGCRoot(Entry);
 				EntryWidget = Entry;
+				Entry->Construct();
 
-				if (Entry->ItemDisplay && Entry->ItemDisplay->CMP)
+				if (!Entry->ItemDisplay)
+				{
+					++ItemDisplayNullCount;
+				}
+				else if (!Entry->ItemDisplay->CMP)
+				{
+					++DisplayCmpNullCount;
+				}
+				else
 				{
 					auto* Display = Entry->ItemDisplay->CMP;
 					Img = static_cast<UImage*>(Display->IMG_Item);
 					QualityBorder = static_cast<UImage*>(Display->IMG_QualityBorder);
+					if (!Img)
+						++ImgNullCount;
 
 					if (Display->IMG_SolidBG)
 					{
@@ -462,37 +485,52 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 						Display->TXT_Count->SetVisibility(ESlateVisibility::Collapsed);
 				}
 
-				if (Entry->BTN_JHItem && Entry->BTN_JHItem->BtnMain)
+				if (!Entry->BTN_JHItem)
+				{
+					++BtnJHItemNullCount;
+				}
+				else if (!Entry->BTN_JHItem->BtnMain)
+				{
+					++BtnMainNullCount;
+				}
+				else
+				{
 					Btn = static_cast<UButton*>(Entry->BTN_JHItem->BtnMain);
+				}
+			}
+			else
+			{
+				++EntryNullCount;
 			}
 
-			// Fallback to a plain slot only if backpack-style widget creation fails.
 			if (!EntryWidget || !Btn || !Img)
 			{
-				auto* FallbackBtn = static_cast<UButton*>(CreateRawWidget(UButton::StaticClass(), Outer));
-				auto* FallbackImg = static_cast<UImage*>(CreateRawWidget(UImage::StaticClass(), Outer));
-				if (!FallbackBtn || !FallbackImg)
+				if (InvalidDetailLogs < kMaxInvalidDetailLogs)
 				{
-					GItemSlotButtons[i] = nullptr;
-					GItemSlotImages[i] = nullptr;
-					GItemSlotQualityBorders[i] = nullptr;
-					GItemSlotEntryWidgets[i] = nullptr;
-					GItemSlotItemIndices[i] = -1;
-					GItemSlotWasPressed[i] = false;
-					continue;
+					LOGW_STREAM("Tab1Items")
+						<< "[SDK] ItemSlot invalid slot=" << i
+						<< " entry=" << (EntryWidget ? "Y" : "N")
+						<< " BTN_JHItem=" << ((Entry && Entry->BTN_JHItem) ? "Y" : "N")
+						<< " BtnMain=" << ((Entry && Entry->BTN_JHItem && Entry->BTN_JHItem->BtnMain) ? "Y" : "N")
+						<< " ItemDisplay=" << ((Entry && Entry->ItemDisplay) ? "Y" : "N")
+						<< " CMP=" << ((Entry && Entry->ItemDisplay && Entry->ItemDisplay->CMP) ? "Y" : "N")
+						<< " IMG_Item=" << (Img ? "Y" : "N")
+						<< "\n";
+					++InvalidDetailLogs;
 				}
-				FallbackImg->SetVisibility(ESlateVisibility::Collapsed);
-				FallbackBtn->SetContent(FallbackImg);
-				Btn = FallbackBtn;
-				Img = FallbackImg;
-				EntryWidget = nullptr;
+
+				GItemSlotButtons[i] = nullptr;
+				GItemSlotImages[i] = nullptr;
+				GItemSlotQualityBorders[i] = nullptr;
+				GItemSlotEntryWidgets[i] = nullptr;
+				GItemSlotItemIndices[i] = -1;
+				GItemSlotWasPressed[i] = false;
+				continue;
 			}
 
 			int32 Row = i / ITEM_GRID_COLS;
 			int32 Col = i % ITEM_GRID_COLS;
-			GItemGridPanel->AddChildToUniformGrid(
-				EntryWidget ? static_cast<UWidget*>(EntryWidget) : static_cast<UWidget*>(Btn),
-				Row, Col);
+			GItemGridPanel->AddChildToUniformGrid(static_cast<UWidget*>(EntryWidget), Row, Col);
 
 			GItemSlotButtons[i] = Btn;
 			GItemSlotImages[i] = Img;
@@ -500,6 +538,25 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			GItemSlotEntryWidgets[i] = EntryWidget;
 			GItemSlotItemIndices[i] = -1;
 			GItemSlotWasPressed[i] = false;
+			++ValidSlotCount;
+		}
+
+		LOGI_STREAM("Tab1Items")
+			<< "[SDK] ItemGrid build summary: totalSlots=" << ITEMS_PER_PAGE
+			<< " entryCreated=" << EntryCreatedCount
+			<< " validSlots=" << ValidSlotCount
+			<< " entryNull=" << EntryNullCount
+			<< " btnJHItemNull=" << BtnJHItemNullCount
+			<< " btnMainNull=" << BtnMainNullCount
+			<< " itemDisplayNull=" << ItemDisplayNullCount
+			<< " displayCmpNull=" << DisplayCmpNullCount
+			<< " imgNull=" << ImgNullCount
+			<< "\n";
+
+		if (ValidSlotCount == 0)
+		{
+			LOGE_STREAM("Tab1Items")
+				<< "[SDK] ItemGrid has no valid slot; BTN_JHItem/BtnMain chain is not usable\n";
 		}
 	}
 
@@ -540,20 +597,35 @@ namespace
     uint32_t GTab1ItemGainMultiplierHookId = UINT32_MAX;
     uintptr_t GItemGainMultiplierOffset = 0;
     volatile LONG GItemGainMultiplierAsmValue = 2;
+    uint32_t GTab1CraftCaptureHookId = UINT32_MAX;
+    uint32_t GTab1CraftEffectHookId = UINT32_MAX;
+    uint32_t GTab1CraftRandEffectHookId = UINT32_MAX;
+    uintptr_t GInForgingOffset = 0;
+    uintptr_t GForgeEffectOffset = 0;
+    uintptr_t GForgeRandEffectOffset = 0;
+    volatile LONG GCraftEffectModeAsmValue = 0;
+    volatile float GCraftItemIncrementAsmValue = 2.0f;
+    volatile float GCraftExtraEffectAsmValue = 2.0f;
 
     // 所有物品可出售
     uintptr_t GAllItemsSellableAddr = 0;
     uintptr_t GIncludeQuestItemsAddr = 0;
     uintptr_t GIncludeQuestItemsAddr2 = 0;
+    uintptr_t GDropRate100Addr = 0;
 
     // 物品不减特征码
     const char* kItemNoDecreasePattern = "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 41 0F B6 F1 41 8B E8 48 8B FA 48 8B D9";
     const char* kItemGainMultiplierPattern = "0B 50 30 0B 50 2C 0B 50 28";
+    const char* kInForgingPattern = "0F 10 00 0F 11 46 28 44 89";
+    const char* kForgeEffectPattern = "E8 ? ? ? ? F2 0F 10 ? 44 8B 78 08 F2 0F 11 ? 24";
+    const char* kForgeRandEffectPattern = "0F 29 ? 24 ? 0F 28 ? 0F 29 ? 24 ? F2 0F 10";
 
     // 所有物品可出售特征码
     const char* kAllItemsSellablePattern = "80 ?? ?? 3C 75 ?? 32 C0 C3 80 ?? 83 00 00 00 00 0F 94 C0 C3";
     // 任务物品可出售特征码
     const char* kQuestItemsSellablePattern = "48 8B ?? 70 80 78 40 3C";
+    // 掉落率100%（DropItem + A: 84 C0 -> 90 90）
+    const char* kDropRate100Pattern = "F3 0F 2C ? 04 E8 ? ? ? ? 84 C0 74 ? 48";
 
     // 功能：如果 Num < 0，则设为 0（防止负数扣除）
     const unsigned char kItemNoDecreaseTrampolineCode[] = {
@@ -578,6 +650,54 @@ namespace
     };
     // Template offset of imm64 in "49 BB imm64"
     constexpr size_t kItemGainMulImm64Offset = 24;
+
+    const unsigned char kCraftCaptureTrampolineTemplate[] = {
+        0x41, 0x53,                                     // push r11
+        0x49, 0xBB,                                     // mov r11, imm64
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
+        0x00, 0x00,                                     // imm64 high
+        0x45, 0x89, 0x3B,                               // mov [r11], r15d
+        0x41, 0x5B                                      // pop r11
+    };
+    constexpr size_t kCraftCaptureCtxImm64Offset = 4;
+
+    const unsigned char kCraftEffectTrampolineTemplate[] = {
+        0x41, 0x53,                                     // push r11
+        0x49, 0xBB,                                     // mov r11, modeAddr
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
+        0x00, 0x00,                                     // imm64 high
+        0x41, 0x83, 0x3B, 0x02,                         // cmp dword ptr [r11], 2
+        0x75, 0x13,                                     // jne +0x13 (skip to pop r11)
+        0xD9, 0x40, 0x08,                               // fld dword ptr [rax+8]
+        0x49, 0xBB,                                     // mov r11, incrementAddr
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
+        0x00, 0x00,                                     // imm64 high
+        0x41, 0xD8, 0x0B,                               // fmul dword ptr [r11]
+        0xD9, 0x58, 0x08,                               // fstp dword ptr [rax+8]
+        0x41, 0x5B                                      // pop r11
+    };
+    constexpr size_t kCraftEffectModeImm64Offset = 4;
+    constexpr size_t kCraftEffectIncImm64Offset = 23;
+
+    const unsigned char kCraftRandEffectTrampolineTemplate[] = {
+        0x41, 0x53,                                     // push r11
+        0x49, 0xBB,                                     // mov r11, modeAddr
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
+        0x00, 0x00,                                     // imm64 high
+        0x41, 0x83, 0x3B, 0x02,                         // cmp dword ptr [r11], 2
+        0x75, 0x19,                                     // jne +0x19
+        0x83, 0x39, 0x05,                               // cmp dword ptr [rcx], 5
+        0x74, 0x14,                                     // je +0x14
+        0x83, 0x39, 0x06,                               // cmp dword ptr [rcx], 6
+        0x74, 0x0F,                                     // je +0x0F
+        0x49, 0xBB,                                     // mov r11, extraAddr
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
+        0x00, 0x00,                                     // imm64 high
+        0xF3, 0x41, 0x0F, 0x10, 0x13,                   // movss xmm2, dword ptr [r11]
+        0x41, 0x5B                                      // pop r11
+    };
+    constexpr size_t kCraftRandModeImm64Offset = 4;
+    constexpr size_t kCraftRandExtraImm64Offset = 30;
 
     uintptr_t ScanModulePatternRobust(const char* moduleName, const char* pattern)
     {
@@ -617,6 +737,12 @@ namespace
 
 void EnableItemGainMultiplierHook();
 void DisableItemGainMultiplierHook();
+void EnableDropRate100Patch();
+void DisableDropRate100Patch();
+void SetCraftItemIncrementHookValue(float Value);
+void SetCraftExtraEffectHookValue(float Value);
+void EnableCraftEffectMultiplierHook();
+void DisableCraftEffectMultiplierHook();
 
 void EnableItemNoDecreaseHook()
 {
@@ -696,6 +822,36 @@ void SetItemGainMultiplierHookValue(int32 Value)
         return;
 
     LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier value set to: " << Value << "\n";
+}
+
+void SetCraftItemIncrementHookValue(float Value)
+{
+    if (Value < 1.0f)
+        Value = 1.0f;
+    if (Value > 10.0f)
+        Value = 10.0f;
+
+    const float diff = static_cast<float>(GCraftItemIncrementAsmValue) - Value;
+    if (diff >= -0.001f && diff <= 0.001f)
+        return;
+
+    GCraftItemIncrementAsmValue = Value;
+    LOGI_STREAM("Tab1Items") << "[SDK] CraftItemIncrement value set to: " << Value << "\n";
+}
+
+void SetCraftExtraEffectHookValue(float Value)
+{
+    if (Value < 1.0f)
+        Value = 1.0f;
+    if (Value > 10.0f)
+        Value = 10.0f;
+
+    const float diff = static_cast<float>(GCraftExtraEffectAsmValue) - Value;
+    if (diff >= -0.001f && diff <= 0.001f)
+        return;
+
+    GCraftExtraEffectAsmValue = Value;
+    LOGI_STREAM("Tab1Items") << "[SDK] CraftExtraEffect value set to: " << Value << "\n";
 }
 
 void EnableItemGainMultiplierHook()
@@ -811,7 +967,7 @@ void EnableAllItemsSellable()
         }
         else
         {
-            GIncludeQuestItemsAddr = foundAddr + 0x6;
+            GIncludeQuestItemsAddr = foundAddr2 + 0x6;
             GIncludeQuestItemsAddr2 = foundAddr2 + 0x7;
             LOGI_STREAM("Tab1Items") << "[SDK] QuestItemsSellable found at: 0x" << std::hex << foundAddr2 << std::dec << "\n";
         }
@@ -847,5 +1003,214 @@ void DisableAllItemsSellable()
         InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, disableByte2, sizeof(disableByte2));
         LOGI_STREAM("Tab1Items") << "[SDK] QuestItemsSellable disabled\n";
     }
+}
+
+void EnableDropRate100Patch()
+{
+    if (GDropRate100Addr == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kDropRate100Pattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] DropRate100 AobScan failed, pattern not found\n";
+            return;
+        }
+
+        // CE: DropItem + A
+        GDropRate100Addr = foundAddr + 0xA;
+        LOGI_STREAM("Tab1Items") << "[SDK] DropRate100 found at: 0x" << std::hex << foundAddr
+            << ", patch=0x" << GDropRate100Addr << std::dec << "\n";
+    }
+
+    const unsigned char enableBytes[] = { 0x90, 0x90 };
+    if (!InlineHook::HookManager::WriteMemory(GDropRate100Addr, enableBytes, sizeof(enableBytes)))
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] DropRate100 enable write failed at: 0x"
+            << std::hex << GDropRate100Addr << std::dec << "\n";
+        return;
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] DropRate100 enabled\n";
+}
+
+void DisableDropRate100Patch()
+{
+    if (GDropRate100Addr == 0)
+        return;
+
+    const unsigned char disableBytes[] = { 0x84, 0xC0 };
+    if (!InlineHook::HookManager::WriteMemory(GDropRate100Addr, disableBytes, sizeof(disableBytes)))
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] DropRate100 disable write failed at: 0x"
+            << std::hex << GDropRate100Addr << std::dec << "\n";
+        return;
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] DropRate100 disabled\n";
+}
+
+void EnableCraftEffectMultiplierHook()
+{
+    if (GTab1CraftCaptureHookId != UINT32_MAX &&
+        GTab1CraftEffectHookId != UINT32_MAX &&
+        GTab1CraftRandEffectHookId != UINT32_MAX)
+    {
+        return;
+    }
+
+    if (GInForgingOffset == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kInForgingPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect InForging AobScan failed\n";
+            return;
+        }
+
+        HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+        if (!hModule)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect InForging failed to get module handle\n";
+            return;
+        }
+
+        GInForgingOffset = foundAddr - reinterpret_cast<uintptr_t>(hModule);
+        LOGI_STREAM("Tab1Items") << "[SDK] CraftEffect InForging found at: 0x" << std::hex << foundAddr
+            << ", offset: 0x" << GInForgingOffset << std::dec << "\n";
+    }
+
+    if (GForgeEffectOffset == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kForgeEffectPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeEffect AobScan failed\n";
+            return;
+        }
+
+        HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+        if (!hModule)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeEffect failed to get module handle\n";
+            return;
+        }
+
+        GForgeEffectOffset = foundAddr - reinterpret_cast<uintptr_t>(hModule);
+        LOGI_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeEffect found at: 0x" << std::hex << foundAddr
+            << ", offset: 0x" << GForgeEffectOffset << std::dec << "\n";
+    }
+
+    if (GForgeRandEffectOffset == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kForgeRandEffectPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeRandEffect AobScan failed\n";
+            return;
+        }
+
+        HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+        if (!hModule)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeRandEffect failed to get module handle\n";
+            return;
+        }
+
+        GForgeRandEffectOffset = foundAddr - reinterpret_cast<uintptr_t>(hModule);
+        LOGI_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeRandEffect found at: 0x" << std::hex << foundAddr
+            << ", offset: 0x" << GForgeRandEffectOffset << std::dec << "\n";
+    }
+
+    unsigned char captureCode[sizeof(kCraftCaptureTrampolineTemplate)] = {};
+    std::memcpy(captureCode, kCraftCaptureTrampolineTemplate, sizeof(captureCode));
+    const uintptr_t modeAddr = reinterpret_cast<uintptr_t>(&GCraftEffectModeAsmValue);
+    std::memcpy(captureCode + kCraftCaptureCtxImm64Offset, &modeAddr, sizeof(modeAddr));
+
+    unsigned char effectCode[sizeof(kCraftEffectTrampolineTemplate)] = {};
+    std::memcpy(effectCode, kCraftEffectTrampolineTemplate, sizeof(effectCode));
+    const uintptr_t incrementAddr = reinterpret_cast<uintptr_t>(&GCraftItemIncrementAsmValue);
+    std::memcpy(effectCode + kCraftEffectModeImm64Offset, &modeAddr, sizeof(modeAddr));
+    std::memcpy(effectCode + kCraftEffectIncImm64Offset, &incrementAddr, sizeof(incrementAddr));
+
+    unsigned char randEffectCode[sizeof(kCraftRandEffectTrampolineTemplate)] = {};
+    std::memcpy(randEffectCode, kCraftRandEffectTrampolineTemplate, sizeof(randEffectCode));
+    const uintptr_t extraAddr = reinterpret_cast<uintptr_t>(&GCraftExtraEffectAsmValue);
+    std::memcpy(randEffectCode + kCraftRandModeImm64Offset, &modeAddr, sizeof(modeAddr));
+    std::memcpy(randEffectCode + kCraftRandExtraImm64Offset, &extraAddr, sizeof(extraAddr));
+
+    uint32_t captureHookId = UINT32_MAX;
+    if (!InlineHook::HookManager::InstallHook(
+        "JH-Win64-Shipping.exe",
+        static_cast<uint32_t>(GInForgingOffset),
+        captureCode,
+        sizeof(captureCode),
+        captureHookId,
+        false,
+        false))
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect InForging hook failed\n";
+        return;
+    }
+
+    uint32_t effectHookId = UINT32_MAX;
+    if (!InlineHook::HookManager::InstallHook(
+        "JH-Win64-Shipping.exe",
+        static_cast<uint32_t>(GForgeEffectOffset + 0x5),
+        effectCode,
+        sizeof(effectCode),
+        effectHookId,
+        true,
+        false))
+    {
+        InlineHook::HookManager::UninstallHook(captureHookId);
+        LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeEffect hook failed\n";
+        return;
+    }
+
+    uint32_t randEffectHookId = UINT32_MAX;
+    if (!InlineHook::HookManager::InstallHook(
+        "JH-Win64-Shipping.exe",
+        static_cast<uint32_t>(GForgeRandEffectOffset),
+        randEffectCode,
+        sizeof(randEffectCode),
+        randEffectHookId,
+        false,
+        false))
+    {
+        InlineHook::HookManager::UninstallHook(effectHookId);
+        InlineHook::HookManager::UninstallHook(captureHookId);
+        LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeRandEffect hook failed\n";
+        return;
+    }
+
+    InterlockedExchange(&GCraftEffectModeAsmValue, 0);
+    GTab1CraftCaptureHookId = captureHookId;
+    GTab1CraftEffectHookId = effectHookId;
+    GTab1CraftRandEffectHookId = randEffectHookId;
+
+    LOGI_STREAM("Tab1Items") << "[SDK] CraftEffect hooks enabled, IDs: "
+        << captureHookId << ", " << effectHookId << ", " << randEffectHookId << "\n";
+}
+
+void DisableCraftEffectMultiplierHook()
+{
+    if (GTab1CraftRandEffectHookId != UINT32_MAX)
+    {
+        InlineHook::HookManager::UninstallHook(GTab1CraftRandEffectHookId);
+        GTab1CraftRandEffectHookId = UINT32_MAX;
+    }
+    if (GTab1CraftEffectHookId != UINT32_MAX)
+    {
+        InlineHook::HookManager::UninstallHook(GTab1CraftEffectHookId);
+        GTab1CraftEffectHookId = UINT32_MAX;
+    }
+    if (GTab1CraftCaptureHookId != UINT32_MAX)
+    {
+        InlineHook::HookManager::UninstallHook(GTab1CraftCaptureHookId);
+        GTab1CraftCaptureHookId = UINT32_MAX;
+    }
+
+    InterlockedExchange(&GCraftEffectModeAsmValue, 0);
+    LOGI_STREAM("Tab1Items") << "[SDK] CraftEffect hooks disabled\n";
 }
 

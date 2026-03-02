@@ -78,6 +78,7 @@
     <ClCompile Include="..\SDK\JHCommon_Btn_Free_functions.cpp" />
     <ClCompile Include="..\SDK\BPVE_JHConfigVideoItem2_functions.cpp" />
     <ClCompile Include="..\SDK\BPVE_JHConfigVolumeItem2_functions.cpp" />
+    <ClCompile Include="..\SDK\BPEntry_Item_functions.cpp" />
   </ItemGroup>
 
 

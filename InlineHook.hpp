@@ -1498,11 +1498,11 @@ private:
         unsigned char* trampoline,
         size_t& outWritten) {
 
-        outWritten = 0;
         if (!originalBytes || !trampoline || originalLen == 0) {
             return false;
         }
 
+        size_t writeOffset = outWritten;
         size_t consumed = 0;
         while (consumed < originalLen) {
             ExternalHde64::hde64s hs = {};
@@ -1516,18 +1516,18 @@ private:
             }
 
             const uintptr_t srcInsnAddr = originalBase + consumed;
-            const uintptr_t dstInsnAddr = trampolineBase + outWritten;
+            const uintptr_t dstInsnAddr = trampolineBase + writeOffset;
 
             bool handled = false;
             if (hs.flags & ExternalHde64::kFlagRelative) {
-                handled = RelocateRelativeInstruction(srcInsn, hs, srcInsnAddr, dstInsnAddr, trampoline, outWritten);
+                handled = RelocateRelativeInstruction(srcInsn, hs, srcInsnAddr, dstInsnAddr, trampoline, writeOffset);
             }
             else if ((hs.flags & ExternalHde64::kFlagModRm) && hs.modrm_mod == 0 && hs.modrm_rm == 5 &&
                 (hs.flags & ExternalHde64::kFlagDisp32)) {
-                handled = RelocateRipRelativeDisp32(srcInsn, hs, srcInsnAddr, dstInsnAddr, trampoline, outWritten);
+                handled = RelocateRipRelativeDisp32(srcInsn, hs, srcInsnAddr, dstInsnAddr, trampoline, writeOffset);
             }
             else {
-                handled = AppendBytesToTrampoline(trampoline, outWritten, srcInsn, hs.len);
+                handled = AppendBytesToTrampoline(trampoline, writeOffset, srcInsn, hs.len);
             }
 
             if (!handled) {
@@ -1537,6 +1537,7 @@ private:
             consumed += hs.len;
         }
 
+        outWritten = writeOffset;
         return true;
     }
 
@@ -1754,7 +1755,8 @@ public:
     }
 
     static bool InstallHook(const char* moduleName, uint32_t offset,
-        const void* trampolineCode, size_t trampolineCodeSize, uint32_t& outHookId) {
+        const void* trampolineCode, size_t trampolineCodeSize, uint32_t& outHookId,
+        bool executeUserCodeFirst = false, bool allowAbsEntryFallback = true) {
 
         std::lock_guard<std::mutex> lock(s_Mutex);
         outHookId = UINT32_MAX;
@@ -1782,6 +1784,10 @@ public:
         uintptr_t trampolineAddr = reinterpret_cast<uintptr_t>(AllocateTrampolineNearTarget(hProcess, targetAddr));
         bool requireRel32Hook = true;
         if (!trampolineAddr) {
+            if (!allowAbsEntryFallback) {
+                LOGE_STREAM("InlineHook") << "[InlineHook] Near trampoline not found and absolute-entry fallback is disabled\n";
+                return false;
+            }
             void* farTrampoline = VirtualAllocEx(
                 hProcess,
                 nullptr,
@@ -1819,21 +1825,34 @@ public:
         unsigned char* trampoline = reinterpret_cast<unsigned char*>(entry.Trampoline);
         size_t trampOffset = 0;
 
-        if (!BuildRelocatedOriginalCode(entry.TargetAddr, entry.OriginalBytes, entry.PatchSize,
-            entry.Trampoline, trampoline, trampOffset)) {
-            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to relocate original instructions into trampoline\n";
-            VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
-            return false;
-        }
-
-        if (trampolineCode && trampolineCodeSize > 0) {
+        auto appendUserCode = [&]() -> bool {
+            if (!trampolineCode || trampolineCodeSize == 0) {
+                return true;
+            }
             if (trampOffset + trampolineCodeSize + kAbsJumpSize > kTrampolineSize) {
                 LOGE_STREAM("InlineHook") << "[InlineHook] Trampoline code too large\n";
-                VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
                 return false;
             }
             std::memcpy(trampoline + trampOffset, trampolineCode, trampolineCodeSize);
             trampOffset += trampolineCodeSize;
+            return true;
+        };
+
+        auto appendRelocatedOriginal = [&]() -> bool {
+            if (!BuildRelocatedOriginalCode(entry.TargetAddr, entry.OriginalBytes, entry.PatchSize,
+                entry.Trampoline, trampoline, trampOffset)) {
+                LOGE_STREAM("InlineHook") << "[InlineHook] Failed to relocate original instructions into trampoline\n";
+                return false;
+            }
+            return true;
+        };
+
+        const bool appendOk = executeUserCodeFirst
+            ? (appendUserCode() && appendRelocatedOriginal())
+            : (appendRelocatedOriginal() && appendUserCode());
+        if (!appendOk) {
+            VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
+            return false;
         }
 
         if (trampOffset + kAbsJumpSize > kTrampolineSize) {

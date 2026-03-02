@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
 
 #include "CheatState.hpp"
 #include "FrameHook.hpp"
@@ -14,6 +15,7 @@
 #include "TabContent.hpp"
 #include "WidgetFactory.hpp"
 #include "WidgetUtils.hpp"
+#include "SDK/BPEntry_Item_classes.hpp"
 #include "SDK/JH_structs.hpp"
 #include "SDK/JH_parameters.hpp"
 #include "SDK/JH_classes.hpp"
@@ -34,6 +36,175 @@ namespace
 			GPostRenderInFlight.fetch_sub(1, std::memory_order_acq_rel);
 		}
 	};
+
+	using ItemEntryProcessEventFn = void(__fastcall*)(UObject*, UFunction*, void*);
+	VTableHook GItemEntryProcessEventHook;
+	ItemEntryProcessEventFn GOriginalItemEntryProcessEvent = nullptr;
+	bool GItemEntryProcessEventHookInstalled = false;
+
+	bool IsItemEntryClickedEvent(UFunction* Function)
+	{
+		if (!Function)
+			return false;
+
+		const std::string Name = Function->GetName();
+		const bool ClickLike =
+			(Name.find("Clicked") != std::string::npos) ||
+			(Name.find("OnClicked") != std::string::npos) ||
+			(Name.find("BtnClick") != std::string::npos);
+		if (!ClickLike)
+			return false;
+
+		return (Name.find("BTN_JHItem") != std::string::npos) ||
+			(Name.find("JHNeoUIGamepadConfirmButton") != std::string::npos) ||
+			(Name.find("K2Node_ComponentBoundEvent") != std::string::npos);
+	}
+
+	int32 ResolveItemSlotByEntryObject(UObject* EntryObj)
+	{
+		if (!EntryObj)
+			return -1;
+
+		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+		{
+			auto* Entry = GItemSlotEntryWidgets[i];
+			if (!Entry || !IsSafeLiveObject(static_cast<UObject*>(Entry)))
+				continue;
+
+			auto* EntryObjAtSlot = static_cast<UObject*>(Entry);
+			if (EntryObjAtSlot == EntryObj)
+			{
+				const int32 itemIdx = GItemSlotItemIndices[i];
+				if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+					return -1;
+				return i;
+			}
+
+			if (!Entry->IsA(UBPEntry_Item_C::StaticClass()))
+				continue;
+
+			auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
+			auto* GpcBtn = EntryBP->BTN_JHItem;
+			if (GpcBtn && IsSafeLiveObject(static_cast<UObject*>(GpcBtn)))
+			{
+				if (static_cast<UObject*>(GpcBtn) == EntryObj)
+				{
+					const int32 itemIdx = GItemSlotItemIndices[i];
+					if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+						return -1;
+					return i;
+				}
+				if (GpcBtn->BtnMain && IsSafeLiveObject(static_cast<UObject*>(GpcBtn->BtnMain)) &&
+					static_cast<UObject*>(GpcBtn->BtnMain) == EntryObj)
+				{
+					const int32 itemIdx = GItemSlotItemIndices[i];
+					if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+						return -1;
+					return i;
+				}
+			}
+		}
+		return -1;
+	}
+
+	bool AddItemBySlotFromEvent(int32 Slot, const char* TriggerTag)
+	{
+		if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
+			return false;
+
+		const int32 itemIdx = GItemSlotItemIndices[Slot];
+		if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+			return false;
+
+		const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
+		CachedItem& Item = GAllItems[itemIdx];
+		UItemFuncLib::AddItem(Item.DefId, Quantity);
+		LOGI_STREAM("FrameHook") << "[SDK] AddItem(" << (TriggerTag ? TriggerTag : "unknown")
+			<< "): slot=" << Slot
+			<< " defId=" << Item.DefId
+			<< " x" << Quantity << "\n";
+		return true;
+	}
+
+	void __fastcall HookedBPEntryItemProcessEvent(UObject* Obj, UFunction* Function, void* Params)
+	{
+		(void)Params;
+		if (GOriginalItemEntryProcessEvent)
+			GOriginalItemEntryProcessEvent(Obj, Function, Params);
+
+		if (!InternalWidgetVisible)
+			return;
+		if (!Obj || !Function)
+			return;
+		if (!IsSafeLiveObject(Obj))
+			return;
+
+		const int32 Slot = ResolveItemSlotByEntryObject(Obj);
+		if (Slot < 0)
+			return;
+		if (!IsItemEntryClickedEvent(Function))
+		{
+			static std::unordered_set<std::string> sSeenItemEventNames;
+			if (sSeenItemEventNames.size() < 32)
+			{
+				const std::string FuncName = Function->GetName();
+				if (sSeenItemEventNames.insert(FuncName).second)
+				{
+					LOGI_STREAM("FrameHook") << "[SDK] ItemEntry ProcessEvent observed: " << FuncName << "\n";
+				}
+			}
+			return;
+		}
+
+		AddItemBySlotFromEvent(Slot, "processevent");
+	}
+
+	void EnsureItemEntryProcessEventHook()
+	{
+		if (GItemEntryProcessEventHookInstalled)
+			return;
+
+		UObject* EntryObj = nullptr;
+		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+		{
+			auto* Entry = GItemSlotEntryWidgets[i];
+			if (!Entry || !IsSafeLiveObject(static_cast<UObject*>(Entry)))
+				continue;
+			if (!Entry->IsA(UBPEntry_Item_C::StaticClass()))
+				continue;
+
+			auto* EntryBP = static_cast<UBPEntry_Item_C*>(Entry);
+			if (EntryBP->BTN_JHItem && IsSafeLiveObject(static_cast<UObject*>(EntryBP->BTN_JHItem)))
+			{
+				EntryObj = static_cast<UObject*>(EntryBP->BTN_JHItem);
+				break;
+			}
+
+			EntryObj = static_cast<UObject*>(Entry);
+			break;
+		}
+		if (!EntryObj)
+			return;
+
+		GItemEntryProcessEventHook = VTableHook(EntryObj, Offsets::ProcessEventIdx);
+		GOriginalItemEntryProcessEvent = GItemEntryProcessEventHook.Install<ItemEntryProcessEventFn>(HookedBPEntryItemProcessEvent);
+		GItemEntryProcessEventHookInstalled = (GOriginalItemEntryProcessEvent != nullptr);
+		if (GItemEntryProcessEventHookInstalled)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] ItemEntry ProcessEvent hooked at index " << Offsets::ProcessEventIdx << "\n";
+		}
+	}
+
+	void RemoveItemEntryProcessEventHook()
+	{
+		if (!GItemEntryProcessEventHookInstalled)
+			return;
+
+		GItemEntryProcessEventHook.Remove();
+		GOriginalItemEntryProcessEvent = nullptr;
+		GItemEntryProcessEventHookInstalled = false;
+		LOGI_STREAM("FrameHook") << "[SDK] ItemEntry ProcessEvent unhooked\n";
+	}
 
 	bool EnsureLiveInternalWidgetForFrame()
 	{
@@ -777,6 +948,20 @@ namespace
 			LastItemGainMultiplierValue = Config.ItemGainMultiplierValue;
 		}
 
+		static float LastCraftItemIncrementValue = 2.0f;
+		if (std::fabs(Config.CraftItemIncrementMultiplier - LastCraftItemIncrementValue) > 0.001f)
+		{
+			SetCraftItemIncrementHookValue(Config.CraftItemIncrementMultiplier);
+			LastCraftItemIncrementValue = Config.CraftItemIncrementMultiplier;
+		}
+
+		static float LastCraftExtraEffectValue = 2.0f;
+		if (std::fabs(Config.CraftExtraEffectMultiplier - LastCraftExtraEffectValue) > 0.001f)
+		{
+			SetCraftExtraEffectHookValue(Config.CraftExtraEffectMultiplier);
+			LastCraftExtraEffectValue = Config.CraftExtraEffectMultiplier;
+		}
+
 		const bool WantItemGainMultiplierHook = Config.ItemGainMultiplier && Config.ItemGainMultiplierValue > 1;
 		static bool LastItemGainMultiplierHook = false;
 		if (WantItemGainMultiplierHook != LastItemGainMultiplierHook)
@@ -797,6 +982,26 @@ namespace
 			else
 				DisableAllItemsSellable();
 			LastAllItemsSellable = Config.AllItemsSellable;
+		}
+
+		static bool LastDropRate100Patch = false;
+		if (Config.DropRate100 != LastDropRate100Patch)
+		{
+			if (Config.DropRate100)
+				EnableDropRate100Patch();
+			else
+				DisableDropRate100Patch();
+			LastDropRate100Patch = Config.DropRate100;
+		}
+
+		static bool LastCraftEffectHook = false;
+		if (Config.CraftEffectMultiplier != LastCraftEffectHook)
+		{
+			if (Config.CraftEffectMultiplier)
+				EnableCraftEffectMultiplierHook();
+			else
+				DisableCraftEffectMultiplierHook();
+			LastCraftEffectHook = Config.CraftEffectMultiplier;
 		}
 
 		// 包括任务物品
@@ -828,9 +1033,13 @@ namespace
 		if (LastTableTick == 0 || (NowTick - LastTableTick) >= 300)
 		{
 			LastTableTick = NowTick;
-			ApplyTab1ItemDefinitionFeatures(Config, ItemTable);
-			ApplyTab1DropPoolFeature(Config, DropTable);
-			ApplyTab1RandPoolFeature(Config, RandTable);
+			FTab1RuntimeConfig TableConfig = Config;
+			// DropRate100 与 CraftEffectMultiplier 已切换到 AOB/InlineHook 路线，避免双重叠加。
+			TableConfig.DropRate100 = false;
+			TableConfig.CraftEffectMultiplier = false;
+			ApplyTab1ItemDefinitionFeatures(TableConfig, ItemTable);
+			ApplyTab1DropPoolFeature(TableConfig, DropTable);
+			ApplyTab1RandPoolFeature(TableConfig, RandTable);
 		}
 	}
 }
@@ -847,6 +1056,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	if (GIsUnloading.load(std::memory_order_relaxed))
 	{
+		RemoveItemEntryProcessEventHook();
 		if (!GUnloadCleanupDone.exchange(true, std::memory_order_acq_rel))
 		{
 			APlayerController* PC = GetFirstLocalPlayerController();
@@ -1011,14 +1221,15 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	// 鈹€鈹€ Item browser per-frame polling 鈹€鈹€
 	static DWORD sLastItemUiPollTick = 0;
-	static bool sItemGridClickWasDown = false;
-	static int32 sItemGridPressedSlot = -1;
+	static bool sItemHoverClickWasDown = false;
+	static int32 sItemHoverPressedSlot = -1;
 	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
 		const DWORD ItemUiNow = GetTickCount();
 		const bool RunItemUiPoll = (sLastItemUiPollTick == 0) || ((ItemUiNow - sLastItemUiPollTick) >= 16);
 		if (RunItemUiPoll)
 		{
+			EnsureItemEntryProcessEventHook();
 			sLastItemUiPollTick = ItemUiNow;
 			PollCollapsiblePanelsInput();
 
@@ -1202,82 +1413,94 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				GItemSlotWasPressed[i] = Pressed;
 			}
 
-			auto ResolveHoveredGridSlot = [&]() -> int32
+			auto IsGameWindowForeground = []() -> bool
 			{
-				if (!GItemGridPanel || !IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
-					return -1;
+				HWND ForegroundWnd = GetForegroundWindow();
+				if (!ForegroundWnd)
+					return false;
+				wchar_t ForegroundClass[256] = {};
+				GetClassNameW(ForegroundWnd, ForegroundClass, 256);
+				return wcsstr(ForegroundClass, L"UnrealWindow") != nullptr ||
+					wcsstr(ForegroundClass, L"WindowsGame") != nullptr ||
+					wcsstr(ForegroundClass, L"Unity") != nullptr;
+			};
 
+			auto ResolveHoveredSlotByGeometry = [&]() -> int32
+			{
 				UWorld* World = UWorld::GetWorld();
 				if (!World)
 					return -1;
 
 				UObject* ViewportContext = static_cast<UObject*>(World);
-				const FGeometry GridGeo = GItemGridPanel->GetCachedGeometry();
-				const FVector2D GridSize = USlateBlueprintLibrary::GetLocalSize(GridGeo);
-				if (GridSize.X <= 1.0f || GridSize.Y <= 1.0f)
-					return -1;
-
-				FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
-				USlateBlueprintLibrary::LocalToViewport(
-					ViewportContext, GridGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
-				USlateBlueprintLibrary::LocalToViewport(
-					ViewportContext, GridGeo, GridSize, &PixelBR, &ViewBR);
-
-				const float MinX = (ViewTL.X < ViewBR.X) ? ViewTL.X : ViewBR.X;
-				const float MaxX = (ViewTL.X > ViewBR.X) ? ViewTL.X : ViewBR.X;
-				const float MinY = (ViewTL.Y < ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
-				const float MaxY = (ViewTL.Y > ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
-
 				const FVector2D MouseVP = UWidgetLayoutLibrary::GetMousePositionOnViewport(ViewportContext);
-				if (MouseVP.X < MinX || MouseVP.X > MaxX || MouseVP.Y < MinY || MouseVP.Y > MaxY)
-					return -1;
 
-				const float GridW = MaxX - MinX;
-				const float GridH = MaxY - MinY;
-				if (GridW <= 1.0f || GridH <= 1.0f)
-					return -1;
+				for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+				{
+					const int32 itemIdx = GItemSlotItemIndices[i];
+					if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
+						continue;
 
-				const int32 Col = static_cast<int32>(((MouseVP.X - MinX) / GridW) * ITEM_GRID_COLS);
-				const int32 Row = static_cast<int32>(((MouseVP.Y - MinY) / GridH) * ITEM_GRID_ROWS);
-				if (Col < 0 || Col >= ITEM_GRID_COLS || Row < 0 || Row >= ITEM_GRID_ROWS)
-					return -1;
+					UWidget* SlotWidget = nullptr;
+					auto* Entry = GItemSlotEntryWidgets[i];
+					if (Entry && IsSafeLiveObject(static_cast<UObject*>(Entry)))
+						SlotWidget = static_cast<UWidget*>(Entry);
+					else
+					{
+						auto* Btn = GItemSlotButtons[i];
+						if (Btn && IsSafeLiveObject(static_cast<UObject*>(Btn)))
+							SlotWidget = static_cast<UWidget*>(Btn);
+					}
+					if (!SlotWidget || !IsSafeLiveObject(static_cast<UObject*>(SlotWidget)))
+						continue;
 
-				const int32 Slot = Row * ITEM_GRID_COLS + Col;
-				if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
-					return -1;
+					const FGeometry SlotGeo = SlotWidget->GetCachedGeometry();
+					const FVector2D SlotSize = USlateBlueprintLibrary::GetLocalSize(SlotGeo);
+					if (SlotSize.X <= 1.0f || SlotSize.Y <= 1.0f)
+						continue;
 
-				const int32 itemIdx = GItemSlotItemIndices[Slot];
-				if (itemIdx < 0 || itemIdx >= static_cast<int32>(GAllItems.size()))
-					return -1;
-				return Slot;
+					FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+					USlateBlueprintLibrary::LocalToViewport(
+						ViewportContext, SlotGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+					USlateBlueprintLibrary::LocalToViewport(
+						ViewportContext, SlotGeo, SlotSize, &PixelBR, &ViewBR);
+
+					const float MinX = (ViewTL.X < ViewBR.X) ? ViewTL.X : ViewBR.X;
+					const float MaxX = (ViewTL.X > ViewBR.X) ? ViewTL.X : ViewBR.X;
+					const float MinY = (ViewTL.Y < ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+					const float MaxY = (ViewTL.Y > ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+					if (MouseVP.X >= MinX && MouseVP.X <= MaxX && MouseVP.Y >= MinY && MouseVP.Y <= MaxY)
+						return i;
+				}
+				return -1;
 			};
 
-			// 兜底：某些 BPEntry_Item 组合下 BtnMain->IsPressed 边沿不稳定，改用网格命中点击判定补齐。
+			// 兜底：仅允许“真实格子控件悬停 + 同一槽位按下抬起”触发，避免矩形命中误触。
 			const bool LeftDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-			const int32 HoveredSlot = ResolveHoveredGridSlot();
-			if (LeftDown && !sItemGridClickWasDown)
+			const int32 HoveredSlot = IsGameWindowForeground() ? ResolveHoveredSlotByGeometry() : -1;
+			if (LeftDown && !sItemHoverClickWasDown)
 			{
-				sItemGridPressedSlot = HoveredSlot;
+				sItemHoverPressedSlot = HoveredSlot;
 			}
-			else if (!LeftDown && sItemGridClickWasDown)
+			else if (!LeftDown && sItemHoverClickWasDown)
 			{
 				if (!AddedByButtonEdge &&
-					sItemGridPressedSlot >= 0 &&
+					sItemHoverPressedSlot >= 0 &&
 					HoveredSlot >= 0 &&
-					HoveredSlot == sItemGridPressedSlot)
+					HoveredSlot == sItemHoverPressedSlot)
 				{
-					AddItemBySlot(HoveredSlot, "grid-hit");
+					AddItemBySlot(HoveredSlot, "hover-hit");
 				}
-				sItemGridPressedSlot = -1;
+				sItemHoverPressedSlot = -1;
 			}
-			sItemGridClickWasDown = LeftDown;
+			sItemHoverClickWasDown = LeftDown;
 		}
 	}
 	else
 	{
+		RemoveItemEntryProcessEventHook();
 		sLastItemUiPollTick = 0;
-		sItemGridClickWasDown = false;
-		sItemGridPressedSlot = -1;
+		sItemHoverClickWasDown = false;
+		sItemHoverPressedSlot = -1;
 		GItemPrevWasPressed = false;
 		GItemNextWasPressed = false;
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
