@@ -155,32 +155,28 @@ if (Config.ItemNoDecrease != LastItemNoDecrease) {
 - 跳板1中可能需要保存/恢复寄存器（如 `mov [rsp+08],rbx`）
 
 ### 7. 使用 InlineHook.hpp 封装库
-项目提供了 `InlineHook.hpp` 封装库（与 `VTHook.hpp` 同级），使用示例：
+项目提供了 `InlineHook.hpp` 封装库（与 `VTHook.hpp` 同级），单行创建 Hook：
 ```cpp
 #include "InlineHook.hpp"
 
-static InlineHook::InlineHook ItemNoDecreaseHook;
+// 创建并安装 Hook（自动处理 jmp 跳转）
+// @param ModuleName 模块名
+// @param Offset 偏移地址
+// @param TrampolineCode 自定义跳板代码（不包含最后的 jmp back）
+// @param TrampolineCodeSize 跳板代码大小
+// @return Hook ID（用于卸载）
+uint32_t hookId = InlineHook::HookManager::InstallHook(
+    "JH-Win64-Shipping.exe",
+    0x1206A70,
+    TrampolineCode,
+    sizeof(TrampolineCode)
+);
 
-// 初始化（获取模块地址、分配跳板）
-ItemNoDecreaseHook.Init("JH-Win64-Shipping.exe", 0x1206A70);
+// 卸载指定 Hook
+InlineHook::HookManager::UninstallHook(hookId);
 
-// 设置跳板代码
-unsigned char TrampolineCode[] = {
-    0x48, 0x89, 0x5C, 0x24, 0x08,  // mov [rsp+08], rbx
-    0x41, 0x83, 0xF8, 0x00,         // cmp r8d, 0
-    0x0F, 0x8D, 0x03, 0x00, 0x00,  // jge +3
-    0x45, 0x31, 0xC0,                // xor r8d, r8d
-    0xE9, 0x00, 0x00, 0x00, 0x00    // jmp back (填充偏移)
-};
-// 设置跳转回原函数的偏移
-int32_t BackOffset = InlineHook::InlineHook::CalcJmpBackOffset(TrampolineAddr, sizeof(TrampolineCode)-5, TargetAddr);
-ItemNoDecreaseHook.SetTrampolineCode(TrampolineCode, sizeof(TrampolineCode));
-
-// 安装 Hook
-ItemNoDecreaseHook.Install();
-
-// 卸载 Hook
-ItemNoDecreaseHook.Remove();
+// 卸载所有 Hook
+InlineHook::HookManager::UninstallAll();
 ```
 
 ### 8. x64 调用约定
