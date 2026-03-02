@@ -1318,11 +1318,22 @@ void __stdcall HookedProcessEvent(void* This, void* Function, void* Parms)
 			std::string FuncName = Func->GetName();
 			if (FuncName == "ChangeItemNum")
 			{
-				// 设置返回值为 true（表示操作成功），但不执行原函数
-				// ChangeItemNum 返回值在 Parms 偏移 0x15 处
-				bool* ReturnValue = reinterpret_cast<bool*>(reinterpret_cast<uint8*>(Parms) + 0x15);
-				*ReturnValue = true;
-				return;
+				// ChangeItemNum 参数结构:
+				// 0x00-0x10: FGuid ID
+				// 0x10-0x14: int32 Num (第二个参数)
+				// 0x14-0x15: bool FireEvent
+				// 0x15-0x16: 返回值 bool
+				int32* NumPtr = reinterpret_cast<int32*>(reinterpret_cast<uint8*>(Parms) + 0x10);
+				int32 Num = *NumPtr;
+
+				// 只有当 Num < 0 时才拦截（减少物品）
+				if (Num < 0)
+				{
+					// 设置返回值为 true（表示操作成功），但不执行原函数
+					bool* ReturnValue = reinterpret_cast<bool*>(reinterpret_cast<uint8*>(Parms) + 0x15);
+					*ReturnValue = true;
+					return;
+				}
 			}
 		}
 	}
