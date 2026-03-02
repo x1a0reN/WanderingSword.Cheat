@@ -1306,7 +1306,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			sLastHoverPollTick = HoverPollNow;
 			// 临时禁用：用于验证物品 Tab 悬浮 Tip 轮询是否为卡顿主因
-			PollItemBrowserHoverTips();
+			// PollItemBrowserHoverTips();
 		}
 	}
 
