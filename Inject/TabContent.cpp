@@ -1224,7 +1224,7 @@ namespace
 		}
 		else
 		{
-			std::cout << "[SDK] PollTab0RoleDropdowns: GTab0RoleSelectDD=" << (void*)GTab0RoleSelectDD << "\n";
+			// 角色选择下拉框不可用，静默处理
 		}
 
 		auto ReadIndex = [](UBPVE_JHConfigVideoItem2_C* Item) -> int32
@@ -2531,13 +2531,12 @@ void PollTab0CharacterInput(bool bTab0Active)
 	if (!PC)
 		Tab0Trace("InputPoll.Controller", "reason=PlayerControllerNull");
 
-	// 下拉框轮询必须每帧执行，否则检测不到用户选择变化
-	PollTab0RoleDropdowns(PC, true);
-
-	// 降频轮询: 每100ms运行一次滑块轮询
+	// 降频轮询: 每100ms运行一次下拉框和滑块轮询
 	const bool bDoUiPoll = !GTab0LastUiPollTick || (Now - GTab0LastUiPollTick) >= kTab0UiPollIntervalMs;
 	if (bDoUiPoll)
 	{
+		// 下拉框轮询
+		PollTab0RoleDropdowns(PC, true);
 		// Tab0 三个倍率滑块：实时同步到游戏属性
 		PollTab0RatioSliders(PC);
 		GTab0LastUiPollTick = Now;
