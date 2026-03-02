@@ -483,7 +483,16 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 					}
 					if (Display->TXT_Count)
 						Display->TXT_Count->SetVisibility(ESlateVisibility::Collapsed);
+
+					// 修复 Hit-Test 遮挡：ItemDisplay/CMP 覆盖在 BTN_JHItem 上方，
+					// 默认 Visible 会拦截鼠标事件，导致 BtnMain 收不到点击。
+					// 设为 SelfHitTestInvisible 使鼠标事件穿透到下方的按钮层。
+					Display->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+					Entry->ItemDisplay->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 				}
+
+				if (Entry->JHGPCBtn_ActiveBG)
+					Entry->JHGPCBtn_ActiveBG->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 
 				if (!Entry->BTN_JHItem)
 				{
