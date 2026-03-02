@@ -10,6 +10,13 @@ std::atomic<bool> GHooksRemoved = false;
 std::atomic<bool> GConsoleClosed = false;
 std::atomic<int32> GPostRenderInFlight = 0;
 
+// 物品不减功能开关
+std::atomic<bool> GItemNoDecreaseEnabled = false;
+
+// ProcessEvent Hook 变量
+ProcessEventFn OriginalProcessEvent = nullptr;
+VTableHook GItemManagerProcessEventHook;
+
 UNeoUIButtonBase* GCachedBtnExit = nullptr;
 std::vector<UObject*> GRootedObjects;
 UWidget* GOriginalLanPanel = nullptr;

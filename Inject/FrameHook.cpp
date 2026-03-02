@@ -719,6 +719,9 @@ namespace
 		if (CanReadFromUI)
 			ReadTab1ConfigFromUI(Config);
 
+		// 更新全局开关，供 ProcessEvent Hook 读取
+		GItemNoDecreaseEnabled.store(Config.ItemNoDecrease, std::memory_order_release);
+
 		UItemResManager* ResMgr = UManagerFuncLib::GetItemResManager();
 		UDataTable* ItemTable = nullptr;
 		UDataTable* DropTable = nullptr;
@@ -1299,6 +1302,34 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		HideInternalWidget(PC);
 		std::cout << "[SDK] Widget closed externally, cached instance kept\n";
 	}
+}
+
+// 物品管理器 ProcessEvent Hook：拦截 ChangeItemNum 实现物品不减
+void __stdcall HookedProcessEvent(void* This, void* Function, void* Parms)
+{
+	// 检查是否是物品不减功能启用
+	if (GItemNoDecreaseEnabled.load(std::memory_order_acquire))
+	{
+		// 获取 Function 对象
+		UFunction* Func = reinterpret_cast<UFunction*>(Function);
+		if (Func)
+		{
+			// 检查函数名是否是 ChangeItemNum
+			std::string FuncName = Func->GetName();
+			if (FuncName == "ChangeItemNum")
+			{
+				// 设置返回值为 true（表示操作成功），但不执行原函数
+				// ChangeItemNum 返回值在 Parms 偏移 0x15 处
+				bool* ReturnValue = reinterpret_cast<bool*>(reinterpret_cast<uint8*>(Parms) + 0x15);
+				*ReturnValue = true;
+				return;
+			}
+		}
+	}
+
+	// 未拦截，调用原始函数
+	if (OriginalProcessEvent)
+		OriginalProcessEvent(This, Function, Parms);
 }
 
 // -- Main Thread --

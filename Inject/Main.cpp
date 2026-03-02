@@ -16,6 +16,10 @@ static void RemoveAllHooks()
 	GVCPostRenderHook.Remove();
 	OriginalGVCPostRender = nullptr;
 	std::cout << "[SDK] GVC PostRender unhooked\n";
+
+	GItemManagerProcessEventHook.Remove();
+	OriginalProcessEvent = nullptr;
+	std::cout << "[SDK] ItemManager ProcessEvent unhooked\n";
 }
 
 static void CloseConsoleSafely()
@@ -69,6 +73,23 @@ DWORD MainThread(HMODULE Module)
 	else
 	{
 		std::cout << "[SDK] GVCPostRenderIdx not detected (-1), hook skipped\n";
+	}
+
+	// 安装 ItemManager ProcessEvent Hook（用于拦截物品不减）
+	UItemManager* ItemMgr = UManagerFuncLib::GetItemManager();
+	if (ItemMgr)
+	{
+		GItemManagerProcessEventHook = VTableHook(ItemMgr, Offsets::ProcessEventIdx);
+		OriginalProcessEvent = GItemManagerProcessEventHook.Install<ProcessEventFn>(HookedProcessEvent);
+
+		if (OriginalProcessEvent)
+			std::cout << "[SDK] ItemManager ProcessEvent hooked at index " << Offsets::ProcessEventIdx << "\n";
+		else
+			std::cout << "[SDK] Failed to hook ItemManager ProcessEvent (VirtualProtect failed)\n";
+	}
+	else
+	{
+		std::cout << "[SDK] ItemManager is null, hook skipped\n";
 	}
 
 	constexpr DWORD kCleanupTimeoutMs = 2500;
