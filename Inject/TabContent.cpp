@@ -2130,7 +2130,6 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	UPanelWidget* Container = GetOrCreateSlotContainer(CV, CV->VolumeSlot, "Tab0(VolumeSlot)");
 	if (!Container)
 	{
-		UILog("Tab0Create", "[SDK] Tab0: no container available, skipping");
 		return;
 	}
 
@@ -2341,9 +2340,6 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	SyncTab0RoleDropdownsFromLive(PC);
 	RefreshTab0BindingsText(PC);
 	DumpTab0InitSnapshot(PC);
-
-	UILog("Tab0Create", "[SDK] Tab0 (Character): ", Count,
-	      " widgets added, bindings=", GTab0Bindings.size());
 }
 
 void PollTab0CharacterInput(bool bTab0Active)
@@ -3067,9 +3063,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GItemCurrentPage = 0;
 	FilterItems(0);
 	RefreshItemPage();
-
-	UILog("Tab1Create", "[SDK] Tab1 (Items): ", Count, " widgets, ",
-	      GAllItems.size(), " items cached");
 }
 void PopulateTab_Battle(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
@@ -3149,7 +3142,6 @@ void PopulateTab_Battle(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddNumeric(ExtraBox, L"战斗时间流速", L"1");
 	AddPanelWithFixedGap(ExtraPanel, 0.0f, 8.0f);
 
-	UILog("Tab2Create", "[SDK] Tab2 (Battle): ", Count, " widgets added");
 }
 void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
@@ -3239,8 +3231,6 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddNumeric(ExpBox, L"口才经验", L"100");
 	AddNumeric(ExpBox, L"书法经验", L"100");
 	AddPanelWithFixedGap(ExpPanel, 0.0f, 8.0f);
-
-	UILog("Tab3Create", "[SDK] Tab3 (Life): ", Count, " widgets added");
 }
 void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
@@ -3299,8 +3289,6 @@ void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* GiftBox = GiftPanel ? GiftPanel->CT_Contents : nullptr;
 		AddDropdown(GiftBox, L"物品质量(送礼)", { L"全部", L"白", L"绿", L"蓝", L"紫", L"橙", L"红" });
 	AddPanelWithFixedGap(GiftPanel, 0.0f, 8.0f);
-
-	UILog("Tab4Create", "[SDK] Tab4 (Social): ", Count, " widgets added");
 }
 void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
@@ -3422,8 +3410,6 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddNumeric(TitleBox, L"称号门槛10", L"1000");
 	AddNumeric(TitleBox, L"称号门槛11", L"1100");
 	AddPanelWithFixedGap(TitlePanel, 0.0f, 8.0f);
-
-	UILog("Tab5Create", "[SDK] Tab5 (System): ", Count, " widgets added");
 }
 
 
@@ -3502,8 +3488,6 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	}
 	AddPanelWithFixedGap(OperatePanel, 0.0f, 8.0f);
-
-	UILog("Tab6Create", "[SDK] Tab6 (Teammates): ", Count, " widgets added");
 }
 
 
@@ -3563,8 +3547,6 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	}
 	AddPanelWithFixedGap(ArgPanel, 0.0f, 8.0f);
-
-	UILog("Tab7Create", "[SDK] Tab7 (Quests): ", Count, " widgets added");
 }
 
 
@@ -3583,11 +3565,6 @@ void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	if (BtnLayout)
 	{
 		GDynTabContent8->AddChild(BtnLayout);
-		UILog("Tab8Create", "[SDK] Tab8 (Controls): showcase button added");
-	}
-	else
-	{
-		UILog("Tab8Create", "[SDK] Tab8 (Controls): failed to create showcase button");
 	}
 }
 
