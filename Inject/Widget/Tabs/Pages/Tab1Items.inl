@@ -52,21 +52,13 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			else if (wcscmp(Title, L"道具增量效果倍率") == 0) GTab1CraftItemIncrementSlider = Item;
 			else if (wcscmp(Title, L"额外效果倍率") == 0) GTab1CraftExtraEffectSlider = Item;
 
-			// 配置滑块范围为1-10，整数步进
+			// 配置滑块范围为1-10，整数步进（回退显示值配置，由轮询统一处理）
 			if (Item->VolumeSlider)
 			{
 				Item->VolumeSlider->MinValue = 1.0f;
 				Item->VolumeSlider->MaxValue = 10.0f;
 				Item->VolumeSlider->StepSize = 1.0f;
 				Item->VolumeSlider->SetValue(2.0f);  // 默认2倍
-
-				// 更新显示值为2
-				if (Item->TXT_CurrentValue)
-				{
-					wchar_t Buf[16] = {};
-					swprintf_s(Buf, 16, L"%d", 2);
-					Item->TXT_CurrentValue->SetText(MakeText(Buf));
-				}
 			}
 
 			if (Box) Box->AddChild(Item);
