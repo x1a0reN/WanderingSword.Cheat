@@ -614,7 +614,8 @@ namespace
 	void ApplyTab1BackpackFeatures(const FTab1RuntimeConfig& Cfg)
 	{
 		const bool EnableNoDecrease = Cfg.ItemNoDecrease;
-		const bool EnableGainMultiplier = Cfg.ItemGainMultiplier && Cfg.ItemGainMultiplierValue > 1;
+		// 物品获得加倍改由 InlineHook 实现，避免与这里的轮询增量逻辑叠加。
+		const bool EnableGainMultiplier = false;
 		if (!EnableNoDecrease && !EnableGainMultiplier)
 		{
 			GTab1ItemSnapshots.clear();
@@ -795,6 +796,19 @@ namespace
 			else
 				DisableItemNoDecreaseHook();
 			LastItemNoDecrease = Config.ItemNoDecrease;
+		}
+
+		SetItemGainMultiplierHookValue(Config.ItemGainMultiplierValue);
+
+		const bool WantItemGainMultiplierHook = Config.ItemGainMultiplier && Config.ItemGainMultiplierValue > 1;
+		static bool LastItemGainMultiplierHook = false;
+		if (WantItemGainMultiplierHook != LastItemGainMultiplierHook)
+		{
+			if (WantItemGainMultiplierHook)
+				EnableItemGainMultiplierHook();
+			else
+				DisableItemGainMultiplierHook();
+			LastItemGainMultiplierHook = WantItemGainMultiplierHook;
 		}
 
 		// 更新全局开关

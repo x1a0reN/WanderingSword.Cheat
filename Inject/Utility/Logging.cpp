@@ -94,7 +94,7 @@ void WriteConsole(const std::string& Line)
 		if (!WideLine.empty())
 		{
 			DWORD WrittenChars = 0;
-			WriteConsoleW(
+			::WriteConsoleW(
 				StdoutHandle,
 				WideLine.data(),
 				static_cast<DWORD>(WideLine.size()),

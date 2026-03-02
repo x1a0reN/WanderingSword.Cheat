@@ -148,3 +148,8 @@ extern bool GInlineHookInstalled;
 // 动态启用/禁用物品不减 Hook
 void EnableItemNoDecreaseHook();
 void DisableItemNoDecreaseHook();
+
+// 物品获得加倍 Inline Hook
+void SetItemGainMultiplierHookValue(int32 Value);
+void EnableItemGainMultiplierHook();
+void DisableItemGainMultiplierHook();

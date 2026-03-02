@@ -532,9 +532,13 @@ namespace
 {
     uint32_t GTab1ItemNoDecreaseHookId = UINT32_MAX;
     uintptr_t GItemNoDecreaseOffset = 0;  // 保存搜索到的偏移量
+    uint32_t GTab1ItemGainMultiplierHookId = UINT32_MAX;
+    uintptr_t GItemGainMultiplierOffset = 0;
+    volatile LONG GItemGainMultiplierAsmValue = 2;
 
     // 物品不减特征码
     const char* kItemNoDecreasePattern = "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 41 0F B6 F1 41 8B E8 48 8B FA 48 8B D9";
+    const char* kItemGainMultiplierPattern = "0B 50 30 0B 50 2C 0B 50 28";
 
     // 功能：如果 Num < 0，则设为 0（防止负数扣除）
     const unsigned char kItemNoDecreaseTrampolineCode[] = {
@@ -542,6 +546,25 @@ namespace
         0x0F, 0x8D, 0x03, 0x00, 0x00, 0x00,   // jge +3
         0x45, 0x31, 0xC0                      // xor r8d, r8d
     };
+
+    // 逻辑：
+    // 1) mov r10,[rax+70]
+    // 2) cmp byte ptr [r10+84],0   ; 只对指定来源生效
+    // 3) je skip
+    // 4) mov r11, &GItemGainMultiplierAsmValue
+    // 5) mov r11d,[r11]
+    // 6) mov [rax+40],r11d
+    const unsigned char kItemGainMultiplierTrampolineTemplate[] = {
+        0x4C, 0x8B, 0x50, 0x70,                         // mov r10,[rax+70]
+        0x41, 0x80, 0xBA, 0x84, 0x00, 0x00, 0x00, 0x00,// cmp byte ptr [r10+84],00
+        0x0F, 0x84, 0x11, 0x00, 0x00, 0x00,            // je +0x11
+        0x49, 0xBB,                                     // mov r11, imm64
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,             // imm64 low
+        0x00, 0x00,                                     // imm64 high
+        0x45, 0x8B, 0x1B,                               // mov r11d,[r11]
+        0x44, 0x89, 0x58, 0x40                          // mov [rax+40],r11d
+    };
+    constexpr size_t kItemGainMulImm64Offset = 20;
 }
 
 void EnableItemNoDecreaseHook()
@@ -609,4 +632,88 @@ void DisableItemNoDecreaseHook()
     }
 
     GTab1ItemNoDecreaseHookId = UINT32_MAX;
+}
+
+void SetItemGainMultiplierHookValue(int32 Value)
+{
+    if (Value < 1)
+        Value = 1;
+    if (Value > 9999)
+        Value = 9999;
+    InterlockedExchange(&GItemGainMultiplierAsmValue, static_cast<LONG>(Value));
+    LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier value set to: " << Value << "\n";
+}
+
+void EnableItemGainMultiplierHook()
+{
+    if (GTab1ItemGainMultiplierHookId != UINT32_MAX)
+        return;
+
+    if (GItemGainMultiplierOffset == 0)
+    {
+        const uintptr_t foundAddr = InlineHook::HookManager::AobScanModuleFirst(
+            "JH-Win64-Shipping.exe",
+            kItemGainMultiplierPattern,
+            true);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier AobScan failed, pattern not found\n";
+            return;
+        }
+
+        HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+        if (!hModule)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier failed to get module handle\n";
+            return;
+        }
+
+        const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
+        GItemGainMultiplierOffset = foundAddr - moduleBase;
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier found at: 0x" << std::hex << foundAddr
+            << ", offset: 0x" << GItemGainMultiplierOffset << std::dec << "\n";
+    }
+
+    unsigned char code[sizeof(kItemGainMultiplierTrampolineTemplate)] = {};
+    std::memcpy(code, kItemGainMultiplierTrampolineTemplate, sizeof(code));
+    const uintptr_t valueAddr = reinterpret_cast<uintptr_t>(&GItemGainMultiplierAsmValue);
+    std::memcpy(code + kItemGainMulImm64Offset, &valueAddr, sizeof(valueAddr));
+
+    uint32_t hookId = UINT32_MAX;
+    const bool success = InlineHook::HookManager::InstallHook(
+        "JH-Win64-Shipping.exe",
+        static_cast<uint32_t>(GItemGainMultiplierOffset),
+        code,
+        sizeof(code),
+        hookId
+    );
+
+    if (success && hookId != UINT32_MAX)
+    {
+        GTab1ItemGainMultiplierHookId = hookId;
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier hook enabled, ID: " << hookId
+            << ", valueAddr=0x" << std::hex << valueAddr << std::dec << "\n";
+    }
+    else
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier hook failed\n";
+    }
+}
+
+void DisableItemGainMultiplierHook()
+{
+    if (GTab1ItemGainMultiplierHookId == UINT32_MAX)
+        return;
+
+    const bool success = InlineHook::HookManager::UninstallHook(GTab1ItemGainMultiplierHookId);
+    if (success)
+    {
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier hook disabled\n";
+    }
+    else
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier hook disable failed\n";
+    }
+
+    GTab1ItemGainMultiplierHookId = UINT32_MAX;
 }
