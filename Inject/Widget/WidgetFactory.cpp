@@ -375,21 +375,12 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 	GVolumePlusWasPressed.push_back(false);
 	if (Item->TXT_CurrentValue)
 	{
-		float MinValue = 0.0f;
-		float MaxValue = 1.0f;
-		if (Item->VolumeSlider)
-		{
-			MinValue = Item->VolumeSlider->MinValue;
-			MaxValue = Item->VolumeSlider->MaxValue;
-		}
-		float Norm = InitValue;
-		if (MaxValue > MinValue)
-			Norm = (InitValue - MinValue) / (MaxValue - MinValue);
-		if (Norm < 0.0f) Norm = 0.0f;
-		if (Norm > 1.0f) Norm = 1.0f;
-		const int32 DisplayValue = static_cast<int32>(Norm * 100.0f + 0.5f);
+		// 所有滑块显示整数倍数，上限10
+		int32 Multiplier = static_cast<int32>(InitValue * 10.0f + 0.5f);
+		if (Multiplier < 1) Multiplier = 1;
+		if (Multiplier > 10) Multiplier = 10;
 		wchar_t Buf[16] = {};
-		swprintf_s(Buf, 16, L"%d", DisplayValue);
+		swprintf_s(Buf, 16, L"%d", Multiplier);
 		Item->TXT_CurrentValue->SetText(MakeText(Buf));
 	}
 
