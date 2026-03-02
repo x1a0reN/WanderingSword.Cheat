@@ -177,6 +177,13 @@ namespace
 	constexpr ULONGLONG kTab0UiPollIntervalMs = 100ULL;
 	ULONGLONG GTab0LastUiPollTick = 0;
 
+	// 角色选择下拉框
+	UBPVE_JHConfigVideoItem2_C* GTab0RoleSelectDD = nullptr;
+	std::vector<int32> GTab0RoleSelectNPCIds;      // 对应每个选项的 NPCId
+	std::vector<std::wstring> GTab0RoleSelectNames; // 角色名字
+	int32 GTab0SelectedRoleIdx = -1;                // 当前选中的角色索引
+	int32 GTab0LastSelectedRoleIdx = -1;            // 上一次选中的角色索引
+
 	constexpr bool kTab0VerboseLog = false;
 	bool GTab0InitTraceEnabled = false;
 	UBPVE_JHConfigVolumeItem2_C* GTab0MoneyMultiplierItem = nullptr;
@@ -623,6 +630,41 @@ namespace
 		return true;
 	}
 
+	// 获取当前队伍所有角色的名字和NPCId列表
+	void RefreshTab0RoleSelectOptions()
+	{
+		GTab0RoleSelectNPCIds.clear();
+		GTab0RoleSelectNames.clear();
+
+		UTeamManager* TeamManager = UManagerFuncLib::GetTeamManager();
+		if (!TeamManager)
+			return;
+
+		auto ProcessTeamArray = [&](TArray<UTeamInfo*>& Infos)
+		{
+			const int32 N = Infos.Num();
+			for (int32 i = 0; i < N; ++i)
+			{
+				UTeamInfo* Info = Infos[i];
+				if (!Info || !IsSafeLiveObject(static_cast<UObject*>(Info)))
+					continue;
+				if (Info->NPCId < 0)
+					continue;
+
+				// 获取角色名字
+				FText Name = UNPCFuncLib::GetNPCNameById(Info->NPCId);
+				std::wstring NameStr = Name.ToString();
+
+				GTab0RoleSelectNPCIds.push_back(Info->NPCId);
+				GTab0RoleSelectNames.push_back(NameStr);
+			}
+		};
+
+		// 先处理队伍列表，再处理战斗队伍列表
+		ProcessTeamArray(TeamManager->TeamInfos);
+		ProcessTeamArray(TeamManager->FightTeamInfos);
+	}
+
 	FTab0HeroContext BuildTab0HeroContext(APlayerController* PC)
 	{
 		FTab0HeroContext Ctx{};
@@ -632,6 +674,24 @@ namespace
 		Tab0Trace("BuildCtx.Managers",
 			"itemMgr=", (void*)Ctx.ItemManager,
 			" npcMgr=", (void*)Ctx.NPCManager);
+
+		// 如果用户通过下拉框选择了角色，优先使用选中的 NPCId
+		if (GTab0SelectedRoleIdx >= 0 && GTab0SelectedRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
+		{
+			Ctx.NPCId = GTab0RoleSelectNPCIds[GTab0SelectedRoleIdx];
+			if (Ctx.NPCId >= 0)
+			{
+				Ctx.TeamInfo = UNPCFuncLib::GetNPCInfoById(Ctx.NPCId);
+				if (Ctx.TeamInfo)
+				{
+					Ctx.AttrSet = Ctx.TeamInfo->GetAttributeSet();
+					if (!Ctx.AttrSet)
+						Ctx.AttrSet = Ctx.TeamInfo->AttributeSet;
+					Tab0Trace("BuildCtx.RoleSelect", "npcId=", Ctx.NPCId, " teamInfo=", (void*)Ctx.TeamInfo);
+					return Ctx;
+				}
+			}
+		}
 
 		UObject* WorldContext = nullptr;
 		if (PC)
@@ -1122,6 +1182,24 @@ namespace
 	{
 		if (!bTab0Active)
 			return;
+
+		// 检测角色选择下拉框的变化
+		if (GTab0RoleSelectDD && IsValidTab0Dropdown(GTab0RoleSelectDD))
+		{
+			int32 CurRoleIdx = GetComboSelectedIndexFast(GTab0RoleSelectDD->CB_Main);
+			if (CurRoleIdx >= 0 && CurRoleIdx != GTab0LastSelectedRoleIdx)
+			{
+				GTab0SelectedRoleIdx = CurRoleIdx;
+				GTab0LastSelectedRoleIdx = CurRoleIdx;
+				// 角色切换时刷新所有数值
+				RefreshTab0BindingsText(PC);
+				// 重置倍率滑块的值，以便重新读取
+				GTab0MoneyMultiplierLastPercent = -1.0f;
+				GTab0SkillExpMultiplierLastPercent = -1.0f;
+				GTab0ManaCostMultiplierLastPercent = -1.0f;
+				std::cout << "[SDK] Tab0 Role changed to: " << GTab0RoleSelectNames[CurRoleIdx].c_str() << "\n";
+			}
+		}
 
 		auto ReadIndex = [](UBPVE_JHConfigVideoItem2_C* Item) -> int32
 		{
@@ -2135,6 +2213,11 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0FocusCacheTick = 0;             // 重置缓存时间戳
 	GTab0LastCleanupTick = 0;            // 重置清理时间戳
 	GTab0LastUiPollTick = 0;             // 重置UI轮询时间戳
+	GTab0RoleSelectDD = nullptr;         // 重置角色选择下拉框
+	GTab0RoleSelectNPCIds.clear();        // 清空角色NPCId列表
+	GTab0RoleSelectNames.clear();         // 清空角色名字列表
+	GTab0SelectedRoleIdx = -1;            // 重置选中的角色索引
+	GTab0LastSelectedRoleIdx = -1;       // 重置上一次选中的角色索引
 	GTab0MoneyMultiplierItem = nullptr;
 	GTab0SkillExpMultiplierItem = nullptr;
 	GTab0ManaCostMultiplierItem = nullptr;
@@ -2227,6 +2310,39 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		return Item;
 	};
 
+	// 角色选择下拉框 - 放在最上方
+	RefreshTab0RoleSelectOptions();
+	auto* RoleSelectPanel = CreateCollapsiblePanel(PC, L"选择角色");
+	auto* RoleSelectBox = RoleSelectPanel ? RoleSelectPanel->CT_Contents : nullptr;
+	if (!GTab0RoleSelectNames.empty())
+	{
+		auto* Item = CreateVideoItem(PC, L"当前角色");
+		if (Item && Item->CB_Main)
+		{
+			Item->CB_Main->ClearOptions();
+			for (const auto& Name : GTab0RoleSelectNames)
+				Item->CB_Main->AddOption(FString(Name.c_str()));
+			if (GetComboOptionCountFast(Item->CB_Main) > 0)
+				Item->CB_Main->SetSelectedIndex(0);
+			GTab0SelectedRoleIdx = 0;
+			GTab0LastSelectedRoleIdx = 0;
+		}
+		if (RoleSelectBox) RoleSelectBox->AddChild(Item);
+		else Container->AddChild(Item);
+		GTab0RoleSelectDD = Item;
+		Count++;
+	}
+	AddPanelWithFixedGap(RoleSelectPanel, 0.0f, 10.0f);
+
+	// 角色选项面板 - 放在基础数值之前
+	auto* RolePanel = CreateCollapsiblePanel(PC, L"角色选项");
+	auto* RoleBox = RolePanel ? RolePanel->CT_Contents : nullptr;
+	GTab0ExtraNeiGongLimitDD = AddDropdown(RoleBox, L"额外心法栏", { L"0", L"1", L"2" });
+	RebuildTab0GuildOptionsFromGame(PC);
+	GTab0GuildDD = AddDropdownDynamic(RoleBox, L"门派", GTab0GuildOptionLabels);
+	RefreshTab0GuildDropdownOptionsIfNeeded(PC, true);
+	AddPanelWithFixedGap(RolePanel, 0.0f, 10.0f);
+
 	auto* BasePanel = CreateCollapsiblePanel(PC, L"基础数值");
 	auto* BaseBox = BasePanel ? BasePanel->CT_Contents : nullptr;
 	AddNumeric(BaseBox, L"金钱", L"99999");
@@ -2237,14 +2353,6 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddNumeric(BaseBox, L"等级", L"10");
 	AddNumeric(BaseBox, L"钓鱼等级", L"10");
 	AddPanelWithFixedGap(BasePanel, 0.0f, 10.0f);
-
-	auto* RolePanel = CreateCollapsiblePanel(PC, L"角色选项");
-	auto* RoleBox = RolePanel ? RolePanel->CT_Contents : nullptr;
-	GTab0ExtraNeiGongLimitDD = AddDropdown(RoleBox, L"额外心法栏", { L"0", L"1", L"2" });
-	RebuildTab0GuildOptionsFromGame(PC);
-	GTab0GuildDD = AddDropdownDynamic(RoleBox, L"门派", GTab0GuildOptionLabels);
-	RefreshTab0GuildDropdownOptionsIfNeeded(PC, true);
-	AddPanelWithFixedGap(RolePanel, 0.0f, 10.0f);
 
 	auto* AttrPanel = CreateCollapsiblePanel(PC, L"基础属性");
 	auto* AttrBox = AttrPanel ? AttrPanel->CT_Contents : nullptr;
