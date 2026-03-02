@@ -574,14 +574,16 @@ namespace
     // 5) mov r11d,[r11]
     // 6) mov [rax+40],r11d
     const unsigned char kItemGainMultiplierTrampolineTemplate[] = {
-        0x4C, 0x8B, 0x50, 0x70,                         // mov r10,[rax+70]
+        0x41, 0x50,                         			// push r8
+        0x4C, 0x8B, 0x40, 0x70,                         // mov r8,[rax+70]
         0x41, 0x80, 0xBA, 0x84, 0x00, 0x00, 0x00, 0x00,// cmp byte ptr [r10+84],00
         0x0F, 0x84, 0x11, 0x00, 0x00, 0x00,            // je +0x11
         0x49, 0xBB,                                     // mov r11, imm64
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00,             // imm64 low
         0x00, 0x00,                                     // imm64 high
         0x45, 0x8B, 0x1B,                               // mov r11d,[r11]
-        0x44, 0x89, 0x58, 0x40                          // mov [rax+40],r11d
+        0x44, 0x89, 0x58, 0x40,                          // mov [rax+40],r11d
+        0x41, 0x58                                       // pop r8
     };
     constexpr size_t kItemGainMulImm64Offset = 20;
 }
@@ -657,8 +659,8 @@ void SetItemGainMultiplierHookValue(int32 Value)
 {
     if (Value < 1)
         Value = 1;
-    if (Value > 9999)
-        Value = 9999;
+    if (Value > 10)
+        Value = 10;
     InterlockedExchange(&GItemGainMultiplierAsmValue, static_cast<LONG>(Value));
     LOGI_STREAM("Tab1Items") << "[SDK] ItemGainMultiplier value set to: " << Value << "\n";
 }

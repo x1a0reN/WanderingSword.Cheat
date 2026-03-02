@@ -206,32 +206,6 @@ namespace
 		return Idx > 0;
 	}
 
-	float ReadSliderPercent(UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultPercent)
-	{
-		if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
-			return DefaultPercent;
-		USlider* Slider = SliderItem->VolumeSlider;
-		if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
-			return DefaultPercent;
-
-		float MinValue = Slider->MinValue;
-		float MaxValue = Slider->MaxValue;
-		float CurValue = Slider->GetValue();
-		if (MaxValue < MinValue)
-		{
-			const float T = MaxValue;
-			MaxValue = MinValue;
-			MinValue = T;
-		}
-
-		float Norm = CurValue;
-		if (MaxValue > MinValue)
-			Norm = (CurValue - MinValue) / (MaxValue - MinValue);
-		if (Norm < 0.0f) Norm = 0.0f;
-		if (Norm > 1.0f) Norm = 1.0f;
-		return Norm * 100.0f;
-	}
-
 	int32 ReadIntegerEditValue(UEditableTextBox* Edit, int32 DefaultValue, int32 MinValue, int32 MaxValue)
 	{
 		if (!Edit || !IsSafeLiveObject(static_cast<UObject*>(Edit)))
