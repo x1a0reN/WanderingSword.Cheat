@@ -1,10 +1,10 @@
-﻿#include <Windows.h>
-#include <iostream>
+#include <Windows.h>
 #include <algorithm>
 #include <cstring>
 
 #include "WidgetUtils.hpp"
 #include "GCManager.hpp"
+#include "Logging.hpp"
 
 namespace
 {
@@ -366,11 +366,11 @@ UWidget* CreateRawWidget(UClass* WidgetClass, UObject* Outer)
 	{
 		MarkAsGCRoot(Obj); // Prevent GC from reclaiming
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateRawWidget: created widget at " << (void*)Obj << " (GC rooted)\n";
+			LOGI_STREAM("WidgetUtils") << "[SDK] CreateRawWidget: created widget at " << (void*)Obj << " (GC rooted)\n";
 	}
 	else if (kEnableUICreateLog)
 	{
-		std::cout << "[SDK] CreateRawWidget: StaticConstructObject returned null\n";
+		LOGI_STREAM("WidgetUtils") << "[SDK] CreateRawWidget: StaticConstructObject returned null\n";
 	}
 
 	return static_cast<UWidget*>(Obj);
@@ -412,7 +412,7 @@ UWidget* CreateRawWidgetFromTemplate(UClass* WidgetClass, UObject* Outer, UObjec
 	{
 		if (kEnableUICreateLog)
 		{
-			std::cout << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
+			LOGI_STREAM("WidgetUtils") << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
 			          << "): null\n";
 		}
 		return nullptr;
@@ -421,7 +421,7 @@ UWidget* CreateRawWidgetFromTemplate(UClass* WidgetClass, UObject* Outer, UObjec
 	MarkAsGCRoot(Obj);
 	if (kEnableUICreateLog)
 	{
-		std::cout << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
+		LOGI_STREAM("WidgetUtils") << "[SDK] CreateRawWidgetFromTemplate(" << (Tag ? Tag : "?")
 		          << "): " << (void*)Obj << " from template=" << (void*)TemplateObj << "\n";
 	}
 	return static_cast<UWidget*>(Obj);

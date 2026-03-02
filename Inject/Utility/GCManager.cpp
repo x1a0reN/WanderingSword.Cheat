@@ -1,7 +1,7 @@
-﻿#include <iostream>
 #include <algorithm>
 
 #include "GCManager.hpp"
+#include "Logging.hpp"
 
 namespace
 {
@@ -57,7 +57,7 @@ void ClearAllGCRoots()
 	std::vector<UObject*> RootedSnapshot = GRootedObjects;
 	for (UObject* Obj : RootedSnapshot)
 		ClearGCRoot(Obj);
-	std::cout << "[SDK] ClearAllGCRoots: released " << RootedSnapshot.size() << " rooted objects\n";
+	LOGI_STREAM("GCManager") << "[SDK] ClearAllGCRoots: released " << RootedSnapshot.size() << " rooted objects\n";
 }
 
 // ── Delegate clearing ──

@@ -1,7 +1,6 @@
 #include <Windows.h>
 #include <algorithm>
 #include <cwctype>
-#include <iostream>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -10,6 +9,7 @@
 #include "GCManager.hpp"
 #include "WidgetUtils.hpp"
 #include "SDK/VE_JHVideoPanel2_classes.hpp"
+#include "Logging.hpp"
 
 namespace
 {
@@ -77,7 +77,7 @@ void PatchTabBtnRuntimeContext(UJHNeoUIConfigV2TabBtn* TabBtn, UBPMV_ConfigView2
 
 	if (kEnableUICreateLog)
 	{
-		std::cout << "[SDK] PatchTabBtnRuntimeContext("
+		LOGI_STREAM("WidgetFactory") << "[SDK] PatchTabBtnRuntimeContext("
 			<< (SourceTag ? SourceTag : "?")
 			<< "): tab=" << (void*)TabBtn
 			<< " parentCtx=" << ParentCtx
@@ -125,7 +125,7 @@ UJHCommon_Btn_Free_C* CreateGameStyleButton(
 	if (!Btn)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] " << (LogTag ? LogTag : "CreateGameStyleButton")
+			LOGI_STREAM("WidgetFactory") << "[SDK] " << (LogTag ? LogTag : "CreateGameStyleButton")
 			          << ": create failed\n";
 		return nullptr;
 	}
@@ -176,7 +176,7 @@ UJHCommon_Btn_Free_C* CreateGameStyleButton(
 
 	Btn->ForceLayoutPrepass();
 	if (kEnableUICreateLog)
-		std::cout << "[SDK] " << (LogTag ? LogTag : "CreateGameStyleButton")
+		LOGI_STREAM("WidgetFactory") << "[SDK] " << (LogTag ? LogTag : "CreateGameStyleButton")
 		          << ": ok btn=" << (void*)Btn << "\n";
 	return Btn;
 }
@@ -200,7 +200,7 @@ UWidget* CreateShowcaseConfigTabBtn(UBPMV_ConfigView2_C* CV, UObject* Outer)
 	if (!Cloned)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] ConfigTabBtnClone failed\n";
+			LOGI_STREAM("WidgetFactory") << "[SDK] ConfigTabBtnClone failed\n";
 		return nullptr;
 	}
 	return Cloned;
@@ -219,7 +219,7 @@ UWidget* CreateShowcaseWidgetByClassName(
 		if (!Widget)
 		{
 			if (kEnableUICreateLog)
-				std::cout << "[SDK] CreateShowcaseWidgetByClassName: create failed: "
+				LOGI_STREAM("WidgetFactory") << "[SDK] CreateShowcaseWidgetByClassName: create failed: "
 				          << (SourceName ? SourceName : "<null>") << "\n";
 			return nullptr;
 		}
@@ -242,14 +242,14 @@ UWidget* CreateShowcaseWidgetByClassName(
 		else
 		{
 			if (kEnableUICreateLog)
-				std::cout << "[SDK] CreateShowcaseWidgetByClassName: class not found: " << ClassName << "\n";
+				LOGI_STREAM("WidgetFactory") << "[SDK] CreateShowcaseWidgetByClassName: class not found: " << ClassName << "\n";
 		}
 	}
 
 	if (FallbackClass)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateShowcaseWidgetByClassName: fallback class try -> "
+			LOGI_STREAM("WidgetFactory") << "[SDK] CreateShowcaseWidgetByClassName: fallback class try -> "
 			          << (void*)FallbackClass << "\n";
 		if (UWidget* W = TryCreateWidget(FallbackClass, "fallback"))
 			return W;
@@ -269,7 +269,7 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItem(APlayerController* PC, const wchar_t
 	if (!Cls)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateVideoItem: class BPVE_JHConfigVideoItem2_C not found\n";
+			LOGI_STREAM("WidgetFactory") << "[SDK] CreateVideoItem: class BPVE_JHConfigVideoItem2_C not found\n";
 		return nullptr;
 	}
 
@@ -278,7 +278,7 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItem(APlayerController* PC, const wchar_t
 	if (!Item)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateVideoItem: UWidgetBlueprintLibrary::Create returned null\n";
+			LOGI_STREAM("WidgetFactory") << "[SDK] CreateVideoItem: UWidgetBlueprintLibrary::Create returned null\n";
 		return nullptr;
 	}
 
@@ -296,7 +296,7 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItem(APlayerController* PC, const wchar_t
 		Item->IMG_Icon->SetVisibility(ESlateVisibility::Collapsed);
 
 	if (kEnableUICreateLog)
-		std::cout << "[SDK] CreateVideoItem: created OK (game binding cleared)\n";
+		LOGI_STREAM("WidgetFactory") << "[SDK] CreateVideoItem: created OK (game binding cleared)\n";
 	return Item;
 }
 
@@ -339,7 +339,7 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 	if (!Cls)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateVolumeItem: class not found\n";
+			LOGI_STREAM("WidgetFactory") << "[SDK] CreateVolumeItem: class not found\n";
 		return nullptr;
 	}
 
@@ -348,7 +348,7 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 	if (!Item)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateVolumeItem: Create returned null\n";
+			LOGI_STREAM("WidgetFactory") << "[SDK] CreateVolumeItem: Create returned null\n";
 		return nullptr;
 	}
 
@@ -394,7 +394,7 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 	}
 
 	if (kEnableUICreateLog)
-		std::cout << "[SDK] CreateVolumeItem: created OK\n";
+		LOGI_STREAM("WidgetFactory") << "[SDK] CreateVolumeItem: created OK\n";
 	return Item;
 }
 
@@ -646,7 +646,7 @@ namespace
 
 			if (kEnableUICreateLog)
 			{
-				std::cout << "[SDK] " << (bNumericOnly ? "CreateVolumeNumericEditBoxItem" : "CreateVolumeEditBoxItem")
+				LOGI_STREAM("WidgetFactory") << "[SDK] " << (bNumericOnly ? "CreateVolumeNumericEditBoxItem" : "CreateVolumeEditBoxItem")
 				          << ": item=" << (void*)Item
 				          << " panel=" << (void*)ValuePanel
 				          << " panelType=" << GetPanelTypeName(ValuePanel)
@@ -663,7 +663,7 @@ namespace
 			InputWidget->SetRenderTranslation(FVector2D{ 260.0f, 0.0f });
 			if (kEnableUICreateLog)
 			{
-				std::cout << "[SDK] " << (bNumericOnly ? "CreateVolumeNumericEditBoxItem" : "CreateVolumeEditBoxItem")
+				LOGI_STREAM("WidgetFactory") << "[SDK] " << (bNumericOnly ? "CreateVolumeNumericEditBoxItem" : "CreateVolumeEditBoxItem")
 				          << ": fallback add to container=" << (void*)FallbackContainer << "\n";
 			}
 		}
@@ -708,7 +708,7 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 	if (!Cls)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateCollapsiblePanel: class not found\n";
+			LOGI_STREAM("WidgetFactory") << "[SDK] CreateCollapsiblePanel: class not found\n";
 		return nullptr;
 	}
 
@@ -717,7 +717,7 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 	if (!Panel)
 	{
 		if (kEnableUICreateLog)
-			std::cout << "[SDK] CreateCollapsiblePanel: Create returned null\n";
+			LOGI_STREAM("WidgetFactory") << "[SDK] CreateCollapsiblePanel: Create returned null\n";
 		return nullptr;
 	}
 	MarkAsGCRoot(Panel);
@@ -753,7 +753,7 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 
 	if (kEnableUICreateLog)
 	{
-		std::cout << "[SDK] CreateCollapsiblePanel: created OK, title="
+		LOGI_STREAM("WidgetFactory") << "[SDK] CreateCollapsiblePanel: created OK, title="
 		          << (Title ? "set" : "null")
 		          << " txt=" << (void*)Panel->txt
 		          << " contents=" << (void*)Panel->CT_Contents
@@ -923,7 +923,7 @@ void PollCollapsiblePanelsInput()
 		Panel->ForceLayoutPrepass();
 		if (auto* Parent = Panel->GetParent())
 			Parent->ForceLayoutPrepass();
-		std::cout << "[SDK] CollapsibleToggle: panel=" << (void*)Panel
+		LOGI_STREAM("WidgetFactory") << "[SDK] CollapsibleToggle: panel=" << (void*)Panel
 		          << " prev=" << (CurrentCollapsed ? 1 : 0)
 		          << " collapsed=" << (NextCollapsed ? 1 : 0) << "\n";
 	};

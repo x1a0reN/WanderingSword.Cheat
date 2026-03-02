@@ -3,7 +3,7 @@
 #include <Windows.h>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
+#include "Inject/Utility/Logging.hpp"
 #include <mutex>
 #include <vector>
 
@@ -758,13 +758,13 @@ public:
         outHookId = UINT32_MAX;
 
         if (trampolineCodeSize > (kTrampolineSize - kAbsJumpSize)) {
-            std::cerr << "[InlineHook] TrampolineCodeSize too large: " << trampolineCodeSize << "\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] TrampolineCodeSize too large: " << trampolineCodeSize << "\n";
             return false;
         }
 
         HMODULE hModule = GetModuleHandleA(moduleName);
         if (!hModule) {
-            std::cerr << "[InlineHook] Module not found: " << moduleName << "\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Module not found: " << moduleName << "\n";
             return false;
         }
 
@@ -772,14 +772,14 @@ public:
 
         uint8_t prologueBytes[kMaxStolenBytes] = {};
         if (!SafeReadMemory(targetAddr, prologueBytes, sizeof(prologueBytes))) {
-            std::cerr << "[InlineHook] Target address not readable: 0x" << std::hex << targetAddr << std::dec << "\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Target address not readable: 0x" << std::hex << targetAddr << std::dec << "\n";
             return false;
         }
 
         HANDLE hProcess = GetCurrentProcess();
         const uintptr_t trampolineAddr = reinterpret_cast<uintptr_t>(AllocateTrampolineNearTarget(hProcess, targetAddr));
         if (!trampolineAddr) {
-            std::cerr << "[InlineHook] Failed to allocate trampoline\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to allocate trampoline\n";
             return false;
         }
 
@@ -789,7 +789,7 @@ public:
 
         size_t patchSize = 0;
         if (!CalculatePatchSize(prologueBytes, sizeof(prologueBytes), minPatchRequired, patchSize)) {
-            std::cerr << "[InlineHook] Unsupported/unsafe prologue, abort install\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Unsupported/unsafe prologue, abort install\n";
             VirtualFree(reinterpret_cast<void*>(trampolineAddr), 0, MEM_RELEASE);
             return false;
         }
@@ -800,7 +800,7 @@ public:
         entry.PatchSize = patchSize;
         std::memcpy(entry.OriginalBytes, prologueBytes, patchSize);
 
-        std::cout << "[InlineHook] Target: 0x" << std::hex << targetAddr << std::dec
+        LOGI_STREAM("InlineHook") << "[InlineHook] Target: 0x" << std::hex << targetAddr << std::dec
             << ", Trampoline: 0x" << std::hex << trampolineAddr << std::dec
             << ", PatchSize: " << patchSize << "\n";
 
@@ -812,7 +812,7 @@ public:
 
         if (trampolineCode && trampolineCodeSize > 0) {
             if (trampOffset + trampolineCodeSize + kAbsJumpSize > kTrampolineSize) {
-                std::cerr << "[InlineHook] Trampoline code too large\n";
+                LOGE_STREAM("InlineHook") << "[InlineHook] Trampoline code too large\n";
                 VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
                 return false;
             }
@@ -821,14 +821,14 @@ public:
         }
 
         if (trampOffset + kAbsJumpSize > kTrampolineSize) {
-            std::cerr << "[InlineHook] Trampoline overflow\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Trampoline overflow\n";
             VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
             return false;
         }
 
         uint8_t jumpBackPatch[kAbsJumpSize] = {};
         if (!BuildJumpPatch(entry.Trampoline + trampOffset, entry.TargetAddr + entry.PatchSize, kAbsJumpSize, jumpBackPatch)) {
-            std::cerr << "[InlineHook] Failed to build trampoline return jump\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to build trampoline return jump\n";
             VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
             return false;
         }
@@ -839,7 +839,7 @@ public:
 
         uint8_t hookPatch[kMaxStolenBytes] = {};
         if (!BuildJumpPatch(entry.TargetAddr, entry.Trampoline, entry.PatchSize, hookPatch)) {
-            std::cerr << "[InlineHook] Failed to build hook jump patch\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Failed to build hook jump patch\n";
             VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
             return false;
         }
@@ -872,10 +872,10 @@ public:
 
         if (!installSuccess) {
             if (protectError != ERROR_SUCCESS) {
-                std::cerr << "[InlineHook] VirtualProtect failed: " << protectError << "\n";
+                LOGE_STREAM("InlineHook") << "[InlineHook] VirtualProtect failed: " << protectError << "\n";
             }
             else if (verifyFailed) {
-                std::cerr << "[InlineHook] Patch verification failed, rollback\n";
+                LOGE_STREAM("InlineHook") << "[InlineHook] Patch verification failed, rollback\n";
             }
             VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
             return false;
@@ -886,7 +886,7 @@ public:
         s_Hooks.push_back(entry);
         outHookId = hookId;
 
-        std::cout << "[InlineHook] Installed hook ID: " << hookId << "\n";
+        LOGI_STREAM("InlineHook") << "[InlineHook] Installed hook ID: " << hookId << "\n";
         return true;
     }
 
@@ -894,7 +894,7 @@ public:
         std::lock_guard<std::mutex> lock(s_Mutex);
 
         if (hookId >= s_Hooks.size()) {
-            std::cerr << "[InlineHook] Invalid hook ID: " << hookId << "\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Invalid hook ID: " << hookId << "\n";
             return false;
         }
 
@@ -921,7 +921,7 @@ public:
             VirtualProtect(reinterpret_cast<void*>(entry.TargetAddr), entry.PatchSize, oldProtect, &oldProtect);
         }
         if (!uninstallSuccess) {
-            std::cerr << "[InlineHook] Uninstall VirtualProtect failed: " << protectError << "\n";
+            LOGE_STREAM("InlineHook") << "[InlineHook] Uninstall VirtualProtect failed: " << protectError << "\n";
             return false;
         }
 
@@ -931,14 +931,14 @@ public:
             entry.Trampoline = 0;
         }
 
-        std::cout << "[InlineHook] Uninstalled hook ID: " << hookId << "\n";
+        LOGI_STREAM("InlineHook") << "[InlineHook] Uninstalled hook ID: " << hookId << "\n";
         return true;
     }
 
     static bool UninstallAll() {
         std::lock_guard<std::mutex> lock(s_Mutex);
 
-        std::cout << "[InlineHook] Uninstalling all hooks...\n";
+        LOGI_STREAM("InlineHook") << "[InlineHook] Uninstalling all hooks...\n";
 
         bool allSuccess = true;
         uint32_t firstFailedId = UINT32_MAX;
@@ -971,7 +971,7 @@ public:
         }
 
         if (!allSuccess) {
-            std::cerr << "[InlineHook] UninstallAll failed, first error ID " << firstFailedId
+            LOGE_STREAM("InlineHook") << "[InlineHook] UninstallAll failed, first error ID " << firstFailedId
                 << ", error " << firstFailedError << "\n";
         }
 

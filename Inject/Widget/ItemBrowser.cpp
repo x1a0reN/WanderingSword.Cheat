@@ -1,5 +1,4 @@
 #include <Windows.h>
-#include <iostream>
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -12,6 +11,7 @@
 #include "SDK/BPEntry_Item_classes.hpp"
 #include "SDK/BPVE_JHTips_Item_classes.hpp"
 #include "SDK/BPVE_TipsBlock_classes.hpp"
+#include "Logging.hpp"
 
 namespace
 {
@@ -133,7 +133,7 @@ namespace
 
 		// 转场期间有些资源会临时不可用，设置重试窗口避免永久 missing 污染。
 		sMissingIconRetryUntil[Key] = NowTick + 2500;
-		std::cout << "[SDK] ItemIconMissing: " << AssetPathName->GetRawString() << "\n";
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemIconMissing: " << AssetPathName->GetRawString() << "\n";
 		return nullptr;
 	}
 
@@ -207,7 +207,7 @@ namespace
 			UWidgetBlueprintLibrary::Create(PC, UBPVE_JHTips_Item_C::StaticClass(), PC));
 		if (!Created)
 		{
-			std::cout << "[SDK] ItemHoverProbe: StandaloneGameTip create failed\n";
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: StandaloneGameTip create failed\n";
 			return false;
 		}
 
@@ -246,14 +246,14 @@ namespace
 		{
 			auto* RcSlot = static_cast<UCanvasPanelSlot*>(Created->RootCanvas->Slot);
 			FVector2D OldPos = RcSlot->GetPosition();
-			std::cout << "[SDK] ItemTip RootCanvas slot pos before reset: ("
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemTip RootCanvas slot pos before reset: ("
 			          << OldPos.X << "," << OldPos.Y << ")\n";
 			RcSlot->SetPosition(FVector2D{ 0.0f, 0.0f });
 		}
 
 		MarkAsGCRoot(static_cast<UObject*>(Created));
 		GStandaloneItemTipWidget = Created;
-		std::cout << "[SDK] ItemHoverProbe: StandaloneGameTip created widget="
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: StandaloneGameTip created widget="
 		          << (void*)GStandaloneItemTipWidget
 		          << " inViewport=" << (GStandaloneItemTipWidget->IsInViewport() ? 1 : 0) << "\n";
 		return IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget));
@@ -301,7 +301,7 @@ namespace
 void BuildItemCache()
 {
 	if (GItemCacheBuilt) return;
-	std::cout << "[SDK] Building item cache...\n";
+	LOGI_STREAM("ItemBrowser") << "[SDK] Building item cache...\n";
 
 	// Resolve class for fallback scan path
 	UClass* ResMgrClass = UObject::FindClassFast("ItemResManager");
@@ -311,17 +311,17 @@ void BuildItemCache()
 	// Primary path: use SDK static function (preferred over raw object scan)
 	UItemResManager* ResMgr = UManagerFuncLib::GetItemResManager();
 	if (ResMgr)
-		std::cout << "[SDK] ItemResManager from ManagerFuncLib: " << (void*)ResMgr << "\n";
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemResManager from ManagerFuncLib: " << (void*)ResMgr << "\n";
 
 	// Fallback path: scan GObjects for a live instance
 	if (!ResMgr && ResMgrClass)
 		ResMgr = static_cast<UItemResManager*>(FindFirstObjectOfClass(ResMgrClass));
 
 	if (!ResMgr) {
-		std::cout << "[SDK] ItemResManager instance not found\n";
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemResManager instance not found\n";
 		return;
 	}
-	std::cout << "[SDK] ItemResManager at " << (void*)ResMgr << "\n";
+	LOGI_STREAM("ItemBrowser") << "[SDK] ItemResManager at " << (void*)ResMgr << "\n";
 
 	// ItemDataTable at UItemResManager+0x30
 	UDataTable* DataTable = GetItemDataTableFromManager(ResMgr);
@@ -347,7 +347,7 @@ void BuildItemCache()
 				{
 					ResMgr = Candidate;
 					DataTable = CandidateTable;
-					std::cout << "[SDK] ItemResManager fallback candidate: " << (void*)ResMgr << "\n";
+					LOGI_STREAM("ItemBrowser") << "[SDK] ItemResManager fallback candidate: " << (void*)ResMgr << "\n";
 					break;
 				}
 			}
@@ -355,27 +355,27 @@ void BuildItemCache()
 	}
 
 	if (!DataTable) {
-		std::cout << "[SDK] ItemDataTable is null\n";
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemDataTable is null\n";
 		return;
 	}
-	std::cout << "[SDK] ItemDataTable at " << (void*)DataTable
+	LOGI_STREAM("ItemBrowser") << "[SDK] ItemDataTable at " << (void*)DataTable
 	          << ", RowStruct=" << (void*)DataTable->RowStruct << "\n";
     // RowMap: use SDK container layout directly (no raw pointer arithmetic)
     auto& RowMap = DataTable->RowMap;
     if (!RowMap.IsValid())
     {
-        std::cout << "[SDK] RowMap container invalid\n";
+        LOGI_STREAM("ItemBrowser") << "[SDK] RowMap container invalid\n";
         return;
     }
     const int32 AllocatedSlots = RowMap.NumAllocated();
     const int32 RowCount = RowMap.Num();
     if (AllocatedSlots <= 0 || RowCount <= 0)
     {
-        std::cout << "[SDK] RowMap empty/invalid: rows=" << RowCount
+        LOGI_STREAM("ItemBrowser") << "[SDK] RowMap empty/invalid: rows=" << RowCount
                   << " allocated=" << AllocatedSlots << "\n";
         return;
     }
-    std::cout << "[SDK] RowMap: rows=" << RowCount << " allocated=" << AllocatedSlots << "\n";
+    LOGI_STREAM("ItemBrowser") << "[SDK] RowMap: rows=" << RowCount << " allocated=" << AllocatedSlots << "\n";
 
     GAllItems.clear();
     GAllItems.reserve(RowCount);
@@ -442,8 +442,8 @@ void BuildItemCache()
 		[](const CachedItem& a, const CachedItem& b) { return a.DefId < b.DefId; });
 
 	GItemCacheBuilt = true;
-	std::cout << "[SDK] Item cache: " << valid << " items loaded\n";
-	std::cout << "[SDK] Item quality histogram:"
+	LOGI_STREAM("ItemBrowser") << "[SDK] Item cache: " << valid << " items loaded\n";
+	LOGI_STREAM("ItemBrowser") << "[SDK] Item quality histogram:"
 	          << " Q0=" << QualityHistogram[0]
 	          << " Q1=" << QualityHistogram[1]
 	          << " Q2=" << QualityHistogram[2]
@@ -558,7 +558,7 @@ static UJHNeoUISubsystem* GetJHNeoUISubsystem()
 	if (!Cached && (Now - sLastSubsystemNullLogTick > 1500))
 	{
 		sLastSubsystemNullLogTick = Now;
-		std::cout << "[SDK] ItemHoverProbe: runtime JHNeoUISubsystem not found (CurrentGI="
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: runtime JHNeoUISubsystem not found (CurrentGI="
 		          << (void*)CurrentGI << ")\n";
 	}
 	return Cached;
@@ -601,7 +601,7 @@ void FilterItems(int32 category)
 	}
 	GItemTotalPages = ((int32)GFilteredIndices.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
 	if (GItemTotalPages < 1) GItemTotalPages = 1;
-	std::cout << "[SDK] Filter cat=" << category << ": " << GFilteredIndices.size()
+	LOGI_STREAM("ItemBrowser") << "[SDK] Filter cat=" << category << ": " << GFilteredIndices.size()
 	          << " items, " << GItemTotalPages << " pages\n";
 }
 
@@ -847,7 +847,7 @@ void PollItemBrowserHoverTips()
 									++HoverByGridFallbackCount;
 									if (kVerboseItemHoverLogs && Heartbeat)
 									{
-										std::cout << "[SDK] ItemHoverGridFallback: mouseVP=("
+										LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverGridFallback: mouseVP=("
 											<< MouseVP.X << "," << MouseVP.Y
 											<< ") gridViewTL=(" << MinX << "," << MinY
 											<< ") gridViewBR=(" << MaxX << "," << MaxY
@@ -976,7 +976,7 @@ void PollItemBrowserHoverTips()
 		sPendingHoverTick = 0;
 
 		if (kVerboseItemHoverLogs && sLastProbeSlot >= 0)
-			std::cout << "[SDK] ItemHoverProbe: cleared\n";
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: cleared\n";
 		sLastProbeSlot = -1;
 		sLastFailCode = -1;
 		HideCurrentItemTips();
@@ -1012,7 +1012,7 @@ void PollItemBrowserHoverTips()
 			int32 DefId = -1;
 			if (ItemIdx >= 0 && ItemIdx < static_cast<int32>(GAllItems.size()))
 				DefId = GAllItems[ItemIdx].DefId;
-			std::cout << "[SDK] ItemHoverProbe: slot=" << HoveredSlot
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: slot=" << HoveredSlot
 			          << " itemIdx=" << ItemIdx
 			          << " defId=" << DefId << "\n";
 		}
@@ -1023,7 +1023,7 @@ void PollItemBrowserHoverTips()
 	{
 		if (sLastFailCode != 1)
 		{
-			std::cout << "[SDK] ItemHoverProbe: invalid item index\n";
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: invalid item index\n";
 			sLastFailCode = 1;
 		}
 		HideCurrentItemTips();
@@ -1056,7 +1056,7 @@ void PollItemBrowserHoverTips()
 				sLastTipRebuildTick = NowTick;
 				if (kVerboseItemHoverLogs)
 				{
-					std::cout << "[SDK] ItemHoverProbe: tip source=StandaloneGameTip inViewport="
+					LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: tip source=StandaloneGameTip inViewport="
 					          << (GStandaloneItemTipWidget->IsInViewport() ? 1 : 0) << "\n";
 				}
 			}
@@ -1066,7 +1066,7 @@ void PollItemBrowserHoverTips()
 		{
 			if (sLastFailCode != 5)
 			{
-				std::cout << "[SDK] ItemHoverProbe: StandaloneGameTip failed defId=" << CI.DefId << "\n";
+				LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: StandaloneGameTip failed defId=" << CI.DefId << "\n";
 				sLastFailCode = 5;
 			}
 			HideCurrentItemTips();
@@ -1077,7 +1077,7 @@ void PollItemBrowserHoverTips()
 		sLastFailCode = -1;
 		if (kVerboseItemHoverLogs)
 		{
-			std::cout << "[SDK] ItemHoverProbe: tips created widget=" << (void*)GItemHoverTipsWidget
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: tips created widget=" << (void*)GItemHoverTipsWidget
 			          << " defId=" << CI.DefId << "\n";
 		}
 	}
@@ -1189,7 +1189,7 @@ void PollItemBrowserHoverTips()
 		sLastTipsStateLogTick = NowTick;
 		const FGeometry TipsGeo = GItemHoverTipsWidget->GetCachedGeometry();
 		const FVector2D TipsSize = USlateBlueprintLibrary::GetLocalSize(TipsGeo);
-		std::cout << "[SDK] ItemHoverTipsState: widget=" << (void*)GItemHoverTipsWidget
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverTipsState: widget=" << (void*)GItemHoverTipsWidget
 		          << " inViewport=" << (GItemHoverTipsWidget->IsInViewport() ? 1 : 0)
 		          << " vis=" << VisName(GItemHoverTipsWidget->GetVisibility())
 		          << " opacity=" << GItemHoverTipsWidget->GetRenderOpacity()

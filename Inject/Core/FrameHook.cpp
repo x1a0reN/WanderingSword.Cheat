@@ -1,5 +1,4 @@
-﻿#include <Windows.h>
-#include <iostream>
+#include <Windows.h>
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
@@ -19,6 +18,7 @@
 #include "SDK/JH_parameters.hpp"
 #include "SDK/JH_classes.hpp"
 #include "SDK/Engine_classes.hpp"
+#include "Logging.hpp"
 
 namespace
 {
@@ -44,7 +44,7 @@ namespace
 		if (IsSafeLiveObject(Obj))
 			return true;
 
-		std::cout << "[SDK] FrameHook: stale internal widget pointer detected, reset state\n";
+		LOGI_STREAM("FrameHook") << "[SDK] FrameHook: stale internal widget pointer detected, reset state\n";
 		InternalWidget = nullptr;
 		InternalWidgetVisible = false;
 		GCachedBtnExit = nullptr;
@@ -689,56 +689,56 @@ namespace
 		const bool NewItemNoDecrease = ReadToggleValue(GTab1ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
 		if (NewItemNoDecrease != Cfg.ItemNoDecrease)
 		{
-			std::cout << "[SDK] ItemNoDecrease: " << (NewItemNoDecrease ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] ItemNoDecrease: " << (NewItemNoDecrease ? "ON" : "OFF") << "\n";
 			Cfg.ItemNoDecrease = NewItemNoDecrease;
 		}
 
 		const bool NewItemGainMultiplier = ReadToggleValue(GTab1ItemGainMultiplierToggle, Cfg.ItemGainMultiplier);
 		if (NewItemGainMultiplier != Cfg.ItemGainMultiplier)
 		{
-			std::cout << "[SDK] ItemGainMultiplier: " << (NewItemGainMultiplier ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] ItemGainMultiplier: " << (NewItemGainMultiplier ? "ON" : "OFF") << "\n";
 			Cfg.ItemGainMultiplier = NewItemGainMultiplier;
 		}
 
 		const bool NewAllItemsSellable = ReadToggleValue(GTab1AllItemsSellableToggle, Cfg.AllItemsSellable);
 		if (NewAllItemsSellable != Cfg.AllItemsSellable)
 		{
-			std::cout << "[SDK] AllItemsSellable: " << (NewAllItemsSellable ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] AllItemsSellable: " << (NewAllItemsSellable ? "ON" : "OFF") << "\n";
 			Cfg.AllItemsSellable = NewAllItemsSellable;
 		}
 
 		const bool NewIncludeQuestItems = ReadToggleValue(GTab1IncludeQuestItemsToggle, Cfg.IncludeQuestItems);
 		if (NewIncludeQuestItems != Cfg.IncludeQuestItems)
 		{
-			std::cout << "[SDK] IncludeQuestItems: " << (NewIncludeQuestItems ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] IncludeQuestItems: " << (NewIncludeQuestItems ? "ON" : "OFF") << "\n";
 			Cfg.IncludeQuestItems = NewIncludeQuestItems;
 		}
 
 		const bool NewDropRate100 = ReadToggleValue(GTab1DropRate100Toggle, Cfg.DropRate100);
 		if (NewDropRate100 != Cfg.DropRate100)
 		{
-			std::cout << "[SDK] DropRate100: " << (NewDropRate100 ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] DropRate100: " << (NewDropRate100 ? "ON" : "OFF") << "\n";
 			Cfg.DropRate100 = NewDropRate100;
 		}
 
 		const bool NewCraftEffectMultiplier = ReadToggleValue(GTab1CraftEffectMultiplierToggle, Cfg.CraftEffectMultiplier);
 		if (NewCraftEffectMultiplier != Cfg.CraftEffectMultiplier)
 		{
-			std::cout << "[SDK] CraftEffectMultiplier: " << (NewCraftEffectMultiplier ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] CraftEffectMultiplier: " << (NewCraftEffectMultiplier ? "ON" : "OFF") << "\n";
 			Cfg.CraftEffectMultiplier = NewCraftEffectMultiplier;
 		}
 
 		const bool NewIgnoreItemUseCount = ReadToggleValue(GTab1IgnoreItemUseCountToggle, Cfg.IgnoreItemUseCount);
 		if (NewIgnoreItemUseCount != Cfg.IgnoreItemUseCount)
 		{
-			std::cout << "[SDK] IgnoreItemUseCount: " << (NewIgnoreItemUseCount ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] IgnoreItemUseCount: " << (NewIgnoreItemUseCount ? "ON" : "OFF") << "\n";
 			Cfg.IgnoreItemUseCount = NewIgnoreItemUseCount;
 		}
 
 		const bool NewIgnoreItemRequirements = ReadToggleValue(GTab1IgnoreItemRequirementsToggle, Cfg.IgnoreItemRequirements);
 		if (NewIgnoreItemRequirements != Cfg.IgnoreItemRequirements)
 		{
-			std::cout << "[SDK] IgnoreItemRequirements: " << (NewIgnoreItemRequirements ? "ON" : "OFF") << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] IgnoreItemRequirements: " << (NewIgnoreItemRequirements ? "ON" : "OFF") << "\n";
 			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
 		}
 
@@ -747,7 +747,7 @@ namespace
 		const int32 NewGainValue = SliderPercentToIntMultiplier(GainPercent);
 		if (NewGainValue != Cfg.ItemGainMultiplierValue)
 		{
-			std::cout << "[SDK] ItemGainMultiplier: " << NewGainValue << "x\n";
+			LOGI_STREAM("FrameHook") << "[SDK] ItemGainMultiplier: " << NewGainValue << "x\n";
 			Cfg.ItemGainMultiplierValue = NewGainValue;
 		}
 
@@ -757,7 +757,7 @@ namespace
 		const float NewIncrementValue = SliderPercentToFloatMultiplier(IncrementPercent);
 		if (std::fabs(NewIncrementValue - Cfg.CraftItemIncrementMultiplier) > 0.001f)
 		{
-			std::cout << "[SDK] CraftItemIncrement: " << NewIncrementValue << "x\n";
+			LOGI_STREAM("FrameHook") << "[SDK] CraftItemIncrement: " << NewIncrementValue << "x\n";
 			Cfg.CraftItemIncrementMultiplier = NewIncrementValue;
 		}
 
@@ -767,7 +767,7 @@ namespace
 		const float NewExtraValue = SliderPercentToFloatMultiplier(ExtraPercent);
 		if (std::fabs(NewExtraValue - Cfg.CraftExtraEffectMultiplier) > 0.001f)
 		{
-			std::cout << "[SDK] CraftExtraEffect: " << NewExtraValue << "x\n";
+			LOGI_STREAM("FrameHook") << "[SDK] CraftExtraEffect: " << NewExtraValue << "x\n";
 			Cfg.CraftExtraEffectMultiplier = NewExtraValue;
 		}
 
@@ -775,7 +775,7 @@ namespace
 		const int32 NewMaxExtraAffixes = ReadIntegerEditValue(GTab1MaxExtraAffixesEdit, Cfg.MaxExtraAffixes, 0, 32);
 		if (NewMaxExtraAffixes != Cfg.MaxExtraAffixes)
 		{
-			std::cout << "[SDK] MaxExtraAffixes: " << NewMaxExtraAffixes << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] MaxExtraAffixes: " << NewMaxExtraAffixes << "\n";
 			Cfg.MaxExtraAffixes = NewMaxExtraAffixes;
 		}
 	}
@@ -848,7 +848,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
-			std::cout << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
+			LOGI_STREAM("FrameHook") << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
 		}
 		return;
 	}
@@ -865,7 +865,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		if (LastWorld != nullptr)
 		{
 			const bool HadWidget = (InternalWidget != nullptr) || InternalWidgetVisible;
-			std::cout << "[SDK] WorldTransition: oldWorld=" << (void*)LastWorld
+			LOGI_STREAM("FrameHook") << "[SDK] WorldTransition: oldWorld=" << (void*)LastWorld
 				<< " newWorld=" << (void*)CurrentWorld
 				<< " oldLevel=" << (void*)LastLevel
 				<< " newLevel=" << (void*)CurrentLevel
@@ -899,24 +899,24 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	const bool PGUPDown = (GetAsyncKeyState(VK_PRIOR) & 0x8000) != 0;
 	if (PGUPDown && !PGUPWasDown)
 	{
-		std::cout << "[SDK] PGUP pressed, checking world state...\n";
+		LOGI_STREAM("FrameHook") << "[SDK] PGUP pressed, checking world state...\n";
 		UWorld* World = UWorld::GetWorld();
 		if (World && World->OwningGameInstance)
 		{
 			EWorldStateType WorldState = UManagerFuncLib::GetWorldType();
-			std::cout << "[SDK] WorldStateType: " << (int)WorldState << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] WorldStateType: " << (int)WorldState << "\n";
 			switch (WorldState)
 			{
-				case EWorldStateType::None: std::cout << "[SDK]   -> None (main menu)\n"; break;
-				case EWorldStateType::Scene: std::cout << "[SDK]   -> Scene (world/menu scene)\n"; break;
-				case EWorldStateType::IntoFight: std::cout << "[SDK]   -> IntoFight\n"; break;
-				case EWorldStateType::Fighting: std::cout << "[SDK]   -> Fighting\n"; break;
-				case EWorldStateType::IntoScene: std::cout << "[SDK]   -> IntoScene\n"; break;
-				case EWorldStateType::CG: std::cout << "[SDK]   -> CG\n"; break;
-				case EWorldStateType::ChangeScene: std::cout << "[SDK]   -> ChangeScene\n"; break;
-				case EWorldStateType::SkipingCG: std::cout << "[SDK]   -> SkipingCG\n"; break;
-				case EWorldStateType::GameSystemActived: std::cout << "[SDK]   -> GameSystemActived\n"; break;
-				default: std::cout << "[SDK]   -> Unknown\n"; break;
+				case EWorldStateType::None: LOGI_STREAM("FrameHook") << "[SDK]   -> None (main menu)\n"; break;
+				case EWorldStateType::Scene: LOGI_STREAM("FrameHook") << "[SDK]   -> Scene (world/menu scene)\n"; break;
+				case EWorldStateType::IntoFight: LOGI_STREAM("FrameHook") << "[SDK]   -> IntoFight\n"; break;
+				case EWorldStateType::Fighting: LOGI_STREAM("FrameHook") << "[SDK]   -> Fighting\n"; break;
+				case EWorldStateType::IntoScene: LOGI_STREAM("FrameHook") << "[SDK]   -> IntoScene\n"; break;
+				case EWorldStateType::CG: LOGI_STREAM("FrameHook") << "[SDK]   -> CG\n"; break;
+				case EWorldStateType::ChangeScene: LOGI_STREAM("FrameHook") << "[SDK]   -> ChangeScene\n"; break;
+				case EWorldStateType::SkipingCG: LOGI_STREAM("FrameHook") << "[SDK]   -> SkipingCG\n"; break;
+				case EWorldStateType::GameSystemActived: LOGI_STREAM("FrameHook") << "[SDK]   -> GameSystemActived\n"; break;
+				default: LOGI_STREAM("FrameHook") << "[SDK]   -> Unknown\n"; break;
 			}
 
 			// 获取当前关卡名称
@@ -924,22 +924,22 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			const wchar_t* LevelNameWs = LevelName.CStr();
 			if (LevelNameWs && LevelNameWs[0])
 			{
-				std::wcout << L"[SDK] LevelName: " << LevelNameWs << L"\n";
+				LOGI_STREAM("FrameHook") << L"[SDK] LevelName: " << LevelNameWs << L"\n";
 			}
 			else
 			{
-				std::cout << "[SDK] LevelName: (empty)\n";
+				LOGI_STREAM("FrameHook") << "[SDK] LevelName: (empty)\n";
 			}
 
 			// 检查 PersistentLevel 是否存在
 			if (World->PersistentLevel)
 			{
-				std::cout << "[SDK] PersistentLevel: " << (void*)World->PersistentLevel << "\n";
+				LOGI_STREAM("FrameHook") << "[SDK] PersistentLevel: " << (void*)World->PersistentLevel << "\n";
 			}
 		}
 		else
 		{
-			std::cout << "[SDK] World or GameInstance is null\n";
+			LOGI_STREAM("FrameHook") << "[SDK] World or GameInstance is null\n";
 		}
 	}
 	PGUPWasDown = PGUPDown;
@@ -1181,7 +1181,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
 				CachedItem& item = GAllItems[itemIdx];
 				UItemFuncLib::AddItem(item.DefId, Quantity);
-				std::cout << "[SDK] AddItem(" << (TriggerTag ? TriggerTag : "unknown")
+				LOGI_STREAM("FrameHook") << "[SDK] AddItem(" << (TriggerTag ? TriggerTag : "unknown")
 					<< "): slot=" << Slot
 					<< " defId=" << item.DefId
 					<< " x" << Quantity << "\n";
@@ -1378,7 +1378,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	{
 		APlayerController* PC = GetFirstLocalPlayerController();
 		HideInternalWidget(PC);
-		std::cout << "[SDK] Widget closed externally, cached instance kept\n";
+		LOGI_STREAM("FrameHook") << "[SDK] Widget closed externally, cached instance kept\n";
 	}
 }
 

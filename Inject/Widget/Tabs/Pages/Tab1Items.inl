@@ -557,11 +557,11 @@ void EnableItemNoDecreaseHook()
     if (success && hookId != UINT32_MAX)
     {
         GTab1ItemNoDecreaseHookId = hookId;
-        std::cout << "[SDK] ItemNoDecrease hook enabled, ID: " << hookId << "\n";
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemNoDecrease hook enabled, ID: " << hookId << "\n";
     }
     else
     {
-        std::cout << "[SDK] ItemNoDecrease hook failed\n";
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemNoDecrease hook failed\n";
     }
 }
 
@@ -573,11 +573,11 @@ void DisableItemNoDecreaseHook()
     const bool success = InlineHook::HookManager::UninstallHook(GTab1ItemNoDecreaseHookId);
     if (success)
     {
-        std::cout << "[SDK] ItemNoDecrease hook disabled\n";
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemNoDecrease hook disabled\n";
     }
     else
     {
-        std::cout << "[SDK] ItemNoDecrease hook disable failed\n";
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemNoDecrease hook disable failed\n";
     }
 
     GTab1ItemNoDecreaseHookId = UINT32_MAX;

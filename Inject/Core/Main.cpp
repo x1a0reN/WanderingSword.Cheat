@@ -1,5 +1,4 @@
 #include <Windows.h>
-#include <iostream>
 #include <cstdio>
 
 #include "CheatState.hpp"
@@ -16,7 +15,7 @@ static void RemoveAllHooks()
 
 	GVCPostRenderHook.Remove();
 	OriginalGVCPostRender = nullptr;
-	std::cout << "[SDK] GVC PostRender unhooked\n";
+	LOGI_STREAM("Main") << "[SDK] GVC PostRender unhooked\n";
 
 	DisableItemNoDecreaseHook();
 
@@ -43,7 +42,7 @@ DWORD MainThread(HMODULE Module)
 	SetupLocalLogging(Module);
 	SetUnhandledExceptionFilter(UnhandledExceptionLogger);
 
-	std::cout << "[SDK] DLL Loaded. Press HOME to toggle internal widget, DELETE to unload.\n" << std::endl;
+	LOGI_STREAM("Main") << "[SDK] DLL Loaded. Press HOME to toggle internal widget, DELETE to unload.\n" << std::endl;
 
 	if constexpr (Offsets::GVCPostRenderIdx >= 0)
 	{
@@ -65,16 +64,16 @@ DWORD MainThread(HMODULE Module)
 			OriginalGVCPostRender = GVCPostRenderHook.Install<GVCPostRenderFn>(HookedGVCPostRender);
 
 			if (OriginalGVCPostRender)
-				std::cout << "[SDK] GVC PostRender hooked at index " << Offsets::GVCPostRenderIdx << "\n";
+				LOGI_STREAM("Main") << "[SDK] GVC PostRender hooked at index " << Offsets::GVCPostRenderIdx << "\n";
 			else
-				std::cout << "[SDK] Failed to hook GVC PostRender (VirtualProtect failed)\n";
+				LOGI_STREAM("Main") << "[SDK] Failed to hook GVC PostRender (VirtualProtect failed)\n";
 		}
 		else
-			std::cout << "[SDK] ViewportClient is null, hook skipped\n";
+			LOGI_STREAM("Main") << "[SDK] ViewportClient is null, hook skipped\n";
 	}
 	else
 	{
-		std::cout << "[SDK] GVCPostRenderIdx not detected (-1), hook skipped\n";
+		LOGI_STREAM("Main") << "[SDK] GVCPostRenderIdx not detected (-1), hook skipped\n";
 	}
 
 	constexpr DWORD kCleanupTimeoutMs = 2500;
@@ -88,7 +87,7 @@ DWORD MainThread(HMODULE Module)
 			continue;
 		}
 
-		std::cout << "[SDK] Unloading...\n";
+		LOGI_STREAM("Main") << "[SDK] Unloading...\n";
 		GUnloadCleanupDone.store(false, std::memory_order_release);
 		GIsUnloading.store(true, std::memory_order_release);
 
@@ -105,7 +104,7 @@ DWORD MainThread(HMODULE Module)
 		{
 			GIsUnloading.store(false, std::memory_order_release);
 			GUnloadCleanupDone.store(false, std::memory_order_release);
-			std::cout << "[SDK] Unload refused (fail-closed): cleanup timeout, DLL kept loaded\n";
+			LOGI_STREAM("Main") << "[SDK] Unload refused (fail-closed): cleanup timeout, DLL kept loaded\n";
 			continue;
 		}
 
@@ -121,7 +120,7 @@ DWORD MainThread(HMODULE Module)
 		if (!PreUnhookDrained)
 		{
 			GIsUnloading.store(false, std::memory_order_release);
-			std::cout << "[SDK] Unload refused (fail-closed): in-flight timeout before unhook, DLL kept loaded\n";
+			LOGI_STREAM("Main") << "[SDK] Unload refused (fail-closed): in-flight timeout before unhook, DLL kept loaded\n";
 			continue;
 		}
 
@@ -139,7 +138,7 @@ DWORD MainThread(HMODULE Module)
 		if (!PostUnhookDrained)
 		{
 			GIsUnloading.store(false, std::memory_order_release);
-			std::cout << "[SDK] Unload refused (fail-closed): in-flight timeout after unhook, DLL kept loaded\n";
+			LOGI_STREAM("Main") << "[SDK] Unload refused (fail-closed): in-flight timeout after unhook, DLL kept loaded\n";
 			continue;
 		}
 
@@ -148,7 +147,7 @@ DWORD MainThread(HMODULE Module)
 			GPostRenderInFlight.load(std::memory_order_acquire) != 0)
 		{
 			GIsUnloading.store(false, std::memory_order_release);
-			std::cout << "[SDK] Unload refused (fail-closed): final gate check failed, DLL kept loaded\n";
+			LOGI_STREAM("Main") << "[SDK] Unload refused (fail-closed): final gate check failed, DLL kept loaded\n";
 			continue;
 		}
 
