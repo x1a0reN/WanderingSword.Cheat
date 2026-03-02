@@ -17,6 +17,7 @@
 #include "WidgetUtils.hpp"
 #include "SDK/JH_structs.hpp"
 #include "SDK/JH_classes.hpp"
+#include "SDK/Engine_classes.hpp"
 
 namespace
 {
@@ -835,6 +836,24 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				case EWorldStateType::SkipingCG: std::cout << "[SDK]   -> SkipingCG\n"; break;
 				case EWorldStateType::GameSystemActived: std::cout << "[SDK]   -> GameSystemActived\n"; break;
 				default: std::cout << "[SDK]   -> Unknown\n"; break;
+			}
+
+			// 获取当前关卡名称
+			FString LevelName = UGameplayStatics::GetCurrentLevelName(World, false);
+			const wchar_t* LevelNameWs = LevelName.CStr();
+			if (LevelNameWs && LevelNameWs[0])
+			{
+				std::wcout << L"[SDK] LevelName: " << LevelNameWs << L"\n";
+			}
+			else
+			{
+				std::cout << "[SDK] LevelName: (empty)\n";
+			}
+
+			// 检查 PersistentLevel 是否存在
+			if (World->PersistentLevel)
+			{
+				std::cout << "[SDK] PersistentLevel: " << (void*)World->PersistentLevel << "\n";
 			}
 		}
 		else
