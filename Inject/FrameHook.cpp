@@ -679,10 +679,6 @@ namespace
 				++It;
 				continue;
 			}
-
-			if (EnableNoDecrease && It->second.Num > 0 && It->second.DefId > 0)
-				UItemFuncLib::AddItem(It->second.DefId, It->second.Num);
-
 			It = GTab1ItemSnapshots.erase(It);
 		}
 	}
