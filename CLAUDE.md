@@ -155,7 +155,13 @@ if (Config.ItemNoDecrease != LastItemNoDecrease) {
 - 跳板1中可能需要保存/恢复寄存器（如 `mov [rsp+08],rbx`）
 
 ### 7. 使用 InlineHook.hpp 封装库
-项目提供了 `InlineHook.hpp` 封装库（与 `VTHook.hpp` 同级），单行创建 Hook：
+项目提供了 `InlineHook.hpp` 封装库（与 `VTHook.hpp` 同级），包含安全检查：
+- rel32 跳转范围校验
+- 目标地址可读性校验
+- 长度上限检查
+- 卸载失败时不释放跳板（防止跳到已释放内存）
+- 添加 FlushInstructionCache 确保指令缓存同步
+
 ```cpp
 #include "InlineHook.hpp"
 
@@ -172,7 +178,7 @@ uint32_t hookId = InlineHook::HookManager::InstallHook(
     sizeof(TrampolineCode)
 );
 
-// 卸载指定 Hook
+// 卸载指定 Hook（失败返回 false，不会释放跳板）
 InlineHook::HookManager::UninstallHook(hookId);
 
 // 卸载所有 Hook
