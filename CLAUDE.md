@@ -154,7 +154,36 @@ if (Config.ItemNoDecrease != LastItemNoDecrease) {
 - 跳板1执行hook逻辑后，必须jmp回原地址+5（不是跳回跳板1内部！）
 - 跳板1中可能需要保存/恢复寄存器（如 `mov [rsp+08],rbx`）
 
-### 7. x64 调用约定
+### 7. 使用 InlineHook.hpp 封装库
+项目提供了 `Inject/InlineHook.hpp` 封装库，使用示例：
+```cpp
+#include "InlineHook.hpp"
+
+static InlineHook::InlineHook ItemNoDecreaseHook;
+
+// 初始化（获取模块地址、分配跳板）
+ItemNoDecreaseHook.Init("JH-Win64-Shipping.exe", 0x1206A70);
+
+// 设置跳板代码
+unsigned char TrampolineCode[] = {
+    0x48, 0x89, 0x5C, 0x24, 0x08,  // mov [rsp+08], rbx
+    0x41, 0x83, 0xF8, 0x00,         // cmp r8d, 0
+    0x0F, 0x8D, 0x03, 0x00, 0x00,  // jge +3
+    0x45, 0x31, 0xC0,                // xor r8d, r8d
+    0xE9, 0x00, 0x00, 0x00, 0x00    // jmp back (填充偏移)
+};
+// 设置跳转回原函数的偏移
+int32_t BackOffset = InlineHook::InlineHook::CalcJmpBackOffset(TrampolineAddr, sizeof(TrampolineCode)-5, TargetAddr);
+ItemNoDecreaseHook.SetTrampolineCode(TrampolineCode, sizeof(TrampolineCode));
+
+// 安装 Hook
+ItemNoDecreaseHook.Install();
+
+// 卸载 Hook
+ItemNoDecreaseHook.Remove();
+```
+
+### 8. x64 调用约定
 - 参数顺序: rcx, rdx, r8, r9 (第1-4个参数)
 - 第5+参数使用栈传递
 - 64位指令需要用 `0x41` 前缀访问 r8-r15 寄存器
