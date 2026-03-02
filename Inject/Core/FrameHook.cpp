@@ -743,29 +743,22 @@ namespace
 			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
 		}
 
-		// Sliders
-		const float GainPercent = ReadSliderPercent(GTab1ItemGainMultiplierSlider, static_cast<float>(Cfg.ItemGainMultiplierValue));
-		const int32 NewGainValue = SliderPercentToIntMultiplier(GainPercent);
+		// Sliders - 滑块值范围1-10，直接读取
+		const int32 NewGainValue = static_cast<int32>(ReadSliderPercent(GTab1ItemGainMultiplierSlider, 2.0f) + 0.5f);
 		if (NewGainValue != Cfg.ItemGainMultiplierValue)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] ItemGainMultiplier: " << NewGainValue << "x\n";
 			Cfg.ItemGainMultiplierValue = NewGainValue;
 		}
 
-		const float IncrementPercent = ReadSliderPercent(
-			GTab1CraftItemIncrementSlider,
-			(Cfg.CraftItemIncrementMultiplier - 1.0f) / 0.09f);
-		const float NewIncrementValue = SliderPercentToFloatMultiplier(IncrementPercent);
+		const float NewIncrementValue = ReadSliderPercent(GTab1CraftItemIncrementSlider, 2.0f);
 		if (std::fabs(NewIncrementValue - Cfg.CraftItemIncrementMultiplier) > 0.001f)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] CraftItemIncrement: " << NewIncrementValue << "x\n";
 			Cfg.CraftItemIncrementMultiplier = NewIncrementValue;
 		}
 
-		const float ExtraPercent = ReadSliderPercent(
-			GTab1CraftExtraEffectSlider,
-			(Cfg.CraftExtraEffectMultiplier - 1.0f) / 0.09f);
-		const float NewExtraValue = SliderPercentToFloatMultiplier(ExtraPercent);
+		const float NewExtraValue = ReadSliderPercent(GTab1CraftExtraEffectSlider, 2.0f);
 		if (std::fabs(NewExtraValue - Cfg.CraftExtraEffectMultiplier) > 0.001f)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] CraftExtraEffect: " << NewExtraValue << "x\n";
@@ -1101,14 +1094,12 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 					CurValue = Slider->GetValue();
 					if (Item->TXT_CurrentValue)
 					{
+						// 滑块值范围1-10，直接显示
+						int32 DisplayValue = static_cast<int32>(CurValue + 0.5f);
+						if (DisplayValue < 1) DisplayValue = 1;
+						if (DisplayValue > 10) DisplayValue = 10;
 						wchar_t Buf[16] = {};
-
-						// 所有滑块都显示整数倍数，上限10
-						int32 Multiplier = static_cast<int32>(CurValue * 10.0f + 0.5f);
-						if (Multiplier < 1) Multiplier = 1;
-						if (Multiplier > 10) Multiplier = 10;
-						swprintf_s(Buf, 16, L"%d", Multiplier);
-
+						swprintf_s(Buf, 16, L"%d", DisplayValue);
 						Item->TXT_CurrentValue->SetText(MakeText(Buf));
 					}
 				}
