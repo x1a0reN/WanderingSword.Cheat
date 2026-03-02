@@ -180,7 +180,7 @@ namespace
 	// 角色选择下拉框
 	UBPVE_JHConfigVideoItem2_C* GTab0RoleSelectDD = nullptr;
 	std::vector<int32> GTab0RoleSelectNPCIds;      // 对应每个选项的 NPCId
-	std::vector<FText> GTab0RoleSelectNames;       // 角色名字 (FText)
+	std::vector<std::wstring> GTab0RoleSelectNames; // 角色名字
 	int32 GTab0SelectedRoleIdx = -1;                // 当前选中的角色索引
 	int32 GTab0LastSelectedRoleIdx = -1;            // 上一次选中的角色索引
 
@@ -670,12 +670,15 @@ namespace
 				if (bDuplicate)
 					continue;
 
-				// 获取角色名字 - 使用 GetNPCNameById 获取正确的名字
+				// 获取角色名字 - 使用和门派一样的方式
 				FText Name = UNPCFuncLib::GetNPCNameById(Info->NPCId);
+				FString NameStr = UKismetTextLibrary::Conv_TextToString(Name);
+				const wchar_t* NameWs = NameStr.CStr();
+				std::wstring NameWstr = (NameWs && NameWs[0]) ? std::wstring(NameWs) : std::wstring();
 
 				GTab0RoleSelectNPCIds.push_back(Info->NPCId);
-				GTab0RoleSelectNames.push_back(Name);
-				std::cout << "[SDK] Added role: NPCId=" << Info->NPCId << "\n";
+				GTab0RoleSelectNames.push_back(NameWstr);
+				std::wcout << L"[SDK] Added role: NPCId=" << Info->NPCId << L", name=" << NameWstr.c_str() << L"\n";
 			}
 		};
 
@@ -1225,10 +1228,10 @@ namespace
 				if (CurRoleIdx >= 0 && CurRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
 				{
 					int32 SelectedNPCId = GTab0RoleSelectNPCIds[CurRoleIdx];
-					const FText& SelectedName = GTab0RoleSelectNames[CurRoleIdx];
-					std::cout << "[SDK] Tab0 Role changed: index=" << CurRoleIdx
-					          << ", NPCId=" << SelectedNPCId
-					          << ", name=" << SelectedName.ToString().c_str() << "\n";
+					const std::wstring& SelectedName = GTab0RoleSelectNames[CurRoleIdx];
+					std::wcout << L"[SDK] Tab0 Role changed: index=" << CurRoleIdx
+					          << L", NPCId=" << SelectedNPCId
+					          << L", name=" << SelectedName.c_str() << L"\n";
 				}
 			}
 		}
@@ -2359,10 +2362,8 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		GTab0RoleSelectDD->CB_Main->ClearOptions();
 		for (const auto& Name : GTab0RoleSelectNames)
 		{
-			// FText.ToString() returns std::string (UTF-8), convert to wstring then to FString
-			std::string NameStr8 = Name.ToString();
-			std::wstring NameStr = AsciiToWide(NameStr8);
-			GTab0RoleSelectDD->CB_Main->AddOption(FString(NameStr.c_str()));
+			// Name 已经是 std::wstring，直接使用
+			GTab0RoleSelectDD->CB_Main->AddOption(FString(Name.c_str()));
 		}
 		if (GetComboOptionCountFast(GTab0RoleSelectDD->CB_Main) > 0)
 			GTab0RoleSelectDD->CB_Main->SetSelectedIndex(0);
@@ -2543,13 +2544,15 @@ void PollTab0CharacterInput(bool bTab0Active)
 	if (!PC)
 		Tab0Trace("InputPoll.Controller", "reason=PlayerControllerNull");
 
-	// 降频轮询: 每100ms运行一次滑块和下拉框轮询
+	// 下拉框轮询必须每帧执行，否则检测不到用户选择变化
+	PollTab0RoleDropdowns(PC, true);
+
+	// 降频轮询: 每100ms运行一次滑块轮询
 	const bool bDoUiPoll = !GTab0LastUiPollTick || (Now - GTab0LastUiPollTick) >= kTab0UiPollIntervalMs;
 	if (bDoUiPoll)
 	{
 		// Tab0 三个倍率滑块：实时同步到游戏属性
 		PollTab0RatioSliders(PC);
-		PollTab0RoleDropdowns(PC, true);
 		GTab0LastUiPollTick = Now;
 	}
 
