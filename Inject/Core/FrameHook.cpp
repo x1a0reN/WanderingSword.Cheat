@@ -743,8 +743,17 @@ namespace
 			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
 		}
 
-		// Sliders - 滑块值1-10直接作为倍数
-		const float SliderGainValue = ReadSliderPercent(GTab1ItemGainMultiplierSlider, 2.0f);
+		// Sliders - 直接读取滑块值
+		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
+			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
+				return DefaultValue;
+			USlider* Slider = SliderItem->VolumeSlider;
+			if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+				return DefaultValue;
+			return Slider->GetValue();
+		};
+
+		const float SliderGainValue = ReadSliderValue(GTab1ItemGainMultiplierSlider, 2.0f);
 		const int32 NewGainValue = static_cast<int32>(SliderGainValue + 0.5f);
 		if (NewGainValue != Cfg.ItemGainMultiplierValue)
 		{
@@ -752,7 +761,7 @@ namespace
 			Cfg.ItemGainMultiplierValue = NewGainValue;
 		}
 
-		const float SliderIncrementValue = ReadSliderPercent(GTab1CraftItemIncrementSlider, 2.0f);
+		const float SliderIncrementValue = ReadSliderValue(GTab1CraftItemIncrementSlider, 2.0f);
 		const float NewIncrementValue = SliderIncrementValue;
 		if (std::fabs(NewIncrementValue - Cfg.CraftItemIncrementMultiplier) > 0.001f)
 		{
@@ -760,7 +769,7 @@ namespace
 			Cfg.CraftItemIncrementMultiplier = NewIncrementValue;
 		}
 
-		const float SliderExtraValue = ReadSliderPercent(GTab1CraftExtraEffectSlider, 2.0f);
+		const float SliderExtraValue = ReadSliderValue(GTab1CraftExtraEffectSlider, 2.0f);
 		const float NewExtraValue = SliderExtraValue;
 		if (std::fabs(NewExtraValue - Cfg.CraftExtraEffectMultiplier) > 0.001f)
 		{

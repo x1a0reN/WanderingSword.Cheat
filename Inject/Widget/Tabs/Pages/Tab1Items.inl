@@ -786,7 +786,7 @@ void EnableIncludeQuestItems()
     }
 
     // ENABLE: mov al, 1; 写入FF
-    const unsigned char enableByte1[] = { 0xC1 };
+    const unsigned char enableByte1[] = { 0x0C,0x01 };
     const unsigned char enableByte2[] = { 0xFF };
     InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr, enableByte1, sizeof(enableByte1));
     InlineHook::HookManager::WriteMemory(GIncludeQuestItemsAddr2, enableByte2, sizeof(enableByte2));
