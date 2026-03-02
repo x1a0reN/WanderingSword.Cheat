@@ -9,7 +9,7 @@
 #include "PanelManager.hpp"
 
 // 启用物品不减 Hook
-static void EnableItemNoDecreaseHook()
+void EnableItemNoDecreaseHook()
 {
 	if (!GChangeItemNumAddr || !GHookTrampoline || GInlineHookInstalled)
 		return;
@@ -32,7 +32,7 @@ static void EnableItemNoDecreaseHook()
 }
 
 // 禁用物品不减 Hook
-static void DisableItemNoDecreaseHook()
+void DisableItemNoDecreaseHook()
 {
 	if (!GChangeItemNumAddr || !GInlineHookInstalled)
 		return;
