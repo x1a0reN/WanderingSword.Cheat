@@ -132,13 +132,13 @@ namespace
 	{
 		bool ItemNoDecrease = false;
 		bool ItemGainMultiplier = false;
-		int32 ItemGainMultiplierValue = 1;
+		int32 ItemGainMultiplierValue = 2;
 		bool AllItemsSellable = false;
 		bool IncludeQuestItems = false;
 		bool DropRate100 = false;
 		bool CraftEffectMultiplier = false;
-		float CraftItemIncrementMultiplier = 1.0f;
-		float CraftExtraEffectMultiplier = 1.0f;
+		float CraftItemIncrementMultiplier = 2.0f;
+		float CraftExtraEffectMultiplier = 2.0f;
 		int32 MaxExtraAffixes = 0;
 		bool IgnoreItemUseCount = false;
 		bool IgnoreItemRequirements = false;
@@ -799,7 +799,7 @@ namespace
 		}
 
 		// 只在倍率值变化时更新
-		static int32 LastItemGainMultiplierValue = 1;
+		static int32 LastItemGainMultiplierValue = 2;
 		if (Config.ItemGainMultiplierValue != LastItemGainMultiplierValue)
 		{
 			SetItemGainMultiplierHookValue(Config.ItemGainMultiplierValue);
