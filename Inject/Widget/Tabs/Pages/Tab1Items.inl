@@ -531,6 +531,10 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 namespace
 {
     uint32_t GTab1ItemNoDecreaseHookId = UINT32_MAX;
+    uintptr_t GItemNoDecreaseOffset = 0;  // 保存搜索到的偏移量
+
+    // 物品不减特征码
+    const char* kItemNoDecreasePattern = "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 41 0F B6 F1 41 8B E8 48 8B FA 48 8B D9";
 
     // 功能：如果 Num < 0，则设为 0（防止负数扣除）
     const unsigned char kItemNoDecreaseTrampolineCode[] = {
@@ -545,10 +549,34 @@ void EnableItemNoDecreaseHook()
     if (GTab1ItemNoDecreaseHookId != UINT32_MAX)
         return;
 
+    // 第一次开启时搜索特征码获取偏移量
+    if (GItemNoDecreaseOffset == 0)
+    {
+        uintptr_t foundAddr = InlineHook::HookManager::AobScanModuleFirst("JH-Win64-Shipping.exe", kItemNoDecreasePattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] ItemNoDecrease AobScan failed, pattern not found\n";
+            return;
+        }
+
+        // 计算模块内偏移
+        HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+        if (!hModule)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] ItemNoDecrease failed to get module handle\n";
+            return;
+        }
+
+        uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
+        GItemNoDecreaseOffset = foundAddr - moduleBase;
+        LOGI_STREAM("Tab1Items") << "[SDK] ItemNoDecrease found at: 0x" << std::hex << foundAddr
+            << ", offset: 0x" << GItemNoDecreaseOffset << std::dec << "\n";
+    }
+
     uint32_t hookId = UINT32_MAX;
     const bool success = InlineHook::HookManager::InstallHook(
         "JH-Win64-Shipping.exe",
-        0x1206A70,
+        GItemNoDecreaseOffset,
         kItemNoDecreaseTrampolineCode,
         sizeof(kItemNoDecreaseTrampolineCode),
         hookId
