@@ -163,6 +163,16 @@ namespace
 	std::vector<FTab0Binding> GTab0Bindings;
 	bool GTab0EnterWasDown = false;
 	UEditableTextBox* GTab0LastFocusedEdit = nullptr;
+
+	// 焦点缓存 (方案2: 减少每帧 HasKeyboardFocus 调用)
+	constexpr ULONGLONG kTab0FocusCacheDurationMs = 200ULL;  // 缓存有效期 200ms
+	UEditableTextBox* GTab0FocusCacheEdit = nullptr;         // 缓存的焦点编辑框
+	ULONGLONG GTab0FocusCacheTick = 0;                       // 缓存时间戳
+
+	// 清理降频: 每500ms运行一次清理
+	constexpr ULONGLONG kTab0CleanupIntervalMs = 500ULL;
+	ULONGLONG GTab0LastCleanupTick = 0;
+
 	constexpr bool kTab0VerboseLog = false;
 	bool GTab0InitTraceEnabled = false;
 	UBPVE_JHConfigVolumeItem2_C* GTab0MoneyMultiplierItem = nullptr;
@@ -2128,6 +2138,9 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0Bindings.clear();
 	GTab0EnterWasDown = false;
 	GTab0LastFocusedEdit = nullptr;
+	GTab0FocusCacheEdit = nullptr;       // 重置焦点缓存
+	GTab0FocusCacheTick = 0;             // 重置缓存时间戳
+	GTab0LastCleanupTick = 0;            // 重置清理时间戳
 	GTab0MoneyMultiplierItem = nullptr;
 	GTab0SkillExpMultiplierItem = nullptr;
 	GTab0ManaCostMultiplierItem = nullptr;
@@ -2336,21 +2349,34 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 void PollTab0CharacterInput(bool bTab0Active)
 {
 	Tab0Trace("InputPoll.Begin", "tab0Active=", (bTab0Active ? 1 : 0), " bindingsBefore=", GTab0Bindings.size());
-	GTab0Bindings.erase(
-		std::remove_if(
-			GTab0Bindings.begin(),
-			GTab0Bindings.end(),
-			[](const FTab0Binding& Binding)
-			{
-				return !Binding.Edit || !IsSafeLiveObject(static_cast<UObject*>(Binding.Edit));
-			}),
-		GTab0Bindings.end());
-	Tab0Trace("InputPoll.BindingsPruned", "bindingsAfter=", GTab0Bindings.size());
 
-	if (GTab0LastFocusedEdit &&
-		!IsSafeLiveObject(static_cast<UObject*>(GTab0LastFocusedEdit)))
+	// 方案1: 清理降频 - 每500ms运行一次清理，而不是每帧都运行
+	const ULONGLONG Now = GetTickCount64();
+	const bool bDoCleanup = !GTab0LastCleanupTick || (Now - GTab0LastCleanupTick) >= kTab0CleanupIntervalMs;
+	if (bDoCleanup)
 	{
-		GTab0LastFocusedEdit = nullptr;
+		GTab0Bindings.erase(
+			std::remove_if(
+				GTab0Bindings.begin(),
+				GTab0Bindings.end(),
+				[](const FTab0Binding& Binding)
+				{
+					return !Binding.Edit || !IsSafeLiveObject(static_cast<UObject*>(Binding.Edit));
+				}),
+			GTab0Bindings.end());
+		Tab0Trace("InputPoll.BindingsPruned", "bindingsAfter=", GTab0Bindings.size());
+
+		if (GTab0LastFocusedEdit &&
+			!IsSafeLiveObject(static_cast<UObject*>(GTab0LastFocusedEdit)))
+		{
+			GTab0LastFocusedEdit = nullptr;
+		}
+		// 同时清理焦点缓存中无效的条目
+		if (GTab0FocusCacheEdit && !IsSafeLiveObject(static_cast<UObject*>(GTab0FocusCacheEdit)))
+		{
+			GTab0FocusCacheEdit = nullptr;
+		}
+		GTab0LastCleanupTick = Now;
 	}
 
 	const bool EnterDown = (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
@@ -2361,6 +2387,7 @@ void PollTab0CharacterInput(bool bTab0Active)
 		PollTab0RoleDropdowns(nullptr, false);
 		GTab0EnterWasDown = EnterDown;
 		GTab0LastFocusedEdit = nullptr;
+		GTab0FocusCacheEdit = nullptr;  // Tab 不活跃时清空焦点缓存
 		Tab0Trace("InputPoll.End", "reason=TabInactive");
 		return;
 	}
@@ -2377,20 +2404,41 @@ void PollTab0CharacterInput(bool bTab0Active)
 	Tab0Trace("InputPoll.RatioPoll", "phase=End");
 	PollTab0RoleDropdowns(PC, true);
 
+	// 方案2: 焦点缓存 - 只有在 EnterTriggered 或缓存过期时才扫描焦点
+	// 计算缓存是否过期
+	const bool bCacheExpired = !GTab0FocusCacheTick || (Now - GTab0FocusCacheTick) >= kTab0FocusCacheDurationMs;
+	// 检查缓存的编辑框是否仍然有效
+	const bool bCachedEditValid = GTab0FocusCacheEdit && IsSafeLiveObject(static_cast<UObject*>(GTab0FocusCacheEdit));
+	// 是否需要进行焦点扫描: EnterTriggered 时必须扫描，或者缓存已过期，或者缓存的编辑框已失效
+	const bool bNeedFocusScan = EnterTriggered || bCacheExpired || !bCachedEditValid;
+
 	FTab0Binding* Focused = nullptr;
-	for (auto& Binding : GTab0Bindings)
+	if (bNeedFocusScan)
 	{
-		if (!Binding.Edit || !IsSafeLiveObject(static_cast<UObject*>(Binding.Edit)))
-			continue;
-		if (Binding.Edit->HasKeyboardFocus())
+		// 执行真正的焦点扫描
+		for (auto& Binding : GTab0Bindings)
 		{
-			Focused = &Binding;
-			break;
+			if (!Binding.Edit || !IsSafeLiveObject(static_cast<UObject*>(Binding.Edit)))
+				continue;
+			if (Binding.Edit->HasKeyboardFocus())
+			{
+				Focused = &Binding;
+				break;
+			}
 		}
+		// 更新缓存
+		GTab0FocusCacheEdit = Focused ? Focused->Edit : nullptr;
+		GTab0FocusCacheTick = Now;
+	}
+	else
+	{
+		// 使用缓存的结果
+		Focused = FindTab0BindingByEdit(GTab0FocusCacheEdit);
 	}
 	Tab0Trace("InputPoll.FocusScan",
 		"focused=", (void*)(Focused ? Focused->Edit : nullptr),
-		" lastFocused=", (void*)GTab0LastFocusedEdit);
+		" lastFocused=", (void*)GTab0LastFocusedEdit,
+		" cached=", (!bNeedFocusScan ? 1 : 0));
 
 	// 某些编辑框按下回车瞬间会丢失键盘焦点，回车提交时回退到“上一次有焦点的编辑框”。
 	if (EnterTriggered && !Focused && GTab0LastFocusedEdit)
