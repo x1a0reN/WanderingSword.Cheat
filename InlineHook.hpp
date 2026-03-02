@@ -3,6 +3,10 @@
 #include <Windows.h>
 #include <cstdint>
 #include <cstring>
+#include <array>
+#include <algorithm>
+#include <cctype>
+#include <limits>
 #include "Inject/Utility/Logging.hpp"
 #include <mutex>
 #include <vector>
@@ -596,14 +600,332 @@ private:
         bool UsesRelativeControlFlow = false;
     };
 
+    struct ParsedAobPattern {
+        std::vector<uint8_t> Bytes;
+        std::vector<uint8_t> ByteMasks;
+        std::vector<size_t> CheckOrder;
+        std::array<size_t, 256> ShiftTable{};
+        size_t Length = 0;
+        size_t FastAnchorIndex = 0;
+        uint8_t FastAnchorByte = 0;
+        bool HasFastAnchor = false;
+    };
+
     static constexpr size_t kMaxStolenBytes = 32;
     static constexpr size_t kTrampolineSize = 4096;
     static constexpr size_t kAbsJumpSize = 14;
     static constexpr size_t kRelJumpSize = 5;
+    static constexpr size_t kMaxAobPatternLength = 8192;
 
     static std::vector<HookEntry> s_Hooks;
     static uint32_t s_NextHookId;
     static std::mutex s_Mutex;
+
+    static int HexNibble(char ch) {
+        if (ch >= '0' && ch <= '9') {
+            return ch - '0';
+        }
+        if (ch >= 'a' && ch <= 'f') {
+            return 10 + (ch - 'a');
+        }
+        if (ch >= 'A' && ch <= 'F') {
+            return 10 + (ch - 'A');
+        }
+        return -1;
+    }
+
+    static bool IsPatternSeparator(char ch) {
+        const unsigned char uc = static_cast<unsigned char>(ch);
+        return std::isspace(uc) != 0 || ch == ',' || ch == ';';
+    }
+
+    static bool IsWildcardNibble(char ch) {
+        return ch == '?' || ch == '*';
+    }
+
+    static bool ParseAobPattern(const char* pattern, ParsedAobPattern& outPattern, size_t* outErrorOffset = nullptr) {
+        outPattern = {};
+        if (outErrorOffset) {
+            *outErrorOffset = 0;
+        }
+
+        if (!pattern) {
+            return false;
+        }
+
+        const char* p = pattern;
+        while (*p) {
+            while (*p && IsPatternSeparator(*p)) {
+                ++p;
+            }
+
+            if (!*p) {
+                break;
+            }
+
+            if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+                p += 2;
+                if (!*p || IsPatternSeparator(*p)) {
+                    if (outErrorOffset) {
+                        *outErrorOffset = static_cast<size_t>(p - pattern);
+                    }
+                    return false;
+                }
+            }
+
+            if (IsWildcardNibble(*p) &&
+                (p[1] == '\0' || IsPatternSeparator(p[1]) || IsWildcardNibble(p[1]))) {
+                const char wildcardCh = *p++;
+                if (*p == wildcardCh) {
+                    ++p;
+                }
+
+                outPattern.Bytes.push_back(0);
+                outPattern.ByteMasks.push_back(0x00);
+
+                if (outPattern.Bytes.size() > kMaxAobPatternLength) {
+                    return false;
+                }
+                continue;
+            }
+
+            const char c0 = p[0];
+            if (c0 == '\0') {
+                break;
+            }
+            const char c1 = p[1];
+            if (c1 == '\0' || IsPatternSeparator(c1)) {
+                if (outErrorOffset) {
+                    *outErrorOffset = static_cast<size_t>(p - pattern);
+                }
+                return false;
+            }
+
+            const bool hiWild = IsWildcardNibble(c0);
+            const bool loWild = IsWildcardNibble(c1);
+            const int hi = hiWild ? 0 : HexNibble(c0);
+            const int lo = loWild ? 0 : HexNibble(c1);
+            if ((!hiWild && hi < 0) || (!loWild && lo < 0)) {
+                if (outErrorOffset) {
+                    *outErrorOffset = static_cast<size_t>(p - pattern);
+                }
+                return false;
+            }
+
+            const uint8_t value = static_cast<uint8_t>((hi << 4) | lo);
+            const uint8_t mask = static_cast<uint8_t>((hiWild ? 0x00 : 0xF0) | (loWild ? 0x00 : 0x0F));
+
+            outPattern.Bytes.push_back(static_cast<uint8_t>(value & mask));
+            outPattern.ByteMasks.push_back(mask);
+
+            if (outPattern.Bytes.size() > kMaxAobPatternLength) {
+                if (outErrorOffset) {
+                    *outErrorOffset = static_cast<size_t>(p - pattern);
+                }
+                return false;
+            }
+            p += 2;
+        }
+
+        outPattern.Length = outPattern.Bytes.size();
+        if (outPattern.Length == 0) {
+            return false;
+        }
+
+        for (size_t i = outPattern.Length; i > 0; --i) {
+            const size_t idx = i - 1;
+            if (outPattern.ByteMasks[idx] == 0xFF) {
+                outPattern.FastAnchorIndex = idx;
+                outPattern.FastAnchorByte = outPattern.Bytes[idx];
+                outPattern.HasFastAnchor = true;
+                break;
+            }
+        }
+
+        outPattern.ShiftTable.fill(1);
+
+        if (outPattern.HasFastAnchor) {
+            const size_t defaultShift = outPattern.FastAnchorIndex + 1;
+            outPattern.ShiftTable.fill(defaultShift);
+
+            for (size_t i = 0; i < outPattern.FastAnchorIndex; ++i) {
+                if (outPattern.ByteMasks[i] == 0xFF) {
+                    outPattern.ShiftTable[outPattern.Bytes[i]] = outPattern.FastAnchorIndex - i;
+                }
+            }
+        }
+
+        outPattern.CheckOrder.reserve(outPattern.Length);
+
+        for (size_t i = outPattern.Length; i > 0; --i) {
+            const size_t idx = i - 1;
+            if (outPattern.ByteMasks[idx] != 0xFF) {
+                continue;
+            }
+            if (outPattern.HasFastAnchor && idx == outPattern.FastAnchorIndex) {
+                continue;
+            }
+            outPattern.CheckOrder.push_back(idx);
+        }
+
+        for (size_t i = outPattern.Length; i > 0; --i) {
+            const size_t idx = i - 1;
+            const uint8_t mask = outPattern.ByteMasks[idx];
+            if (mask == 0x00 || mask == 0xFF) {
+                continue;
+            }
+            outPattern.CheckOrder.push_back(idx);
+        }
+
+        return true;
+    }
+
+    static bool IsReadableProtection(DWORD protect) {
+        if (protect & (PAGE_GUARD | PAGE_NOACCESS)) {
+            return false;
+        }
+
+        return (protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+            PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+    }
+
+    static bool IsExecutableProtection(DWORD protect) {
+        if (protect & (PAGE_GUARD | PAGE_NOACCESS)) {
+            return false;
+        }
+
+        return (protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ |
+            PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+    }
+
+    static bool IsScannableRegion(const MEMORY_BASIC_INFORMATION& mbi, bool executableOnly) {
+        if (mbi.State != MEM_COMMIT) {
+            return false;
+        }
+
+        return executableOnly ? IsExecutableProtection(mbi.Protect) : IsReadableProtection(mbi.Protect);
+    }
+
+    static bool IsReadableSectionCharacteristics(DWORD ch) {
+        return (ch & (IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_CODE | IMAGE_SCN_CNT_INITIALIZED_DATA)) != 0;
+    }
+
+    static bool MatchMaskedByte(uint8_t data, uint8_t value, uint8_t mask) {
+        return ((data ^ value) & mask) == 0;
+    }
+
+    static bool MatchPatternAt(const uint8_t* data, const ParsedAobPattern& pattern) {
+        for (const size_t idx : pattern.CheckOrder) {
+            if (!MatchMaskedByte(data[idx], pattern.Bytes[idx], pattern.ByteMasks[idx])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static void ScanBufferFast(const uint8_t* data, size_t dataSize, uintptr_t baseAddress,
+        const ParsedAobPattern& pattern, size_t maxResults, std::vector<uintptr_t>& outResults) {
+
+        if (!data || pattern.Length == 0 || dataSize < pattern.Length) {
+            return;
+        }
+
+        const size_t lastOffset = dataSize - pattern.Length;
+
+        if (!pattern.HasFastAnchor) {
+            for (size_t i = 0; i <= lastOffset; ++i) {
+                if (MatchPatternAt(data + i, pattern)) {
+                    outResults.push_back(baseAddress + i);
+                    if (maxResults > 0 && outResults.size() >= maxResults) {
+                        return;
+                    }
+                }
+            }
+            return;
+        }
+
+        const size_t anchor = pattern.FastAnchorIndex;
+        const uint8_t anchorByte = pattern.FastAnchorByte;
+        size_t i = 0;
+        while (i <= lastOffset) {
+            const uint8_t probe = data[i + anchor];
+            if (probe != anchorByte) {
+                i += pattern.ShiftTable[probe];
+                continue;
+            }
+
+            if (MatchPatternAt(data + i, pattern)) {
+                outResults.push_back(baseAddress + i);
+                if (maxResults > 0 && outResults.size() >= maxResults) {
+                    return;
+                }
+            }
+            ++i;
+        }
+    }
+
+    static void ScanMemoryRange(uintptr_t rangeStart, uintptr_t rangeEnd, const ParsedAobPattern& pattern,
+        size_t maxResults, bool executableOnly, std::vector<uintptr_t>& outResults) {
+
+        if (pattern.Length == 0) {
+            return;
+        }
+
+        if (rangeStart > rangeEnd) {
+            const uintptr_t tmp = rangeStart;
+            rangeStart = rangeEnd;
+            rangeEnd = tmp;
+        }
+
+        if (rangeStart >= rangeEnd) {
+            return;
+        }
+
+        uintptr_t cursor = rangeStart;
+        while (cursor < rangeEnd) {
+            MEMORY_BASIC_INFORMATION mbi = {};
+            if (!VirtualQuery(reinterpret_cast<void*>(cursor), &mbi, sizeof(mbi))) {
+                constexpr uintptr_t kFallbackStep = 0x1000;
+                if (cursor > (std::numeric_limits<uintptr_t>::max)() - kFallbackStep) {
+                    break;
+                }
+                cursor += kFallbackStep;
+                continue;
+            }
+
+            const uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+            uintptr_t next = regionBase + mbi.RegionSize;
+            if (next <= regionBase || next <= cursor) {
+                constexpr uintptr_t kFallbackStep = 0x1000;
+                if (cursor > (std::numeric_limits<uintptr_t>::max)() - kFallbackStep) {
+                    break;
+                }
+                cursor += kFallbackStep;
+                continue;
+            }
+
+            if (IsScannableRegion(mbi, executableOnly)) {
+                const uintptr_t scanBegin = (std::max)(regionBase, rangeStart);
+                const uintptr_t scanEnd = (std::min)(next, rangeEnd);
+                if (scanEnd > scanBegin) {
+                    const uint8_t* data = reinterpret_cast<const uint8_t*>(scanBegin);
+                    const size_t dataSize = static_cast<size_t>(scanEnd - scanBegin);
+
+                    __try {
+                        ScanBufferFast(data, dataSize, scanBegin, pattern, maxResults, outResults);
+                    }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                    }
+
+                    if (maxResults > 0 && outResults.size() >= maxResults) {
+                        return;
+                    }
+                }
+            }
+
+            cursor = next;
+        }
+    }
 
     static bool TryMakeRel32(uintptr_t from_next, uintptr_t to, int32_t& out) {
         const int64_t delta = static_cast<int64_t>(to) - static_cast<int64_t>(from_next);
@@ -751,6 +1073,181 @@ private:
     }
 
 public:
+    static std::vector<uintptr_t> AobScan(const char* pattern, size_t maxResults = 1,
+        uintptr_t rangeStart = 0, uintptr_t rangeEnd = 0, bool executableOnly = false) {
+
+        ParsedAobPattern parsed = {};
+        size_t errorOffset = 0;
+        if (!ParseAobPattern(pattern, parsed, &errorOffset)) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScan pattern parse failed: "
+                << (pattern ? pattern : "<null>") << " at offset " << errorOffset << "\n";
+            return {};
+        }
+
+        SYSTEM_INFO sys = {};
+        GetSystemInfo(&sys);
+
+        const uintptr_t minAddress = reinterpret_cast<uintptr_t>(sys.lpMinimumApplicationAddress);
+        const uintptr_t maxAddress = reinterpret_cast<uintptr_t>(sys.lpMaximumApplicationAddress);
+        const uintptr_t fullEndExclusive = (maxAddress < (std::numeric_limits<uintptr_t>::max)())
+            ? (maxAddress + 1)
+            : maxAddress;
+
+        uintptr_t start = (rangeStart == 0) ? minAddress : (std::max)(rangeStart, minAddress);
+        uintptr_t end = (rangeEnd == 0) ? fullEndExclusive : (std::min)(rangeEnd, fullEndExclusive);
+        if (start > end) {
+            const uintptr_t tmp = start;
+            start = end;
+            end = tmp;
+            start = (std::max)(start, minAddress);
+            end = (std::min)(end, fullEndExclusive);
+        }
+
+        if (start >= end) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScan invalid range: start=0x"
+                << std::hex << rangeStart << " end=0x" << rangeEnd << std::dec << "\n";
+            return {};
+        }
+
+        if (maxResults == 0 && parsed.CheckOrder.empty()) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScan rejected: fully wildcard pattern with unlimited results\n";
+            return {};
+        }
+
+        std::vector<uintptr_t> results;
+        if (maxResults > 0) {
+            results.reserve((std::min)(maxResults, static_cast<size_t>(4096)));
+        }
+
+        ScanMemoryRange(start, end, parsed, maxResults, executableOnly, results);
+        return results;
+    }
+
+    static uintptr_t AobScanFirst(const char* pattern, uintptr_t rangeStart = 0,
+        uintptr_t rangeEnd = 0, bool executableOnly = false) {
+
+        std::vector<uintptr_t> hits = AobScan(pattern, 1, rangeStart, rangeEnd, executableOnly);
+        return hits.empty() ? 0 : hits[0];
+    }
+
+    static std::vector<uintptr_t> AobScanModule(const char* moduleName, const char* pattern,
+        size_t maxResults = 1, bool executableOnly = false) {
+
+        if (!moduleName || !*moduleName) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule invalid module name\n";
+            return {};
+        }
+
+        ParsedAobPattern parsed = {};
+        size_t errorOffset = 0;
+        if (!ParseAobPattern(pattern, parsed, &errorOffset)) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule pattern parse failed: "
+                << (pattern ? pattern : "<null>") << " at offset " << errorOffset << "\n";
+            return {};
+        }
+
+        HMODULE module = GetModuleHandleA(moduleName);
+        if (!module) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule module not found: " << moduleName << "\n";
+            return {};
+        }
+
+        const uintptr_t base = reinterpret_cast<uintptr_t>(module);
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+        if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule DOS header invalid: " << moduleName << "\n";
+            return {};
+        }
+        if (dos->e_lfanew <= 0 || dos->e_lfanew > 0x100000) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule DOS e_lfanew invalid: " << moduleName << "\n";
+            return {};
+        }
+
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + static_cast<uintptr_t>(dos->e_lfanew));
+        if (!nt || nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.SizeOfImage == 0) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule NT header invalid: " << moduleName << "\n";
+            return {};
+        }
+
+        const uintptr_t moduleEnd = base + static_cast<uintptr_t>(nt->OptionalHeader.SizeOfImage);
+        if (moduleEnd <= base) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule image range overflow: " << moduleName << "\n";
+            return {};
+        }
+
+        if (maxResults == 0 && parsed.CheckOrder.empty()) {
+            LOGE_STREAM("InlineHook") << "[InlineHook] AobScanModule rejected: fully wildcard pattern with unlimited results\n";
+            return {};
+        }
+
+        std::vector<uintptr_t> results;
+        if (maxResults > 0) {
+            results.reserve((std::min)(maxResults, static_cast<size_t>(4096)));
+        }
+
+        bool usedSectionScan = false;
+        const uint16_t sectionCount = nt->FileHeader.NumberOfSections;
+        if (sectionCount > 0 && sectionCount < 512) {
+            const uintptr_t sectionTableStart = reinterpret_cast<uintptr_t>(IMAGE_FIRST_SECTION(nt));
+            const uintptr_t sectionTableEnd = sectionTableStart +
+                static_cast<uintptr_t>(sectionCount) * sizeof(IMAGE_SECTION_HEADER);
+
+            if (sectionTableStart >= base && sectionTableStart < moduleEnd &&
+                sectionTableEnd > sectionTableStart && sectionTableEnd <= moduleEnd) {
+                const IMAGE_SECTION_HEADER* section = reinterpret_cast<const IMAGE_SECTION_HEADER*>(sectionTableStart);
+                for (uint16_t i = 0; i < sectionCount; ++i, ++section) {
+                    const DWORD ch = section->Characteristics;
+                    if (executableOnly) {
+                        if ((ch & IMAGE_SCN_MEM_EXECUTE) == 0) {
+                            continue;
+                        }
+                    }
+                    else if (!IsReadableSectionCharacteristics(ch)) {
+                        continue;
+                    }
+
+                    const uintptr_t secStart = base + static_cast<uintptr_t>(section->VirtualAddress);
+                    const size_t secSize = (std::max)(
+                        static_cast<size_t>(section->Misc.VirtualSize),
+                        static_cast<size_t>(section->SizeOfRawData));
+                    if (secSize == 0) {
+                        continue;
+                    }
+
+                    uintptr_t secEnd = secStart + static_cast<uintptr_t>(secSize);
+                    if (secEnd <= secStart) {
+                        continue;
+                    }
+                    if (secStart < base || secStart >= moduleEnd) {
+                        continue;
+                    }
+                    if (secEnd > moduleEnd) {
+                        secEnd = moduleEnd;
+                    }
+
+                    usedSectionScan = true;
+                    ScanMemoryRange(secStart, secEnd, parsed, maxResults, executableOnly, results);
+                    if (maxResults > 0 && results.size() >= maxResults) {
+                        return results;
+                    }
+                }
+            }
+        }
+
+        if (!usedSectionScan) {
+            ScanMemoryRange(base, moduleEnd, parsed, maxResults, executableOnly, results);
+        }
+
+        return results;
+    }
+
+    static uintptr_t AobScanModuleFirst(const char* moduleName, const char* pattern,
+        bool executableOnly = false) {
+
+        std::vector<uintptr_t> hits = AobScanModule(moduleName, pattern, 1, executableOnly);
+        return hits.empty() ? 0 : hits[0];
+    }
+
     static bool InstallHook(const char* moduleName, uint32_t offset,
         const void* trampolineCode, size_t trampolineCodeSize, uint32_t& outHookId) {
 
