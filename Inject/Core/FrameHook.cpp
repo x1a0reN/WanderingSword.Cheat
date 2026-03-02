@@ -1101,16 +1101,37 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 					CurValue = Slider->GetValue();
 					if (Item->TXT_CurrentValue)
 					{
-						float MinValue = Slider->MinValue;
-						float MaxValue = Slider->MaxValue;
-						float Norm = CurValue;
-						if (MaxValue > MinValue)
-							Norm = (CurValue - MinValue) / (MaxValue - MinValue);
-						if (Norm < 0.0f) Norm = 0.0f;
-						if (Norm > 1.0f) Norm = 1.0f;
-						const int32 DisplayValue = static_cast<int32>(Norm * 100.0f + 0.5f);
 						wchar_t Buf[16] = {};
-						swprintf_s(Buf, 16, L"%d", DisplayValue);
+
+						// Tab1的倍率滑块显示实际倍数，其他滑块显示百分比
+						if (Item == GTab1ItemGainMultiplierSlider)
+						{
+							// 整数类型：CurValue范围0-1，显示1-100
+							int32 Multiplier = static_cast<int32>(CurValue * 100.0f + 0.5f);
+							if (Multiplier < 1) Multiplier = 1;
+							if (Multiplier > 100) Multiplier = 100;
+							swprintf_s(Buf, 16, L"%d", Multiplier);
+						}
+						else if (Item == GTab1CraftItemIncrementSlider || Item == GTab1CraftExtraEffectSlider)
+						{
+							// 浮点类型：CurValue范围0-1，实际值=1.0+Percent*0.09，显示1.0-10.0
+							const float Percent = CurValue * 100.0f;
+							const float Multiplier = 1.0f + Percent * 0.09f;
+							swprintf_s(Buf, 16, L"%.1f", Multiplier);
+						}
+						else
+						{
+							float MinValue = Slider->MinValue;
+							float MaxValue = Slider->MaxValue;
+							float Norm = CurValue;
+							if (MaxValue > MinValue)
+								Norm = (CurValue - MinValue) / (MaxValue - MinValue);
+							if (Norm < 0.0f) Norm = 0.0f;
+							if (Norm > 1.0f) Norm = 1.0f;
+							const int32 DisplayValue = static_cast<int32>(Norm * 100.0f + 0.5f);
+							swprintf_s(Buf, 16, L"%d", DisplayValue);
+						}
+
 						Item->TXT_CurrentValue->SetText(MakeText(Buf));
 					}
 				}
