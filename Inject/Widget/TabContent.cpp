@@ -1,0 +1,2013 @@
+#include <iostream>
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <vector>
+#include <cctype>
+#include <sstream>
+#include <utility>
+#include "TabContent.hpp"
+#include "GCManager.hpp"
+#include "ItemBrowser.hpp"
+#include "InlineHook.hpp"
+#include "WidgetFactory.hpp"
+#include "WidgetUtils.hpp"
+#include "SDK/BPEntry_Item_classes.hpp"
+#include "SDK/JH_structs.hpp"
+
+namespace
+{
+	constexpr bool kEnableUICreateLog = false;
+
+	template <typename... TParts>
+	void UILog(const char* Tag, const TParts&... Parts)
+	{
+		if (!kEnableUICreateLog)
+			return;
+		std::ostringstream Oss;
+		(Oss << ... << Parts);
+		const std::string Text = Oss.str();
+		::std::cout << "[UI][" << (Tag ? Tag : "General") << "] " << Text;
+		if (Text.empty() || Text.back() != '\n')
+			::std::cout << '\n';
+	}
+}
+
+UPanelWidget* GetOrCreateSlotContainer(UBPMV_ConfigView2_C* CV, UNeoUINamedSlot* Slot, const char* SlotName)
+{
+	if (!Slot)
+	{
+		UILog("CreateSlot", "[SDK] ", SlotName, ": slot pointer is null");
+		return nullptr;
+	}
+
+	
+	
+	
+	int childCount = Slot->GetChildrenCount();
+	UILog("CreateSlot", "[SDK] ", SlotName, ": ptr=", (void*)Slot, " children=", childCount);
+	while (Slot->GetChildrenCount() > 0)
+	{
+		UWidget* Child = Slot->GetChildAt(0);
+		if (Child)
+		{
+			
+			if (Slot == CV->LanSlot && !GOriginalLanPanel)
+			{
+				GOriginalLanPanel = Child;
+				MarkAsGCRoot(GOriginalLanPanel);
+				UILog("CreateSlot", "[SDK] Captured original Lan panel: ", (void*)Child);
+			}
+			else if (Slot == CV->InputSlot && !GOriginalInputMappingPanel)
+			{
+				GOriginalInputMappingPanel = Child;
+				MarkAsGCRoot(GOriginalInputMappingPanel);
+				UILog("CreateSlot", "[SDK] Captured original InputMapping panel: ", (void*)Child);
+			}
+
+			UILog("CreateSlot", "[SDK] ", SlotName, ": removing game panel ", (void*)Child);
+			Child->RemoveFromParent();
+		}
+		else
+			break;
+	}
+
+	
+	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
+	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
+
+
+
+	UILog("CreateSlot", "[SDK] ", SlotName, ": creating UVerticalBox (WidgetTree=", (void*)WidgetTree, ")");
+
+	auto* VBox = static_cast<UVerticalBox*>(
+		CreateRawWidget(UVerticalBox::StaticClass(), Outer));
+	if (!VBox)
+	{
+		UILog("CreateSlot", "[SDK] ", SlotName, ": failed to create UVerticalBox");
+		return nullptr;
+	}
+
+	Slot->AddChild(VBox);
+	UILog("CreateSlot", "[SDK] ", SlotName, ": UVerticalBox created and added to slot");
+	return VBox;
+}
+
+namespace
+{
+	enum class ETab0Field : uint8
+	{
+		Money,
+		SkillExp,
+		JingMaiPoint,
+		GuildHonor,
+		InheritPoint,
+		FishingLevelInt,
+		AttrLevel,
+		AttrHealth,
+		AttrMaxHealth,
+		AttrMana,
+		AttrMaxMana,
+		AttrJingLi,
+		AttrMaxJingLi,
+		AttrStrength,
+		AttrConstitution,
+		AttrAgility,
+		AttrNeiLi,
+		AttrAttackPower,
+		AttrDefense,
+		AttrCrit,
+		AttrCritResistance,
+		AttrDodge,
+		AttrAccuracy,
+		AttrWorldMoveSpeed,
+		AttrTurnRate,
+		AttrMagicShield,
+		AttrHealthShield1,
+		AttrHonor,
+		AttrCritDamagePercent,
+		AttrHealthRestoreRate,
+		AttrHealthReGenRate,
+		AttrManaRestoreRate,
+		AttrManaReGeneRate,
+		AttrBoxingLevel,
+		AttrBoxingExp,
+		AttrFencingLevel,
+		AttrFencingExp,
+		AttrSabreLevel,
+		AttrSabreExp,
+		AttrSpearLevel,
+		AttrSpearExp,
+		AttrHiddenWeaponsLevel,
+		AttrHiddenWeaponsExp,
+		AttrOtherWeaponsLevel,
+		AttrOtherWeaponsExp
+	};
+
+	struct FTab0Binding final
+	{
+		ETab0Field Field;
+		UEditableTextBox* Edit;
+		const wchar_t* Title;
+		bool bInteger;
+	};
+
+	struct FTab0HeroContext final
+	{
+		int32 NPCId = -1;
+		UTeamInfo* TeamInfo = nullptr;
+		UJHAttributeSet* AttrSet = nullptr;
+		UItemManager* ItemManager = nullptr;
+		UNPCManager* NPCManager = nullptr;
+	};
+
+	std::vector<FTab0Binding> GTab0Bindings;
+	bool GTab0EnterWasDown = false;
+	UEditableTextBox* GTab0LastFocusedEdit = nullptr;
+
+	// 焦点缓存 (方案2: 减少每帧 HasKeyboardFocus 调用)
+	constexpr ULONGLONG kTab0FocusCacheDurationMs = 200ULL;  // 缓存有效期 200ms
+	UEditableTextBox* GTab0FocusCacheEdit = nullptr;         // 缓存的焦点编辑框
+	ULONGLONG GTab0FocusCacheTick = 0;                       // 缓存时间戳
+
+	// 清理降频: 每500ms运行一次清理
+	constexpr ULONGLONG kTab0CleanupIntervalMs = 500ULL;
+	ULONGLONG GTab0LastCleanupTick = 0;
+
+	// 滑块和下拉框轮询降频: 每100ms运行一次
+	constexpr ULONGLONG kTab0UiPollIntervalMs = 100ULL;
+	ULONGLONG GTab0LastUiPollTick = 0;
+
+	// 角色选择下拉框
+	UBPVE_JHConfigVideoItem2_C* GTab0RoleSelectDD = nullptr;
+	std::vector<int32> GTab0RoleSelectNPCIds;      // 对应每个选项的 NPCId
+	std::vector<std::wstring> GTab0RoleSelectNames; // 角色名字
+	int32 GTab0SelectedRoleIdx = -1;                // 当前选中的角色索引
+	int32 GTab0LastSelectedRoleIdx = -1;            // 上一次选中的角色索引
+
+	constexpr bool kTab0VerboseLog = false;
+	bool GTab0InitTraceEnabled = false;
+	UBPVE_JHConfigVolumeItem2_C* GTab0MoneyMultiplierItem = nullptr;
+	UBPVE_JHConfigVolumeItem2_C* GTab0SkillExpMultiplierItem = nullptr;
+	UBPVE_JHConfigVolumeItem2_C* GTab0ManaCostMultiplierItem = nullptr;
+	UBPVE_JHConfigVideoItem2_C* GTab0ExtraNeiGongLimitDD = nullptr;
+	UBPVE_JHConfigVideoItem2_C* GTab0GuildDD = nullptr;
+	int32 GTab0ExtraNeiGongLimitLastIdx = -1;
+	int32 GTab0GuildLastIdx = -1;
+	std::vector<int32> GTab0GuildOptionGuildIds;
+	std::vector<std::wstring> GTab0GuildOptionLabels;
+	bool GTab0GuildOptionsResolvedFromTable = false;
+	ULONGLONG GTab0GuildLastRebuildTick = 0;
+	float GTab0MoneyMultiplierLastPercent = -1.0f;
+	float GTab0SkillExpMultiplierLastPercent = -1.0f;
+	float GTab0ManaCostMultiplierLastPercent = -1.0f;
+	bool GTab0MoneyMinusWasPressed = false;
+	bool GTab0MoneyPlusWasPressed = false;
+	bool GTab0SkillExpMinusWasPressed = false;
+	bool GTab0SkillExpPlusWasPressed = false;
+	bool GTab0ManaCostMinusWasPressed = false;
+	bool GTab0ManaCostPlusWasPressed = false;
+
+
+	const char* Tab0FieldToString(ETab0Field Field)
+	{
+		switch (Field)
+		{
+		case ETab0Field::Money: return "Money";
+		case ETab0Field::SkillExp: return "SkillExp";
+		case ETab0Field::JingMaiPoint: return "JingMaiPoint";
+		case ETab0Field::GuildHonor: return "GuildHonor";
+		case ETab0Field::InheritPoint: return "InheritPoint";
+		case ETab0Field::FishingLevelInt: return "FishingLevelInt";
+		case ETab0Field::AttrLevel: return "AttrLevel";
+		case ETab0Field::AttrHealth: return "AttrHealth";
+		case ETab0Field::AttrMaxHealth: return "AttrMaxHealth";
+		case ETab0Field::AttrMana: return "AttrMana";
+		case ETab0Field::AttrMaxMana: return "AttrMaxMana";
+		case ETab0Field::AttrJingLi: return "AttrJingLi";
+		case ETab0Field::AttrMaxJingLi: return "AttrMaxJingLi";
+		case ETab0Field::AttrStrength: return "AttrStrength";
+		case ETab0Field::AttrConstitution: return "AttrConstitution";
+		case ETab0Field::AttrAgility: return "AttrAgility";
+		case ETab0Field::AttrNeiLi: return "AttrNeiLi";
+		case ETab0Field::AttrAttackPower: return "AttrAttackPower";
+		case ETab0Field::AttrDefense: return "AttrDefense";
+		case ETab0Field::AttrCrit: return "AttrCrit";
+		case ETab0Field::AttrCritResistance: return "AttrCritResistance";
+		case ETab0Field::AttrDodge: return "AttrDodge";
+		case ETab0Field::AttrAccuracy: return "AttrAccuracy";
+		case ETab0Field::AttrWorldMoveSpeed: return "AttrWorldMoveSpeed";
+		case ETab0Field::AttrTurnRate: return "AttrTurnRate";
+		case ETab0Field::AttrMagicShield: return "AttrMagicShield";
+		case ETab0Field::AttrHealthShield1: return "AttrHealthShield1";
+		case ETab0Field::AttrHonor: return "AttrHonor";
+		case ETab0Field::AttrCritDamagePercent: return "AttrCritDamagePercent";
+		case ETab0Field::AttrHealthRestoreRate: return "AttrHealthRestoreRate";
+		case ETab0Field::AttrHealthReGenRate: return "AttrHealthReGenRate";
+		case ETab0Field::AttrManaRestoreRate: return "AttrManaRestoreRate";
+		case ETab0Field::AttrManaReGeneRate: return "AttrManaReGeneRate";
+		case ETab0Field::AttrBoxingLevel: return "AttrBoxingLevel";
+		case ETab0Field::AttrBoxingExp: return "AttrBoxingExp";
+		case ETab0Field::AttrFencingLevel: return "AttrFencingLevel";
+		case ETab0Field::AttrFencingExp: return "AttrFencingExp";
+		case ETab0Field::AttrSabreLevel: return "AttrSabreLevel";
+		case ETab0Field::AttrSabreExp: return "AttrSabreExp";
+		case ETab0Field::AttrSpearLevel: return "AttrSpearLevel";
+		case ETab0Field::AttrSpearExp: return "AttrSpearExp";
+		case ETab0Field::AttrHiddenWeaponsLevel: return "AttrHiddenWeaponsLevel";
+		case ETab0Field::AttrHiddenWeaponsExp: return "AttrHiddenWeaponsExp";
+		case ETab0Field::AttrOtherWeaponsLevel: return "AttrOtherWeaponsLevel";
+		case ETab0Field::AttrOtherWeaponsExp: return "AttrOtherWeaponsExp";
+		default: return "Unknown";
+		}
+	}
+
+	int32 RoundToInt(double Value)
+	{
+		return static_cast<int32>(std::llround(Value));
+	}
+
+	std::wstring FormatNumericText(double Value, bool bInteger)
+	{
+		wchar_t Buf[64] = {};
+		if (bInteger)
+		{
+			swprintf_s(Buf, 64, L"%d", RoundToInt(Value));
+			return Buf;
+		}
+
+		swprintf_s(Buf, 64, L"%.3f", Value);
+		std::wstring Out = Buf;
+		while (!Out.empty() && Out.back() == L'0')
+			Out.pop_back();
+		if (!Out.empty() && Out.back() == L'.')
+			Out.pop_back();
+		if (Out.empty())
+			Out = L"0";
+		return Out;
+	}
+
+	std::string SanitizeNumericInputText(const std::string& Raw, bool bInteger)
+	{
+		std::string Normalized = Raw;
+		std::replace(Normalized.begin(), Normalized.end(), ',', '.');
+
+		std::string Out;
+		Out.reserve(Normalized.size());
+		bool bHasDot = false;
+		bool bHasSign = false;
+		for (char Ch : Normalized)
+		{
+			const unsigned char UCh = static_cast<unsigned char>(Ch);
+			if (std::isdigit(UCh))
+			{
+				Out.push_back(Ch);
+				continue;
+			}
+			if (Ch == '-' && !bHasSign && Out.empty())
+			{
+				Out.push_back(Ch);
+				bHasSign = true;
+				continue;
+			}
+			if (!bInteger && Ch == '.' && !bHasDot)
+			{
+				Out.push_back(Ch);
+				bHasDot = true;
+				continue;
+			}
+		}
+		return Out;
+	}
+
+	std::wstring AsciiToWide(const std::string& Text)
+	{
+		return std::wstring(Text.begin(), Text.end());
+	}
+
+	UEditableTextBox* FindFirstEditableTextBox(UWidget* Root)
+	{
+		if (!Root)
+			return nullptr;
+
+		if (Root->IsA(UEditableTextBox::StaticClass()))
+			return static_cast<UEditableTextBox*>(Root);
+
+		// UUserWidget 不是 PanelWidget，先下钻到 WidgetTree.RootWidget 再递归
+		if (Root->IsA(UUserWidget::StaticClass()))
+		{
+			auto* UserWidget = static_cast<UUserWidget*>(Root);
+			if (UserWidget->WidgetTree && UserWidget->WidgetTree->RootWidget)
+				return FindFirstEditableTextBox(UserWidget->WidgetTree->RootWidget);
+			return nullptr;
+		}
+
+		if (!Root->IsA(UPanelWidget::StaticClass()))
+			return nullptr;
+
+		auto* Panel = static_cast<UPanelWidget*>(Root);
+		const int32 Count = Panel->GetChildrenCount();
+		for (int32 i = 0; i < Count; ++i)
+		{
+			if (UWidget* Child = Panel->GetChildAt(i))
+			{
+				if (UEditableTextBox* Edit = FindFirstEditableTextBox(Child))
+					return Edit;
+			}
+		}
+		return nullptr;
+	}
+
+	bool ResolveTab0FieldByTitle(const wchar_t* Title, ETab0Field* OutField, bool* OutInteger)
+	{
+		if (!Title || !OutField || !OutInteger)
+			return false;
+
+		*OutInteger = true;
+
+		if (wcscmp(Title, L"金钱") == 0) { *OutField = ETab0Field::Money; return true; }
+		if (wcscmp(Title, L"武学点") == 0) { *OutField = ETab0Field::SkillExp; return true; }
+		if (wcscmp(Title, L"经脉点") == 0) { *OutField = ETab0Field::JingMaiPoint; return true; }
+		if (wcscmp(Title, L"门派贡献") == 0) { *OutField = ETab0Field::GuildHonor; return true; }
+		if (wcscmp(Title, L"继承点") == 0) { *OutField = ETab0Field::InheritPoint; return true; }
+		if (wcscmp(Title, L"等级") == 0) { *OutField = ETab0Field::AttrLevel; return true; }
+		if (wcscmp(Title, L"钓鱼等级") == 0) { *OutField = ETab0Field::FishingLevelInt; return true; }
+		if (wcscmp(Title, L"气血") == 0) { *OutField = ETab0Field::AttrHealth; return true; }
+		if (wcscmp(Title, L"气血上限") == 0) { *OutField = ETab0Field::AttrMaxHealth; return true; }
+		if (wcscmp(Title, L"真气") == 0) { *OutField = ETab0Field::AttrMana; return true; }
+		if (wcscmp(Title, L"真气上限") == 0) { *OutField = ETab0Field::AttrMaxMana; return true; }
+		if (wcscmp(Title, L"精力") == 0) { *OutField = ETab0Field::AttrJingLi; return true; }
+		if (wcscmp(Title, L"精力上限") == 0) { *OutField = ETab0Field::AttrMaxJingLi; return true; }
+		if (wcscmp(Title, L"力道") == 0) { *OutField = ETab0Field::AttrStrength; return true; }
+		if (wcscmp(Title, L"根骨") == 0) { *OutField = ETab0Field::AttrConstitution; return true; }
+		if (wcscmp(Title, L"身法") == 0) { *OutField = ETab0Field::AttrAgility; return true; }
+		if (wcscmp(Title, L"内功") == 0) { *OutField = ETab0Field::AttrNeiLi; return true; }
+		if (wcscmp(Title, L"攻击") == 0) { *OutField = ETab0Field::AttrAttackPower; return true; }
+		if (wcscmp(Title, L"防御") == 0) { *OutField = ETab0Field::AttrDefense; return true; }
+		if (wcscmp(Title, L"暴击") == 0) { *OutField = ETab0Field::AttrCrit; return true; }
+		if (wcscmp(Title, L"暴击抗性") == 0) { *OutField = ETab0Field::AttrCritResistance; return true; }
+		if (wcscmp(Title, L"闪避") == 0) { *OutField = ETab0Field::AttrDodge; return true; }
+		if (wcscmp(Title, L"命中") == 0) { *OutField = ETab0Field::AttrAccuracy; return true; }
+		if (wcscmp(Title, L"移动") == 0) { *OutField = ETab0Field::AttrWorldMoveSpeed; return true; }
+		if (wcscmp(Title, L"聚气速率") == 0) { *OutField = ETab0Field::AttrTurnRate; return true; }
+		if (wcscmp(Title, L"真气护盾") == 0) { *OutField = ETab0Field::AttrMagicShield; return true; }
+		if (wcscmp(Title, L"气血护盾") == 0) { *OutField = ETab0Field::AttrHealthShield1; return true; }
+		if (wcscmp(Title, L"名声") == 0) { *OutField = ETab0Field::AttrHonor; return true; }
+		if (wcscmp(Title, L"暴击伤害百分比") == 0) { *OutField = ETab0Field::AttrCritDamagePercent; return true; }
+		if (wcscmp(Title, L"气血恢复速率1") == 0) { *OutField = ETab0Field::AttrHealthRestoreRate; return true; }
+		if (wcscmp(Title, L"气血恢复速率2") == 0) { *OutField = ETab0Field::AttrHealthReGenRate; return true; }
+		if (wcscmp(Title, L"真气恢复速率1") == 0) { *OutField = ETab0Field::AttrManaRestoreRate; return true; }
+		if (wcscmp(Title, L"真气恢复速率2") == 0) { *OutField = ETab0Field::AttrManaReGeneRate; return true; }
+		if (wcscmp(Title, L"拳掌精通") == 0) { *OutField = ETab0Field::AttrBoxingLevel; return true; }
+		if (wcscmp(Title, L"拳掌经验") == 0) { *OutField = ETab0Field::AttrBoxingExp; return true; }
+		if (wcscmp(Title, L"剑法精通") == 0) { *OutField = ETab0Field::AttrFencingLevel; return true; }
+		if (wcscmp(Title, L"剑法经验") == 0) { *OutField = ETab0Field::AttrFencingExp; return true; }
+		if (wcscmp(Title, L"刀法精通") == 0) { *OutField = ETab0Field::AttrSabreLevel; return true; }
+		if (wcscmp(Title, L"刀法经验") == 0) { *OutField = ETab0Field::AttrSabreExp; return true; }
+		if (wcscmp(Title, L"枪棍精通") == 0) { *OutField = ETab0Field::AttrSpearLevel; return true; }
+		if (wcscmp(Title, L"枪棍经验") == 0) { *OutField = ETab0Field::AttrSpearExp; return true; }
+		if (wcscmp(Title, L"暗器精通") == 0) { *OutField = ETab0Field::AttrHiddenWeaponsLevel; return true; }
+		if (wcscmp(Title, L"暗器经验") == 0) { *OutField = ETab0Field::AttrHiddenWeaponsExp; return true; }
+		if (wcscmp(Title, L"其他武器精通") == 0) { *OutField = ETab0Field::AttrOtherWeaponsLevel; return true; }
+		if (wcscmp(Title, L"其他武器经验") == 0) { *OutField = ETab0Field::AttrOtherWeaponsExp; return true; }
+		return false;
+	}
+
+	FGameplayAttributeData* ResolveAttrData(UJHAttributeSet* AttrSet, ETab0Field Field)
+	{
+		if (!AttrSet)
+			return nullptr;
+
+		switch (Field)
+		{
+		case ETab0Field::AttrLevel: return &AttrSet->Level;
+		case ETab0Field::AttrHealth: return &AttrSet->Health;
+		case ETab0Field::AttrMaxHealth: return &AttrSet->MaxHealth;
+		case ETab0Field::AttrMana: return &AttrSet->Mana;
+		case ETab0Field::AttrMaxMana: return &AttrSet->MaxMana;
+		case ETab0Field::AttrJingLi: return &AttrSet->JingLi;
+		case ETab0Field::AttrMaxJingLi: return &AttrSet->MaxJingLi;
+		case ETab0Field::AttrStrength: return &AttrSet->Strength;
+		case ETab0Field::AttrConstitution: return &AttrSet->Constitution;
+		case ETab0Field::AttrAgility: return &AttrSet->Agility;
+		case ETab0Field::AttrNeiLi: return &AttrSet->NeiLi;
+		case ETab0Field::AttrAttackPower: return &AttrSet->AttackPower;
+		case ETab0Field::AttrDefense: return &AttrSet->Defense;
+		case ETab0Field::AttrCrit: return &AttrSet->Crit;
+		case ETab0Field::AttrCritResistance: return &AttrSet->CritResistance;
+		case ETab0Field::AttrDodge: return &AttrSet->Dodge;
+		case ETab0Field::AttrAccuracy: return &AttrSet->Accuracy;
+		case ETab0Field::AttrWorldMoveSpeed: return &AttrSet->WorldMoveSpeed;
+		case ETab0Field::AttrTurnRate: return &AttrSet->TurnRate;
+		case ETab0Field::AttrMagicShield: return &AttrSet->MagicShield;
+		case ETab0Field::AttrHealthShield1: return &AttrSet->HealthShield1;
+		case ETab0Field::AttrHonor: return &AttrSet->Honor;
+		case ETab0Field::AttrCritDamagePercent: return &AttrSet->CritDamagePercent;
+		case ETab0Field::AttrHealthRestoreRate: return &AttrSet->HealthRestoreRate;
+		case ETab0Field::AttrHealthReGenRate: return &AttrSet->HealthReGenRate;
+		case ETab0Field::AttrManaRestoreRate: return &AttrSet->ManaRestoreRate;
+		case ETab0Field::AttrManaReGeneRate: return &AttrSet->ManaReGeneRate;
+		case ETab0Field::AttrBoxingLevel: return &AttrSet->BoxingLevel;
+		case ETab0Field::AttrBoxingExp: return &AttrSet->BoxingExp;
+		case ETab0Field::AttrFencingLevel: return &AttrSet->FencingLevel;
+		case ETab0Field::AttrFencingExp: return &AttrSet->FencingExp;
+		case ETab0Field::AttrSabreLevel: return &AttrSet->SabreLevel;
+		case ETab0Field::AttrSabreExp: return &AttrSet->SabreExp;
+		case ETab0Field::AttrSpearLevel: return &AttrSet->SpearLevel;
+		case ETab0Field::AttrSpearExp: return &AttrSet->SpearExp;
+		case ETab0Field::AttrHiddenWeaponsLevel: return &AttrSet->HiddenWeaponsLevel;
+		case ETab0Field::AttrHiddenWeaponsExp: return &AttrSet->HiddenWeaponsExp;
+		case ETab0Field::AttrOtherWeaponsLevel: return &AttrSet->OtherWeaponsLevel;
+		case ETab0Field::AttrOtherWeaponsExp: return &AttrSet->OtherWeaponsExp;
+		default:
+			return nullptr;
+		}
+	}
+
+	const wchar_t* ResolveAttrFieldName(ETab0Field Field)
+	{
+		switch (Field)
+		{
+		case ETab0Field::AttrLevel: return L"Level";
+		case ETab0Field::AttrHealth: return L"Health";
+		case ETab0Field::AttrMaxHealth: return L"MaxHealth";
+		case ETab0Field::AttrMana: return L"Mana";
+		case ETab0Field::AttrMaxMana: return L"MaxMana";
+		case ETab0Field::AttrJingLi: return L"JingLi";
+		case ETab0Field::AttrMaxJingLi: return L"MaxJingLi";
+		case ETab0Field::AttrStrength: return L"Strength";
+		case ETab0Field::AttrConstitution: return L"Constitution";
+		case ETab0Field::AttrAgility: return L"Agility";
+		case ETab0Field::AttrNeiLi: return L"NeiLi";
+		case ETab0Field::AttrAttackPower: return L"AttackPower";
+		case ETab0Field::AttrDefense: return L"Defense";
+		case ETab0Field::AttrCrit: return L"Crit";
+		case ETab0Field::AttrCritResistance: return L"CritResistance";
+		case ETab0Field::AttrDodge: return L"Dodge";
+		case ETab0Field::AttrAccuracy: return L"Accuracy";
+		case ETab0Field::AttrWorldMoveSpeed: return L"WorldMoveSpeed";
+		case ETab0Field::AttrTurnRate: return L"TurnRate";
+		case ETab0Field::AttrMagicShield: return L"MagicShield";
+		case ETab0Field::AttrHealthShield1: return L"HealthShield1";
+		case ETab0Field::AttrHonor: return L"Honor";
+		case ETab0Field::AttrCritDamagePercent: return L"CritDamagePercent";
+		case ETab0Field::AttrHealthRestoreRate: return L"HealthRestoreRate";
+		case ETab0Field::AttrHealthReGenRate: return L"HealthReGenRate";
+		case ETab0Field::AttrManaRestoreRate: return L"ManaRestoreRate";
+		case ETab0Field::AttrManaReGeneRate: return L"ManaReGeneRate";
+		case ETab0Field::AttrBoxingLevel: return L"BoxingLevel";
+		case ETab0Field::AttrBoxingExp: return L"BoxingExp";
+		case ETab0Field::AttrFencingLevel: return L"FencingLevel";
+		case ETab0Field::AttrFencingExp: return L"FencingExp";
+		case ETab0Field::AttrSabreLevel: return L"SabreLevel";
+		case ETab0Field::AttrSabreExp: return L"SabreExp";
+		case ETab0Field::AttrSpearLevel: return L"SpearLevel";
+		case ETab0Field::AttrSpearExp: return L"SpearExp";
+		case ETab0Field::AttrHiddenWeaponsLevel: return L"HiddenWeaponsLevel";
+		case ETab0Field::AttrHiddenWeaponsExp: return L"HiddenWeaponsExp";
+		case ETab0Field::AttrOtherWeaponsLevel: return L"OtherWeaponsLevel";
+		case ETab0Field::AttrOtherWeaponsExp: return L"OtherWeaponsExp";
+		case ETab0Field::FishingLevelInt: return L"FishingLevel";
+		default:
+			return nullptr;
+		}
+	}
+
+	bool BuildGameplayAttributeByField(ETab0Field Field, FGameplayAttribute* OutAttr)
+	{
+		if (!OutAttr)
+		{
+			return false;
+		}
+
+		const wchar_t* AttrName = ResolveAttrFieldName(Field);
+		if (!AttrName || !AttrName[0])
+		{
+			return false;
+		}
+
+		FGameplayAttribute Attr{};
+		Attr.AttributeName = FString(AttrName);
+		Attr.AttributeOwner = static_cast<UStruct*>(UJHAttributeSet::StaticClass());
+		*OutAttr = Attr;
+		return true;
+	}
+
+	bool BuildGameplayAttributeByName(const wchar_t* AttrName, FGameplayAttribute* OutAttr)
+	{
+		if (!AttrName || !AttrName[0] || !OutAttr)
+		{
+			return false;
+		}
+		FGameplayAttribute Attr{};
+		Attr.AttributeName = FString(AttrName);
+		Attr.AttributeOwner = static_cast<UStruct*>(UJHAttributeSet::StaticClass());
+		*OutAttr = Attr;
+		return true;
+	}
+
+	bool TryGetLiveFloatAttribute(const FTab0HeroContext& Ctx, ETab0Field Field, float* OutValue)
+	{
+		if (!OutValue || Ctx.NPCId < 0)
+		{
+			return false;
+		}
+
+		FGameplayAttribute Attr{};
+		if (!BuildGameplayAttributeByField(Field, &Attr))
+		{
+			return false;
+		}
+
+		bool bFound = false;
+		const float Value = UNPCFuncLib::GetFloatAttribute(Ctx.NPCId, Attr, &bFound);
+		if (!bFound)
+		{
+			return false;
+		}
+
+		*OutValue = Value;
+		return true;
+	}
+
+	bool TryAddLiveFloatAttributeDelta(const FTab0HeroContext& Ctx, ETab0Field Field, float DeltaValue)
+	{
+		if (Ctx.NPCId < 0)
+		{
+			return false;
+		}
+
+		if (std::fabs(DeltaValue) < 0.0001f)
+		{
+			return true;
+		}
+
+		FGameplayAttribute Attr{};
+		if (!BuildGameplayAttributeByField(Field, &Attr))
+		{
+			return false;
+		}
+
+		UNPCFuncLib::AddFloatAttribute(Ctx.NPCId, Attr, DeltaValue, false);
+		return true;
+	}
+
+	// 获取当前队伍所有角色的名字和NPCId列表
+	void RefreshTab0RoleSelectOptions()
+	{
+		GTab0RoleSelectNPCIds.clear();
+		GTab0RoleSelectNames.clear();
+
+		UTeamManager* TeamManager = UManagerFuncLib::GetTeamManager();
+		if (!TeamManager)
+			return;
+
+		std::cout << "[SDK] RefreshTab0RoleSelectOptions: TeamInfos count=" << TeamManager->TeamInfos.Num()
+		          << ", FightTeamInfos count=" << TeamManager->FightTeamInfos.Num() << "\n";
+
+		auto ProcessTeamArray = [&](TArray<UTeamInfo*>& Infos, const char* ArrayName)
+		{
+			const int32 N = Infos.Num();
+			std::cout << "[SDK] Processing " << ArrayName << ", count=" << N << "\n";
+			for (int32 i = 0; i < N; ++i)
+			{
+				UTeamInfo* Info = Infos[i];
+				if (!Info || !IsSafeLiveObject(static_cast<UObject*>(Info)))
+					continue;
+				std::cout << "[SDK] " << ArrayName << "[" << i << "]: NPCId=" << Info->NPCId << "\n";
+
+				if (Info->NPCId < 0)
+					continue;
+
+				// 去重：检查是否已存在相同 NPCId
+				bool bDuplicate = false;
+				for (int32 ExistingId : GTab0RoleSelectNPCIds)
+				{
+					if (ExistingId == Info->NPCId)
+					{
+						bDuplicate = true;
+						break;
+					}
+				}
+				if (bDuplicate)
+					continue;
+
+				// 获取角色名字 - 使用和门派一样的方式
+				FText Name = UNPCFuncLib::GetNPCNameById(Info->NPCId);
+				FString NameStr = UKismetTextLibrary::Conv_TextToString(Name);
+				const wchar_t* NameWs = NameStr.CStr();
+				std::wstring NameWstr = (NameWs && NameWs[0]) ? std::wstring(NameWs) : std::wstring();
+
+				GTab0RoleSelectNPCIds.push_back(Info->NPCId);
+				GTab0RoleSelectNames.push_back(NameWstr);
+				std::wcout << L"[SDK] Added role: NPCId=" << Info->NPCId << L", name=" << NameWstr.c_str() << L"\n";
+			}
+		};
+
+		// 先处理队伍列表，再处理战斗队伍列表
+		ProcessTeamArray(TeamManager->TeamInfos, "TeamInfos");
+		ProcessTeamArray(TeamManager->FightTeamInfos, "FightTeamInfos");
+		std::cout << "[SDK] Total roles found: " << GTab0RoleSelectNPCIds.size() << "\n";
+	}
+
+	// 前向声明
+	void RefreshTab0BindingsText(APlayerController* PC);
+
+	FTab0HeroContext BuildTab0HeroContext(APlayerController* PC)
+	{
+		FTab0HeroContext Ctx{};
+		Ctx.ItemManager = UManagerFuncLib::GetItemManager();
+		Ctx.NPCManager = UManagerFuncLib::GetNPCManager();
+
+		// 如果用户通过下拉框选择了角色，优先使用选中的 NPCId
+		if (GTab0SelectedRoleIdx >= 0 && GTab0SelectedRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
+		{
+			Ctx.NPCId = GTab0RoleSelectNPCIds[GTab0SelectedRoleIdx];
+			if (Ctx.NPCId >= 0)
+			{
+				Ctx.TeamInfo = UNPCFuncLib::GetNPCInfoById(Ctx.NPCId);
+				if (Ctx.TeamInfo)
+				{
+					Ctx.AttrSet = Ctx.TeamInfo->GetAttributeSet();
+					if (!Ctx.AttrSet)
+						Ctx.AttrSet = Ctx.TeamInfo->AttributeSet;
+					return Ctx;
+				}
+			}
+		}
+
+		UObject* WorldContext = nullptr;
+		if (PC)
+			WorldContext = static_cast<UObject*>(PC);
+		else if (UWorld* World = UWorld::GetWorld())
+			WorldContext = static_cast<UObject*>(World);
+
+		AActor* HeroActor = WorldContext ? UNPCFuncLib::GetSceneHero(WorldContext) : nullptr;
+		if (HeroActor && HeroActor->IsA(AJHCharacter::StaticClass()))
+		{
+			Ctx.NPCId = static_cast<AJHCharacter*>(HeroActor)->NPCId;
+		}
+		else
+		{
+		}
+
+		if (Ctx.NPCId >= 0)
+		{
+			Ctx.TeamInfo = UNPCFuncLib::GetNPCInfoById(Ctx.NPCId);
+		}
+		else
+		{
+		}
+
+		if (!Ctx.TeamInfo)
+		{
+			if (UTeamManager* TeamManager = UManagerFuncLib::GetTeamManager())
+			{
+				Ctx.TeamInfo = TeamManager->GetInfoByIndex(0);
+			}
+			else
+			{
+			}
+		}
+
+		if (Ctx.TeamInfo)
+		{
+			if (Ctx.NPCId < 0)
+				Ctx.NPCId = Ctx.TeamInfo->NPCId;
+			Ctx.AttrSet = Ctx.TeamInfo->GetAttributeSet();
+			if (!Ctx.AttrSet)
+				Ctx.AttrSet = Ctx.TeamInfo->AttributeSet;
+		}
+		else
+		{
+		}
+
+		// 兜底：部分场景 GetSceneHero/Index0 取到的 NPCId 可能是 0，
+		// 尝试从 TeamManager 的队伍列表里找第一个有效 NPCId。
+		if (Ctx.NPCId < 0)
+		{
+			if (UTeamManager* TeamManager = UManagerFuncLib::GetTeamManager())
+			{
+				auto TryPickFromArray = [&](TArray<UTeamInfo*>& Infos) -> bool
+				{
+					const int32 N = Infos.Num();
+					for (int32 i = 0; i < N; ++i)
+					{
+						UTeamInfo* Info = Infos[i];
+						if (!Info || !IsSafeLiveObject(static_cast<UObject*>(Info)))
+							continue;
+						if (Info->NPCId >= 0)
+						{
+							Ctx.TeamInfo = Info;
+							Ctx.NPCId = Info->NPCId;
+							return true;
+						}
+					}
+					return false;
+				};
+
+				if (!TryPickFromArray(TeamManager->TeamInfos))
+				{
+					TryPickFromArray(TeamManager->FightTeamInfos);
+				}
+			}
+			else
+			{
+			}
+
+			if (Ctx.TeamInfo && (!Ctx.AttrSet || !IsSafeLiveObject(static_cast<UObject*>(Ctx.AttrSet))))
+			{
+				Ctx.AttrSet = Ctx.TeamInfo->GetAttributeSet();
+				if (!Ctx.AttrSet)
+					Ctx.AttrSet = Ctx.TeamInfo->AttributeSet;
+			}
+		}
+
+		return Ctx;
+	}
+
+	UTeamInfo* ResolveLiveTeamInfo(const FTab0HeroContext& Ctx)
+	{
+		UTeamInfo* LiveTeamInfo = nullptr;
+		UTeamInfo* ByNpcId = nullptr;
+		if (Ctx.NPCId >= 0)
+		{
+			ByNpcId = UNPCFuncLib::GetNPCInfoById(Ctx.NPCId);
+			LiveTeamInfo = ByNpcId;
+		}
+		if (!LiveTeamInfo)
+			LiveTeamInfo = Ctx.TeamInfo;
+		return LiveTeamInfo;
+	}
+
+	bool IsValidTab0Dropdown(UBPVE_JHConfigVideoItem2_C* Item)
+	{
+		return Item &&
+			IsSafeLiveObject(static_cast<UObject*>(Item)) &&
+			!(Item->Flags & EObjectFlags::BeginDestroyed) &&
+			!(Item->Flags & EObjectFlags::FinishDestroyed) &&
+			Item->CB_Main &&
+			IsSafeLiveObject(static_cast<UObject*>(Item->CB_Main)) &&
+			!(Item->CB_Main->Flags & EObjectFlags::BeginDestroyed) &&
+			!(Item->CB_Main->Flags & EObjectFlags::FinishDestroyed);
+	}
+
+	int32 GetComboOptionCountFast(UComboBoxString* Combo)
+	{
+		if (!Combo ||
+			!IsSafeLiveObject(static_cast<UObject*>(Combo)) ||
+			(Combo->Flags & EObjectFlags::BeginDestroyed) ||
+			(Combo->Flags & EObjectFlags::FinishDestroyed))
+		{
+			return 0;
+		}
+		return Combo->GetOptionCount();
+	}
+
+	int32 GetComboSelectedIndexFast(UComboBoxString* Combo)
+	{
+		if (!Combo ||
+			!IsSafeLiveObject(static_cast<UObject*>(Combo)) ||
+			(Combo->Flags & EObjectFlags::BeginDestroyed) ||
+			(Combo->Flags & EObjectFlags::FinishDestroyed))
+		{
+			return -1;
+		}
+
+		const int32 Count = Combo->GetOptionCount();
+		if (Count <= 0)
+			return -1;
+
+		return Combo->GetSelectedIndex();
+	}
+
+	int32 ClampComboIndex(UComboBoxString* Combo, int32 Index)
+	{
+		if (!Combo)
+			return 0;
+		const int32 Count = GetComboOptionCountFast(Combo);
+		if (Count <= 0)
+			return 0;
+		if (Index < 0)
+			return 0;
+		if (Index >= Count)
+			return Count - 1;
+		return Index;
+	}
+
+	int32 ClampTab0ExtraNeiGongLimit(int32 Value)
+	{
+		if (Value < 0) return 0;
+		if (Value > 2) return 2;
+		return Value;
+	}
+
+	void RebuildTab0GuildOptionsFromGame(APlayerController* PC)
+	{
+		std::vector<std::pair<int32, std::wstring>> Entries;
+		bool bResolvedFromTable = false;
+		auto IsSyntheticLabel = [](const std::wstring& Label)
+		{
+			return Label.empty() || Label.rfind(L"Guild_", 0) == 0;
+		};
+		auto AddEntry = [&Entries, &IsSyntheticLabel](int32 GuildId, const std::wstring& Label)
+		{
+			std::wstring FinalLabel = Label;
+			if (FinalLabel.empty())
+			{
+				wchar_t Buf[64] = {};
+				swprintf_s(Buf, 64, L"Guild_%d", GuildId);
+				FinalLabel = Buf;
+			}
+
+			for (auto& It : Entries)
+			{
+				if (It.first == GuildId)
+				{
+					if (!IsSyntheticLabel(FinalLabel) && IsSyntheticLabel(It.second))
+					{
+						It.second = FinalLabel;
+					}
+					return;
+				}
+			}
+
+			Entries.emplace_back(GuildId, FinalLabel);
+		};
+
+		UGuildResManager* GuildResMgr = UManagerFuncLib::GetGuildResManager();
+		UDataTable* GuildTable = GuildResMgr ? GuildResMgr->GuildSettingTable : nullptr;
+		std::cout << "[SDK][Tab0Role] RebuildGuildOptions begin mgr=" << (void*)GuildResMgr
+		          << " table=" << (void*)GuildTable << "\n";
+		if (GuildTable && IsSafeLiveObject(static_cast<UObject*>(GuildTable)))
+		{
+			auto& RowMap = GuildTable->RowMap;
+			const int32 AllocatedSlots = RowMap.IsValid() ? RowMap.NumAllocated() : 0;
+			const int32 RowCount = RowMap.IsValid() ? RowMap.Num() : 0;
+			std::cout << "[SDK][Tab0Role] GuildTable rowMap valid=" << (RowMap.IsValid() ? 1 : 0)
+			          << " rows=" << RowCount << " allocated=" << AllocatedSlots
+			          << " rowStruct=" << (void*)GuildTable->RowStruct << "\n";
+
+			if (RowMap.IsValid() && AllocatedSlots > 0 && RowCount > 0)
+			{
+				for (int32 i = 0; i < AllocatedSlots; ++i)
+				{
+					if (!RowMap.IsValidIndex(i))
+						continue;
+					uint8* RowData = RowMap[i].Value();
+					if (!RowData)
+						continue;
+
+					const int32 GuildId = *reinterpret_cast<int32*>(RowData + 0x08);
+					std::wstring Label;
+					auto* TextData = *reinterpret_cast<FTextImpl::FTextData**>(RowData + 0x10);
+					if (TextData)
+					{
+						const wchar_t* WStr = TextData->TextSource.CStr();
+						if (WStr && WStr[0])
+							Label.assign(WStr);
+					}
+					AddEntry(GuildId, Label);
+					bResolvedFromTable = true;
+				}
+			}
+
+			bool bNeedFallbackResolve = Entries.empty();
+			if (!bNeedFallbackResolve)
+			{
+				for (const auto& It : Entries)
+				{
+					if (IsSyntheticLabel(It.second))
+					{
+						bNeedFallbackResolve = true;
+						break;
+					}
+				}
+			}
+
+			// RowMap 解析到的 FText 可能是占位文本，补走 helper 路径拿本地化后的门派名
+			if (bNeedFallbackResolve)
+			{
+				TArray<FName> RowNames;
+				UDataTableFunctionLibrary::GetDataTableRowNames(GuildTable, &RowNames);
+				std::cout << "[SDK][Tab0Role] GuildTable fallback rowNames=" << RowNames.Num() << "\n";
+				for (const FName& RowName : RowNames)
+				{
+					FGuildSetting Row{};
+					if (!UDataTableFunctionLibrary::GetDataTableRowFromName(
+						GuildTable,
+						RowName,
+						reinterpret_cast<FTableRowBase*>(&Row)))
+					{
+						continue;
+					}
+
+					FString NameStr = UKismetTextLibrary::Conv_TextToString(Row.Name);
+					const wchar_t* NameWs = NameStr.CStr();
+					std::wstring Label = (NameWs && NameWs[0]) ? std::wstring(NameWs) : std::wstring();
+					AddEntry(Row.ID, Label);
+					bResolvedFromTable = true;
+				}
+			}
+		}
+
+		if (Entries.empty())
+		{
+			FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+			UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+			if (LiveTeamInfo && IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+			{
+				wchar_t Buf[64] = {};
+				swprintf_s(Buf, 64, L"Guild_%d", LiveTeamInfo->GuildId);
+				AddEntry(LiveTeamInfo->GuildId, Buf);
+			}
+		}
+
+		if (Entries.empty())
+			AddEntry(0, L"Guild_0");
+
+		std::sort(
+			Entries.begin(),
+			Entries.end(),
+			[](const std::pair<int32, std::wstring>& A, const std::pair<int32, std::wstring>& B)
+			{
+				return A.first < B.first;
+			});
+
+		GTab0GuildOptionGuildIds.clear();
+		GTab0GuildOptionLabels.clear();
+		GTab0GuildOptionGuildIds.reserve(Entries.size());
+		GTab0GuildOptionLabels.reserve(Entries.size());
+		for (const auto& It : Entries)
+		{
+			GTab0GuildOptionGuildIds.push_back(It.first);
+			GTab0GuildOptionLabels.push_back(It.second);
+		}
+		GTab0GuildOptionsResolvedFromTable = bResolvedFromTable;
+		std::cout << "[SDK][Tab0Role] RebuildGuildOptions end count=" << GTab0GuildOptionGuildIds.size();
+		for (size_t i = 0; i < GTab0GuildOptionGuildIds.size(); ++i)
+		{
+			std::wcout << L" [" << i << L"]=" << GTab0GuildOptionGuildIds[i]
+			           << L":" << GTab0GuildOptionLabels[i].c_str();
+		}
+		std::cout << "\n";
+	}
+
+	int32 Tab0GuildIdToDropdownIndex(int32 GuildId, UComboBoxString* Combo)
+	{
+		if (GTab0GuildOptionGuildIds.empty())
+			return ClampComboIndex(Combo, 0);
+
+		for (int32 i = 0; i < static_cast<int32>(GTab0GuildOptionGuildIds.size()); ++i)
+		{
+			if (GTab0GuildOptionGuildIds[i] == GuildId)
+				return ClampComboIndex(Combo, i);
+		}
+		return ClampComboIndex(Combo, 0);
+	}
+
+	int32 Tab0DropdownIndexToGuildId(int32 Index)
+	{
+		if (Index < 0 || Index >= static_cast<int32>(GTab0GuildOptionGuildIds.size()))
+			return 0;
+		return GTab0GuildOptionGuildIds[Index];
+	}
+
+	void RefreshTab0GuildDropdownOptionsIfNeeded(APlayerController* PC, bool bForce)
+	{
+		if (!IsValidTab0Dropdown(GTab0GuildDD))
+			return;
+
+		UComboBoxString* Combo = GTab0GuildDD->CB_Main;
+		const int32 CurrentCount = GetComboOptionCountFast(Combo);
+		const bool bLooksPlaceholder =
+			(CurrentCount <= 1) ||
+			(GTab0GuildOptionGuildIds.size() <= 1 && !GTab0GuildOptionsResolvedFromTable);
+
+		const ULONGLONG Now = GetTickCount64();
+		if (!bForce)
+		{
+			if (!bLooksPlaceholder)
+				return;
+			if (Now - GTab0GuildLastRebuildTick < 1500ULL)
+				return;
+		}
+		GTab0GuildLastRebuildTick = Now;
+
+		int32 PreferredGuildId = 0;
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+		UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+		if (LiveTeamInfo && IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+			PreferredGuildId = LiveTeamInfo->GuildId;
+
+		RebuildTab0GuildOptionsFromGame(PC);
+		if (!IsValidTab0Dropdown(GTab0GuildDD))
+			return;
+
+		Combo = GTab0GuildDD->CB_Main;
+		Combo->ClearOptions();
+		for (const auto& Label : GTab0GuildOptionLabels)
+			Combo->AddOption(FString(Label.c_str()));
+
+		const int32 TargetIdx = Tab0GuildIdToDropdownIndex(PreferredGuildId, Combo);
+		Combo->SetSelectedIndex(TargetIdx);
+		GTab0GuildLastIdx = TargetIdx;
+
+		std::cout << "[SDK][Tab0Role] GuildDropdownRefresh force=" << (bForce ? 1 : 0)
+		          << " placeholder=" << (bLooksPlaceholder ? 1 : 0)
+		          << " count=" << GetComboOptionCountFast(Combo)
+		          << " preferredGuildId=" << PreferredGuildId
+		          << " selectedIdx=" << TargetIdx << "\n";
+	}
+
+	void SyncTab0RoleDropdownsFromLive(APlayerController* PC)
+	{
+		RefreshTab0GuildDropdownOptionsIfNeeded(PC, false);
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+		UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+
+		if (IsValidTab0Dropdown(GTab0ExtraNeiGongLimitDD))
+		{
+			UComboBoxString* Combo = GTab0ExtraNeiGongLimitDD->CB_Main;
+			int32 TargetIdx = 0;
+			if (LiveTeamInfo && IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+				TargetIdx = ClampTab0ExtraNeiGongLimit(LiveTeamInfo->AddNeiGongUpLimit);
+			TargetIdx = ClampComboIndex(Combo, TargetIdx);
+			if (GetComboSelectedIndexFast(Combo) != TargetIdx)
+				Combo->SetSelectedIndex(TargetIdx);
+			GTab0ExtraNeiGongLimitLastIdx = TargetIdx;
+		}
+
+		if (IsValidTab0Dropdown(GTab0GuildDD))
+		{
+			UComboBoxString* Combo = GTab0GuildDD->CB_Main;
+			int32 TargetIdx = 0;
+			if (LiveTeamInfo && IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+				TargetIdx = Tab0GuildIdToDropdownIndex(LiveTeamInfo->GuildId, Combo);
+			TargetIdx = ClampComboIndex(Combo, TargetIdx);
+			if (GetComboSelectedIndexFast(Combo) != TargetIdx)
+				Combo->SetSelectedIndex(TargetIdx);
+			GTab0GuildLastIdx = TargetIdx;
+		}
+	}
+
+	bool ApplyTab0ExtraNeiGongLimitSelection(const FTab0HeroContext& Ctx, int32 SelectedIndex)
+	{
+		UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+		if (!LiveTeamInfo || !IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+			return false;
+		const int32 Target = ClampTab0ExtraNeiGongLimit(SelectedIndex);
+		LiveTeamInfo->AddNeiGongUpLimit = Target;
+		return LiveTeamInfo->AddNeiGongUpLimit == Target;
+	}
+
+	bool ApplyTab0GuildSelection(const FTab0HeroContext& Ctx, int32 SelectedIndex)
+	{
+		const int32 TargetGuildId = Tab0DropdownIndexToGuildId(SelectedIndex);
+		if (Ctx.NPCManager && IsSafeLiveObject(static_cast<UObject*>(Ctx.NPCManager)) && Ctx.NPCId >= 0)
+			Ctx.NPCManager->ChangeGuildId(Ctx.NPCId, TargetGuildId);
+
+		UTeamInfo* VerifyTeamInfo = ResolveLiveTeamInfo(Ctx);
+		if (!VerifyTeamInfo || !IsSafeLiveObject(static_cast<UObject*>(VerifyTeamInfo)))
+			return false;
+		if (VerifyTeamInfo->GuildId != TargetGuildId)
+			VerifyTeamInfo->GuildId = TargetGuildId;
+		return VerifyTeamInfo->GuildId == TargetGuildId;
+	}
+
+	void PollTab0RoleDropdowns(APlayerController* PC, bool bTab0Active)
+	{
+		if (!bTab0Active)
+			return;
+
+		// 检测角色选择下拉框的变化
+		if (GTab0RoleSelectDD && IsValidTab0Dropdown(GTab0RoleSelectDD))
+		{
+			int32 CurRoleIdx = GetComboSelectedIndexFast(GTab0RoleSelectDD->CB_Main);
+			if (CurRoleIdx >= 0 && CurRoleIdx != GTab0LastSelectedRoleIdx)
+			{
+				GTab0SelectedRoleIdx = CurRoleIdx;
+				GTab0LastSelectedRoleIdx = CurRoleIdx;
+				// 角色切换时刷新所有数值
+				RefreshTab0BindingsText(PC);
+				// 重置倍率滑块的值，以便重新读取
+				GTab0MoneyMultiplierLastPercent = -1.0f;
+				GTab0SkillExpMultiplierLastPercent = -1.0f;
+				GTab0ManaCostMultiplierLastPercent = -1.0f;
+				// 输出选中的角色信息
+				if (CurRoleIdx >= 0 && CurRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
+				{
+					int32 SelectedNPCId = GTab0RoleSelectNPCIds[CurRoleIdx];
+					const std::wstring& SelectedName = GTab0RoleSelectNames[CurRoleIdx];
+					std::wcout << L"[SDK] Tab0 Role changed: index=" << CurRoleIdx
+					          << L", NPCId=" << SelectedNPCId
+					          << L", name=" << SelectedName.c_str() << L"\n";
+				}
+			}
+		}
+		else
+		{
+			// 角色选择下拉框不可用，静默处理
+		}
+
+		auto ReadIndex = [](UBPVE_JHConfigVideoItem2_C* Item) -> int32
+		{
+			if (!IsValidTab0Dropdown(Item))
+				return -1;
+			return GetComboSelectedIndexFast(Item->CB_Main);
+		};
+
+		const int32 CurExtraIdx = ReadIndex(GTab0ExtraNeiGongLimitDD);
+		const int32 CurGuildIdx = ReadIndex(GTab0GuildDD);
+
+		if (CurExtraIdx < 0 && CurGuildIdx < 0)
+			return;
+
+		RefreshTab0GuildDropdownOptionsIfNeeded(PC, false);
+
+		if (GTab0ExtraNeiGongLimitLastIdx < 0 && CurExtraIdx >= 0)
+			GTab0ExtraNeiGongLimitLastIdx = CurExtraIdx;
+		if (GTab0GuildLastIdx < 0 && CurGuildIdx >= 0)
+			GTab0GuildLastIdx = CurGuildIdx;
+
+		const bool ExtraChanged = (CurExtraIdx >= 0 && CurExtraIdx != GTab0ExtraNeiGongLimitLastIdx);
+		const bool GuildChanged = (CurGuildIdx >= 0 && CurGuildIdx != GTab0GuildLastIdx);
+		if (!ExtraChanged && !GuildChanged)
+			return;
+
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+		if (ExtraChanged)
+		{
+			const int32 PrevIdx = GTab0ExtraNeiGongLimitLastIdx;
+			const bool Ok = ApplyTab0ExtraNeiGongLimitSelection(Ctx, CurExtraIdx);
+			if (Ok)
+			{
+				GTab0ExtraNeiGongLimitLastIdx = ClampTab0ExtraNeiGongLimit(CurExtraIdx);
+				std::cout << "[SDK][Tab0Role] ExtraNeiGongLimit changed npcId=" << Ctx.NPCId
+					<< " prevIdx=" << PrevIdx << " newIdx=" << GTab0ExtraNeiGongLimitLastIdx << "\n";
+			}
+			else if (IsValidTab0Dropdown(GTab0ExtraNeiGongLimitDD))
+			{
+				GTab0ExtraNeiGongLimitDD->CB_Main->SetSelectedIndex(
+					ClampComboIndex(GTab0ExtraNeiGongLimitDD->CB_Main, GTab0ExtraNeiGongLimitLastIdx));
+				std::cout << "[SDK][Tab0Role] ExtraNeiGongLimit apply failed, rollback idx="
+					<< GTab0ExtraNeiGongLimitLastIdx << " npcId=" << Ctx.NPCId << "\n";
+			}
+		}
+
+		if (GuildChanged)
+		{
+			const int32 PrevIdx = GTab0GuildLastIdx;
+			const bool Ok = ApplyTab0GuildSelection(Ctx, CurGuildIdx);
+			if (Ok)
+			{
+				GTab0GuildLastIdx = CurGuildIdx;
+				std::cout << "[SDK][Tab0Role] Guild changed npcId=" << Ctx.NPCId
+					<< " prevIdx=" << PrevIdx << " newIdx=" << GTab0GuildLastIdx << "\n";
+			}
+			else if (IsValidTab0Dropdown(GTab0GuildDD))
+			{
+				GTab0GuildDD->CB_Main->SetSelectedIndex(
+					ClampComboIndex(GTab0GuildDD->CB_Main, GTab0GuildLastIdx));
+				std::cout << "[SDK][Tab0Role] Guild apply failed, rollback idx="
+					<< GTab0GuildLastIdx << " npcId=" << Ctx.NPCId << "\n";
+			}
+		}
+	}
+
+	float GetVolumeItemPercent(UBPVE_JHConfigVolumeItem2_C* Item)
+	{
+		if (!Item || !Item->VolumeSlider || !IsSafeLiveObject(static_cast<UObject*>(Item->VolumeSlider)))
+			return -1.0f;
+
+		USlider* Slider = Item->VolumeSlider;
+		float CurValue = Slider->GetValue();
+		if (CurValue < 1.0f) CurValue = 1.0f;
+		if (CurValue > 10.0f) CurValue = 10.0f;
+		return CurValue;
+	}
+
+	void UpdateVolumeItemPercentText(UBPVE_JHConfigVolumeItem2_C* Item, float Percent)
+	{
+		if (!Item || !Item->TXT_CurrentValue || !IsSafeLiveObject(static_cast<UObject*>(Item->TXT_CurrentValue)))
+			return;
+
+		float Clamped = Percent;
+		if (Clamped < 1.0f) Clamped = 1.0f;
+		if (Clamped > 10.0f) Clamped = 10.0f;
+
+		wchar_t Buf[32] = {};
+		swprintf_s(Buf, 32, L"%d", static_cast<int32>(std::round(Clamped)));
+		Item->TXT_CurrentValue->SetText(MakeText(Buf));
+	}
+
+	void SetVolumeItemPercent(UBPVE_JHConfigVolumeItem2_C* Item, float Percent)
+	{
+		if (!Item || !Item->VolumeSlider || !IsSafeLiveObject(static_cast<UObject*>(Item->VolumeSlider)))
+			return;
+		USlider* Slider = Item->VolumeSlider;
+		float ClampedPercent = Percent;
+		if (ClampedPercent < 1.0f) ClampedPercent = 1.0f;
+		if (ClampedPercent > 10.0f) ClampedPercent = 10.0f;
+		Slider->SetValue(ClampedPercent);
+		UpdateVolumeItemPercentText(Item, ClampedPercent);
+	}
+
+	void RemoveVolumeItemFromGlobalPoll(UBPVE_JHConfigVolumeItem2_C* Item)
+	{
+		auto It = std::find(GVolumeItems.begin(), GVolumeItems.end(), Item);
+		if (It == GVolumeItems.end())
+			return;
+		const size_t Idx = static_cast<size_t>(std::distance(GVolumeItems.begin(), It));
+		GVolumeItems.erase(It);
+		if (Idx < GVolumeLastValues.size()) GVolumeLastValues.erase(GVolumeLastValues.begin() + Idx);
+		if (Idx < GVolumeMinusWasPressed.size()) GVolumeMinusWasPressed.erase(GVolumeMinusWasPressed.begin() + Idx);
+		if (Idx < GVolumePlusWasPressed.size()) GVolumePlusWasPressed.erase(GVolumePlusWasPressed.begin() + Idx);
+	}
+
+	void ConfigureTab0RatioSlider(UBPVE_JHConfigVolumeItem2_C* Item)
+	{
+		if (!Item || !Item->VolumeSlider || !IsSafeLiveObject(static_cast<UObject*>(Item->VolumeSlider)))
+			return;
+		USlider* Slider = Item->VolumeSlider;
+		Slider->MinValue = 1.0f;
+		Slider->MaxValue = 10.0f;
+		Slider->StepSize = 1.0f;
+		SetVolumeItemPercent(Item, 1.0f);
+	}
+
+	bool TryReadMultiplierFallbackFromAttrSet(const FTab0HeroContext& Ctx, const wchar_t* AttrName, float* OutValue)
+	{
+		if (!Ctx.AttrSet || !AttrName || !OutValue)
+		{
+			return false;
+		}
+		if (wcscmp(AttrName, L"MoneyMultiplier") == 0)
+		{
+			*OutValue = Ctx.AttrSet->MoneyMultiplier.CurrentValue;
+			return true;
+		}
+		if (wcscmp(AttrName, L"SExpMultiplier") == 0)
+		{
+			*OutValue = Ctx.AttrSet->SExpMultiplier.CurrentValue;
+			return true;
+		}
+		if (wcscmp(AttrName, L"ManaCostMultiplier") == 0)
+		{
+			*OutValue = Ctx.AttrSet->ManaCostMultiplier.CurrentValue;
+			return true;
+		}
+		return false;
+	}
+
+	bool TryWriteMultiplierToAttrSet(const FTab0HeroContext& Ctx, const wchar_t* AttrName, float Target, float* OutAfter)
+	{
+		if (OutAfter)
+			*OutAfter = 0.0f;
+		if (!Ctx.AttrSet || !AttrName || !AttrName[0])
+			return false;
+
+		FGameplayAttributeData* Data = nullptr;
+		if (wcscmp(AttrName, L"MoneyMultiplier") == 0)
+			Data = &Ctx.AttrSet->MoneyMultiplier;
+		else if (wcscmp(AttrName, L"SExpMultiplier") == 0)
+			Data = &Ctx.AttrSet->SExpMultiplier;
+		else if (wcscmp(AttrName, L"ManaCostMultiplier") == 0)
+			Data = &Ctx.AttrSet->ManaCostMultiplier;
+		else
+			return false;
+
+		Data->BaseValue = Target;
+		Data->CurrentValue = Target;
+		if (OutAfter)
+			*OutAfter = Data->CurrentValue;
+		return true;
+	}
+
+	bool TryGetTab0MultiplierPercent(const FTab0HeroContext& Ctx, const wchar_t* AttrName, float* OutPercent)
+	{
+		if (!OutPercent || !AttrName || !AttrName[0])
+		{
+			return false;
+		}
+
+		float RawValue = 0.0f;
+		bool bFound = false;
+
+		FGameplayAttribute Attr{};
+		if (BuildGameplayAttributeByName(AttrName, &Attr) && Ctx.NPCId >= 0)
+		{
+			RawValue = UNPCFuncLib::GetFloatAttribute(Ctx.NPCId, Attr, &bFound);
+			if (bFound)
+			{
+				*OutPercent = RawValue;
+				return true;
+			}
+		}
+		else
+		{
+		}
+
+		if (TryReadMultiplierFallbackFromAttrSet(Ctx, AttrName, &RawValue))
+		{
+			*OutPercent = RawValue;
+			return true;
+		}
+		return false;
+	}
+
+	bool ApplyTab0MultiplierAttribute(const FTab0HeroContext& Ctx, const wchar_t* AttrName, float Percent, const char* LogName)
+	{
+		const float Target = Percent;
+		float Current = 0.0f;
+		const bool HasCurrent = TryReadMultiplierFallbackFromAttrSet(Ctx, AttrName, &Current);
+		if (!HasCurrent)
+		{
+			return false;
+		}
+
+		if (std::fabs(Target - Current) <= 0.0001f)
+		{
+			return true;
+		}
+
+		float After = 0.0f;
+		if (!TryWriteMultiplierToAttrSet(Ctx, AttrName, Target, &After))
+		{
+			return false;
+		}
+
+		const bool Ok = std::fabs(After - Target) <= 0.0001f;
+		return Ok;
+	}
+
+	void PollTab0RatioSliders(APlayerController* PC)
+	{
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+		if (Ctx.NPCId < 0)
+		{
+			return;
+		}
+
+		auto PollOne = [&](UBPVE_JHConfigVolumeItem2_C* Item, float& LastPercent, const wchar_t* AttrName, const char* LogName, bool& MinusWasPressed, bool& PlusWasPressed)
+		{
+			if (!Item || !IsSafeLiveObject(static_cast<UObject*>(Item)))
+			{
+				MinusWasPressed = false;
+				PlusWasPressed = false;
+				return;
+			}
+			auto* Slider = Item->VolumeSlider;
+			if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+			{
+				MinusWasPressed = false;
+				PlusWasPressed = false;
+				return;
+			}
+
+			bool MinusPressed = false;
+			bool PlusPressed = false;
+			if (Item->BTN_Minus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Minus)))
+				MinusPressed = Item->BTN_Minus->IsPressed();
+			if (Item->BTN_Plus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Plus)))
+				PlusPressed = Item->BTN_Plus->IsPressed();
+			const bool MinusClicked = MinusWasPressed && !MinusPressed;
+			const bool PlusClicked = PlusWasPressed && !PlusPressed;
+			MinusWasPressed = MinusPressed;
+			PlusWasPressed = PlusPressed;
+
+			float Percent = GetVolumeItemPercent(Item);
+			if (Percent < 0.0f)
+			{
+				return;
+			}
+
+			if (MinusClicked || PlusClicked)
+			{
+				float Step = Slider->StepSize;
+				if (Step <= 0.0001f)
+					Step = 1.0f;
+				float NewValue = Percent + (PlusClicked ? Step : 0.0f) - (MinusClicked ? Step : 0.0f);
+				SetVolumeItemPercent(Item, NewValue);
+				Percent = GetVolumeItemPercent(Item);
+			}
+
+			UpdateVolumeItemPercentText(Item, Percent);
+
+			if (LastPercent < 0.0f)
+			{
+				LastPercent = Percent;
+				const bool Ok = ApplyTab0MultiplierAttribute(Ctx, AttrName, Percent, LogName);
+				return;
+			}
+
+			if (std::fabs(Percent - LastPercent) >= 0.5f)
+			{
+				const bool Ok = ApplyTab0MultiplierAttribute(Ctx, AttrName, Percent, LogName);
+				LastPercent = Percent;
+			}
+		};
+
+		PollOne(GTab0MoneyMultiplierItem, GTab0MoneyMultiplierLastPercent, L"MoneyMultiplier", "MoneyMultiplier", GTab0MoneyMinusWasPressed, GTab0MoneyPlusWasPressed);
+		PollOne(GTab0SkillExpMultiplierItem, GTab0SkillExpMultiplierLastPercent, L"SExpMultiplier", "SExpMultiplier", GTab0SkillExpMinusWasPressed, GTab0SkillExpPlusWasPressed);
+		PollOne(GTab0ManaCostMultiplierItem, GTab0ManaCostMultiplierLastPercent, L"ManaCostMultiplier", "ManaCostMultiplier", GTab0ManaCostMinusWasPressed, GTab0ManaCostPlusWasPressed);
+	}
+
+	bool TryGetTab0FieldValue(const FTab0HeroContext& Ctx, ETab0Field Field, double* OutValue)
+	{
+		if (!OutValue)
+		{
+			return false;
+		}
+
+		switch (Field)
+		{
+		case ETab0Field::Money:
+			if (!Ctx.ItemManager)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UItemManager::GetMoney fail reason=ItemManagerNull\n";
+				return false;
+			}
+			*OutValue = static_cast<double>(Ctx.ItemManager->GetMoney());
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+				          << " sdk=UItemManager::GetMoney ok value=" << *OutValue << "\n";
+			return true;
+		case ETab0Field::SkillExp:
+		{
+			UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+			if (!LiveTeamInfo)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCFuncLib::GetNPCInfoById fail reason=TeamInfoNull npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+			*OutValue = static_cast<double>(LiveTeamInfo->SkillExp);
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+				          << " sdk=UTeamInfo::SkillExp ok value=" << *OutValue
+				          << " npcId=" << Ctx.NPCId << "\n";
+			return true;
+		}
+		case ETab0Field::JingMaiPoint:
+			if (Ctx.NPCManager && Ctx.NPCId >= 0)
+			{
+				*OutValue = static_cast<double>(Ctx.NPCManager->GetJingMaiPoint(Ctx.NPCId));
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCManager::GetJingMaiPoint ok value=" << *OutValue
+					          << " npcId=" << Ctx.NPCId << "\n";
+				return true;
+			}
+			if (UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx))
+			{
+				*OutValue = static_cast<double>(LiveTeamInfo->JingMaiPoint);
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UTeamInfo::JingMaiPoint(fallback) ok value=" << *OutValue
+					          << " npcId=" << Ctx.NPCId << "\n";
+				return true;
+			}
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+				          << " sdk=UNPCManager::GetJingMaiPoint fail reason=NoManagerOrNoTeamInfo npcId=" << Ctx.NPCId << "\n";
+			return false;
+		case ETab0Field::GuildHonor:
+		{
+			UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+			if (!LiveTeamInfo)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UTeamInfo::GetGuildHonor fail reason=TeamInfoNull npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+			const int32 GuildId = LiveTeamInfo->GuildId;
+			if (GuildId <= 0)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UTeamInfo::GetGuildHonor fail reason=GuildIdInvalid npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+			*OutValue = static_cast<double>(LiveTeamInfo->GetGuildHonor(GuildId));
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+				          << " sdk=UTeamInfo::GetGuildHonor ok value=" << *OutValue
+				          << " npcId=" << Ctx.NPCId << " guildId=" << GuildId << "\n";
+			return true;
+		}
+		case ETab0Field::InheritPoint:
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+				          << " sdk=None fail reason=NotImplemented\n";
+			return false;
+		case ETab0Field::FishingLevelInt:
+		{
+			UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+			if (!LiveTeamInfo || !IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UTeamInfo::FishingLevel fail reason=TeamInfoNull npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+			*OutValue = static_cast<double>(LiveTeamInfo->FishingLevel);
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+				          << " sdk=UTeamInfo::FishingLevel ok value=" << *OutValue
+				          << " npcId=" << Ctx.NPCId << "\n";
+			return true;
+		}
+		default:
+			break;
+		}
+
+		const wchar_t* AttrName = ResolveAttrFieldName(Field);
+		if (AttrName)
+		{
+			float LiveValue = 0.0f;
+			if (Ctx.NPCId >= 0 && TryGetLiveFloatAttribute(Ctx, Field, &LiveValue))
+			{
+				*OutValue = static_cast<double>(LiveValue);
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCFuncLib::GetFloatAttribute ok value=" << *OutValue
+					          << " npcId=" << Ctx.NPCId << "\n";
+				return true;
+			}
+
+			// 读取兜底：实时属性接口失败时回退 AttributeSet，避免 UI 全部显示 -1。
+			if (Ctx.AttrSet)
+			{
+				if (FGameplayAttributeData* AttrData = ResolveAttrData(Ctx.AttrSet, Field))
+				{
+					*OutValue = static_cast<double>(AttrData->CurrentValue);
+					if (kTab0VerboseLog)
+						std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+						          << " sdk=UJHAttributeSet::CurrentValue(fallback) ok value=" << *OutValue
+						          << " npcId=" << Ctx.NPCId << "\n";
+					return true;
+				}
+			}
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Read] field=" << Tab0FieldToString(Field)
+				          << " sdk=UNPCFuncLib::GetFloatAttribute fail reason=NoLiveAndNoAttrSetFallback npcId=" << Ctx.NPCId << "\n";
+			return false;
+		}
+		return false;
+	}
+
+	bool TrySetTab0FieldValue(const FTab0HeroContext& Ctx, ETab0Field Field, double InValue)
+	{
+		switch (Field)
+		{
+		case ETab0Field::Money:
+		{
+			if (!Ctx.ItemManager)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UItemFuncLib::AddMoney fail reason=ItemManagerNull\n";
+				return false;
+			}
+			const int32 Current = Ctx.ItemManager->GetMoney();
+			const int32 Target = RoundToInt(InValue);
+			const int32 Delta = Target - Current;
+			if (Delta != 0)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UItemFuncLib::AddMoney call delta=" << Delta
+					          << " current=" << Current << " target=" << Target << "\n";
+				UItemFuncLib::AddMoney(Delta);
+			}
+			const int32 After = Ctx.ItemManager->GetMoney();
+			if (After != Target)
+			{
+				std::cout << "[SDK] Tab0CommitMoney: mismatch target=" << Target
+				          << " after=" << After << " delta=" << Delta << "\n";
+			}
+			const bool Ok = (After == Target);
+			return Ok;
+		}
+		case ETab0Field::SkillExp:
+		{
+			UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+			if (!LiveTeamInfo || !IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=ResolveLiveTeamInfo fail reason=TeamInfoNull npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+
+			const int32 Target = RoundToInt(InValue);
+			const int32 Current = LiveTeamInfo->SkillExp;
+			const int32 Delta = Target - Current;
+			bool AppliedBySdk = false;
+			if (Delta != 0)
+			{
+				if (Ctx.NPCId >= 0)
+				{
+					if (kTab0VerboseLog)
+						std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+						          << " sdk=USkillFuncLib::AddSkillExp call delta=" << Delta
+						          << " current=" << Current << " target=" << Target
+						          << " npcId=" << Ctx.NPCId << "\n";
+					USkillFuncLib::AddSkillExp(Ctx.NPCId, Delta);
+					AppliedBySdk = true;
+				}
+				else if (kTab0VerboseLog)
+				{
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=USkillFuncLib::AddSkillExp skip reason=NpcIdNegative npcId=" << Ctx.NPCId << "\n";
+				}
+			}
+
+			UTeamInfo* VerifyTeamInfo = nullptr;
+			if (Ctx.NPCId >= 0)
+				VerifyTeamInfo = UNPCFuncLib::GetNPCInfoById(Ctx.NPCId);
+			if (!VerifyTeamInfo || !IsSafeLiveObject(static_cast<UObject*>(VerifyTeamInfo)))
+				VerifyTeamInfo = ResolveLiveTeamInfo(Ctx);
+
+			if ((!VerifyTeamInfo || VerifyTeamInfo->SkillExp != Target) &&
+				LiveTeamInfo && IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+			{
+				LiveTeamInfo->SkillExp = Target;
+				if (Ctx.NPCId >= 0)
+					VerifyTeamInfo = UNPCFuncLib::GetNPCInfoById(Ctx.NPCId);
+				if (!VerifyTeamInfo || !IsSafeLiveObject(static_cast<UObject*>(VerifyTeamInfo)))
+					VerifyTeamInfo = ResolveLiveTeamInfo(Ctx);
+			}
+
+			if (!VerifyTeamInfo || VerifyTeamInfo->SkillExp != Target)
+			{
+				std::cout << "[SDK] Tab0CommitSkillExp: mismatch npcId=" << Ctx.NPCId
+				          << " target=" << Target
+				          << " after=" << (VerifyTeamInfo ? VerifyTeamInfo->SkillExp : -1)
+				          << " delta=" << Delta
+				          << " sdkApplied=" << (AppliedBySdk ? 1 : 0) << "\n";
+			}
+			const bool Ok = VerifyTeamInfo && (VerifyTeamInfo->SkillExp == Target);
+			return Ok;
+		}
+		case ETab0Field::JingMaiPoint:
+		{
+			if (Ctx.NPCId < 0 || !Ctx.NPCManager)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCFuncLib::AddJingMaiPoint fail reason=NpcManagerOrNpcIdInvalid npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+
+			const int32 Target = RoundToInt(InValue);
+			const int32 Current = Ctx.NPCManager->GetJingMaiPoint(Ctx.NPCId);
+			const int32 Delta = Target - Current;
+			if (Delta != 0)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCFuncLib::AddJingMaiPoint call delta=" << Delta
+					          << " current=" << Current << " target=" << Target
+					          << " npcId=" << Ctx.NPCId << "\n";
+				UNPCFuncLib::AddJingMaiPoint(Ctx.NPCId, Delta, false);
+			}
+
+			const int32 AfterDelta = Ctx.NPCManager->GetJingMaiPoint(Ctx.NPCId);
+			if (AfterDelta != Target)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCManager::SetJingMaiPoint call afterDelta=" << AfterDelta
+					          << " target=" << Target << " npcId=" << Ctx.NPCId << "\n";
+				Ctx.NPCManager->SetJingMaiPoint(Ctx.NPCId, Target);
+			}
+			const int32 AfterSet = Ctx.NPCManager->GetJingMaiPoint(Ctx.NPCId);
+			if (AfterSet != Target)
+			{
+				std::cout << "[SDK] Tab0CommitJingMai: mismatch npcId=" << Ctx.NPCId
+				          << " target=" << Target << " after=" << AfterSet
+				          << " delta=" << Delta << "\n";
+			}
+			const bool Ok = (AfterSet == Target);
+			return Ok;
+		}
+		case ETab0Field::GuildHonor:
+		{
+			if (!Ctx.NPCManager)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCManager::ChangeGuildHonor fail reason=NpcManagerNull\n";
+				return false;
+			}
+
+			const int32 Target = RoundToInt(InValue);
+			const int32 EffectiveNPCId = Ctx.NPCId;
+			if (EffectiveNPCId < 0)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCManager::ChangeGuildHonor fail reason=NpcIdInvalid\n";
+				return false;
+			}
+
+			UTeamInfo* LiveTeamInfo = UNPCFuncLib::GetNPCInfoById(EffectiveNPCId);
+			if (!LiveTeamInfo)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCFuncLib::GetNPCInfoById fail reason=TeamInfoNull npcId=" << EffectiveNPCId << "\n";
+				return false;
+			}
+
+			const int32 GuildId = LiveTeamInfo->GuildId;
+			if (GuildId <= 0)
+			{
+				return false;
+			}
+
+			const int32 Current = LiveTeamInfo->GetGuildHonor(GuildId);
+			const int32 Delta = Target - Current;
+			if (Delta != 0)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCManager::ChangeGuildHonor call delta=" << Delta
+					          << " current=" << Current << " target=" << Target
+					          << " npcId=" << EffectiveNPCId << " guildId=" << GuildId << "\n";
+				Ctx.NPCManager->ChangeGuildHonor(EffectiveNPCId, GuildId, Delta);
+			}
+
+			UTeamInfo* VerifyTeamInfo = UNPCFuncLib::GetNPCInfoById(EffectiveNPCId);
+			if (!VerifyTeamInfo || VerifyTeamInfo->GetGuildHonor(GuildId) != Target)
+			{
+				const int32 After = VerifyTeamInfo ? VerifyTeamInfo->GetGuildHonor(GuildId) : -1;
+				std::cout << "[SDK] Tab0CommitGuildHonor: mismatch npcId=" << EffectiveNPCId
+				          << " guildId=" << GuildId
+				          << " target=" << Target << " after=" << After
+				          << " delta=" << Delta << "\n";
+			}
+			const bool Ok = VerifyTeamInfo && (VerifyTeamInfo->GetGuildHonor(GuildId) == Target);
+			return Ok;
+		}
+		case ETab0Field::InheritPoint:
+			return false;
+		case ETab0Field::FishingLevelInt:
+		{
+			UTeamInfo* LiveTeamInfo = ResolveLiveTeamInfo(Ctx);
+			if (!LiveTeamInfo || !IsSafeLiveObject(static_cast<UObject*>(LiveTeamInfo)))
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UTeamInfo::FishingLevel fail reason=TeamInfoNull npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+
+			const int32 Target = RoundToInt(InValue);
+			LiveTeamInfo->FishingLevel = Target;
+			const int32 After = LiveTeamInfo->FishingLevel;
+			const bool Ok = (After == Target);
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+				          << " sdk=UTeamInfo::FishingLevel set target=" << Target
+				          << " after=" << After << " npcId=" << Ctx.NPCId << "\n";
+			return Ok;
+		}
+		default:
+			break;
+		}
+
+		const float TargetFloat = static_cast<float>(InValue);
+		const wchar_t* AttrName = ResolveAttrFieldName(Field);
+		if (AttrName)
+		{
+			if (Ctx.NPCId < 0)
+			{
+				if (kTab0VerboseLog)
+					std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+					          << " sdk=UNPCFuncLib::AddFloatAttribute fail reason=NpcIdInvalid\n";
+				return false;
+			}
+
+			float Current = 0.0f;
+			bool HasCurrent = TryGetLiveFloatAttribute(Ctx, Field, &Current);
+			bool UsedAttrSetFallback = false;
+			FGameplayAttributeData* AttrData = nullptr;
+			if (!HasCurrent && Ctx.AttrSet)
+			{
+				AttrData = ResolveAttrData(Ctx.AttrSet, Field);
+				if (AttrData)
+				{
+					Current = AttrData->CurrentValue;
+					HasCurrent = true;
+					UsedAttrSetFallback = true;
+				}
+			}
+			if (!HasCurrent)
+			{
+				std::cout << "[SDK] Tab0CommitLiveAttr: get current failed, field="
+				          << static_cast<int32>(Field) << " npcId=" << Ctx.NPCId << "\n";
+				return false;
+			}
+
+			const float Delta = TargetFloat - Current;
+			bool AppliedLive = false;
+			if (std::fabs(Delta) > 0.0001f)
+				AppliedLive = TryAddLiveFloatAttributeDelta(Ctx, Field, Delta);
+			else
+				AppliedLive = true;
+			if (kTab0VerboseLog)
+				std::cout << "[SDK][Tab0Write] field=" << Tab0FieldToString(Field)
+				          << " sdk=UNPCFuncLib::AddFloatAttribute call delta=" << Delta
+				          << " current=" << Current << " target=" << TargetFloat
+				          << " npcId=" << Ctx.NPCId << " applied=" << (AppliedLive ? 1 : 0)
+				          << " currentSource=" << (UsedAttrSetFallback ? "AttrSet" : "Live") << "\n";
+
+			float LiveAfter = 0.0f;
+			bool LiveReadbackOk = TryGetLiveFloatAttribute(Ctx, Field, &LiveAfter);
+			if (AppliedLive && LiveReadbackOk && std::fabs(LiveAfter - TargetFloat) <= 0.5f)
+			{
+				return true;
+			}
+
+			if (!AttrData && Ctx.AttrSet)
+				AttrData = ResolveAttrData(Ctx.AttrSet, Field);
+			if (AttrData)
+			{
+				AttrData->BaseValue = TargetFloat;
+				AttrData->CurrentValue = TargetFloat;
+				const float After = AttrData->CurrentValue;
+				const bool Ok = std::fabs(After - TargetFloat) <= 0.0001f;
+				if (!Ok)
+				{
+					std::cout << "[SDK] Tab0CommitLiveAttr: attrset fallback mismatch, field="
+					          << static_cast<int32>(Field) << " npcId=" << Ctx.NPCId
+					          << " target=" << TargetFloat << " after=" << After << "\n";
+				}
+				return Ok;
+			}
+
+			std::cout << "[SDK] Tab0CommitLiveAttr: apply/readback failed without attrset fallback, field="
+			          << static_cast<int32>(Field) << " npcId=" << Ctx.NPCId
+			          << " delta=" << Delta << "\n";
+			return false;
+		}
+		return false;
+	}
+
+	void RefreshTab0BindingsText(APlayerController* PC)
+	{
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+		for (auto& Binding : GTab0Bindings)
+		{
+			if (!Binding.Edit || !IsSafeLiveObject(static_cast<UObject*>(Binding.Edit)))
+				continue;
+
+			double Value = 0.0;
+			std::wstring Text = L"-1";
+			if (TryGetTab0FieldValue(Ctx, Binding.Field, &Value))
+				Text = FormatNumericText(Value, Binding.bInteger);
+			Binding.Edit->SetText(MakeText(Text.c_str()));
+		}
+	}
+
+	void RegisterTab0Binding(const wchar_t* Title, UWidget* RowRoot, APlayerController* PC)
+	{
+		ETab0Field Field{};
+		bool bInteger = true;
+		if (!ResolveTab0FieldByTitle(Title, &Field, &bInteger))
+		{
+			return;
+		}
+
+		UEditableTextBox* Edit = FindFirstEditableTextBox(RowRoot);
+		if (!Edit)
+		{
+			return;
+		}
+
+		auto Existing = std::find_if(
+			GTab0Bindings.begin(),
+			GTab0Bindings.end(),
+			[Edit](const FTab0Binding& B) { return B.Edit == Edit; });
+		if (Existing != GTab0Bindings.end())
+		{
+			return;
+		}
+
+		GTab0Bindings.push_back(FTab0Binding{ Field, Edit, Title, bInteger });
+
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+		double Value = 0.0;
+		std::wstring Text = L"-1";
+		if (TryGetTab0FieldValue(Ctx, Field, &Value))
+			Text = FormatNumericText(Value, bInteger);
+		Edit->SetText(MakeText(Text.c_str()));
+	}
+
+	void RefreshSingleTab0BindingText(const FTab0Binding& Binding, APlayerController* PC)
+	{
+		if (!Binding.Edit || !IsSafeLiveObject(static_cast<UObject*>(Binding.Edit)))
+			return;
+
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+		double Value = 0.0;
+		std::wstring Text = L"-1";
+		if (TryGetTab0FieldValue(Ctx, Binding.Field, &Value))
+			Text = FormatNumericText(Value, Binding.bInteger);
+		Binding.Edit->SetText(MakeText(Text.c_str()));
+	}
+
+	FTab0Binding* FindTab0BindingByEdit(UEditableTextBox* Edit)
+	{
+		if (!Edit)
+			return nullptr;
+		auto It = std::find_if(
+			GTab0Bindings.begin(),
+			GTab0Bindings.end(),
+			[Edit](const FTab0Binding& B) { return B.Edit == Edit; });
+		return (It != GTab0Bindings.end()) ? &(*It) : nullptr;
+	}
+
+	void DumpTab0InitSnapshot(APlayerController* PC)
+	{
+		GTab0InitTraceEnabled = true;
+
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+
+		for (const auto& Binding : GTab0Bindings)
+		{
+			double Value = -1.0;
+			const bool Ok = TryGetTab0FieldValue(Ctx, Binding.Field, &Value);
+		}
+
+		auto DumpRatio = [&](const wchar_t* AttrName, const char* FieldName, UBPVE_JHConfigVolumeItem2_C* Item)
+		{
+			float Percent = -1.0f;
+			const bool Ok = TryGetTab0MultiplierPercent(Ctx, AttrName, &Percent);
+			const float UiPercent = GetVolumeItemPercent(Item);
+		};
+
+		DumpRatio(L"MoneyMultiplier", "MoneyMultiplier", GTab0MoneyMultiplierItem);
+		DumpRatio(L"SExpMultiplier", "SExpMultiplier", GTab0SkillExpMultiplierItem);
+		DumpRatio(L"ManaCostMultiplier", "ManaCostMultiplier", GTab0ManaCostMultiplierItem);
+
+		GTab0InitTraceEnabled = false;
+	}
+}
+
+
+#include "Tabs/Pages/Tab0Character.inl"
+#include "Tabs/Pages/Tab1Items.inl"
+#include "Tabs/Pages/Tab2Battle.inl"
+#include "Tabs/Pages/Tab3Life.inl"
+#include "Tabs/Pages/Tab4Social.inl"
+#include "Tabs/Pages/Tab5System.inl"
+#include "Tabs/Pages/Tab6Teammates.inl"
+#include "Tabs/Pages/Tab7Quests.inl"

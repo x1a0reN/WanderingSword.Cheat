@@ -13,6 +13,12 @@
     <Filter Include="Utility">
       <UniqueIdentifier>{a1b2c3d4-1111-2222-3333-444455558888}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Widget\Tabs">
+      <UniqueIdentifier>{2e3b1178-9f0c-4c52-8b66-cdb26f4b6ac1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Widget\Tabs\Pages">
+      <UniqueIdentifier>{1d5837d8-7611-4f42-8e12-40cc80542887}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\SDK\Basic.cpp">
@@ -48,63 +54,87 @@
     <ClCompile Include="..\SDK\BPVE_JHConfigVolumeItem2_functions.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
-    <ClCompile Include="Main.cpp">
+    <ClCompile Include="Core\Main.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="CheatState.cpp">
+    <ClCompile Include="Core\CheatState.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="FrameHook.cpp">
+    <ClCompile Include="Core\FrameHook.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="PanelManager.cpp">
+    <ClCompile Include="Widget\PanelManager.cpp">
       <Filter>Widget</Filter>
     </ClCompile>
-    <ClCompile Include="WidgetFactory.cpp">
+    <ClCompile Include="Widget\WidgetFactory.cpp">
       <Filter>Widget</Filter>
     </ClCompile>
-    <ClCompile Include="WidgetUtils.cpp">
+    <ClCompile Include="Widget\WidgetUtils.cpp">
       <Filter>Widget</Filter>
     </ClCompile>
-    <ClCompile Include="TabContent.cpp">
+    <ClCompile Include="Widget\TabContent.cpp">
       <Filter>Widget</Filter>
     </ClCompile>
-    <ClCompile Include="ItemBrowser.cpp">
+    <ClCompile Include="Widget\ItemBrowser.cpp">
       <Filter>Widget</Filter>
     </ClCompile>
-    <ClCompile Include="Logging.cpp">
+    <ClCompile Include="Utility\Logging.cpp">
       <Filter>Utility</Filter>
     </ClCompile>
-    <ClCompile Include="GCManager.cpp">
+    <ClCompile Include="Utility\GCManager.cpp">
       <Filter>Utility</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="CheatState.hpp">
+    <ClInclude Include="Core\CheatState.hpp">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="FrameHook.hpp">
+    <ClInclude Include="Core\FrameHook.hpp">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="PanelManager.hpp">
+    <ClInclude Include="Widget\PanelManager.hpp">
       <Filter>Widget</Filter>
     </ClInclude>
-    <ClInclude Include="WidgetFactory.hpp">
+    <ClInclude Include="Widget\WidgetFactory.hpp">
       <Filter>Widget</Filter>
     </ClInclude>
-    <ClInclude Include="WidgetUtils.hpp">
+    <ClInclude Include="Widget\WidgetUtils.hpp">
       <Filter>Widget</Filter>
     </ClInclude>
-    <ClInclude Include="TabContent.hpp">
+    <ClInclude Include="Widget\TabContent.hpp">
       <Filter>Widget</Filter>
     </ClInclude>
-    <ClInclude Include="ItemBrowser.hpp">
+    <ClInclude Include="Widget\Tabs\Pages\Tab0Character.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\Tabs\Pages\Tab1Items.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\Tabs\Pages\Tab2Battle.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\Tabs\Pages\Tab3Life.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\Tabs\Pages\Tab4Social.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\Tabs\Pages\Tab5System.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\Tabs\Pages\Tab6Teammates.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\Tabs\Pages\Tab7Quests.inl">
+      <Filter>Widget\Tabs\Pages</Filter>
+    </ClInclude>
+    <ClInclude Include="Widget\ItemBrowser.hpp">
       <Filter>Widget</Filter>
     </ClInclude>
-    <ClInclude Include="Logging.hpp">
+    <ClInclude Include="Utility\Logging.hpp">
       <Filter>Utility</Filter>
     </ClInclude>
-    <ClInclude Include="GCManager.hpp">
+    <ClInclude Include="Utility\GCManager.hpp">
       <Filter>Utility</Filter>
     </ClInclude>
     <ClInclude Include="..\VTHook.hpp">

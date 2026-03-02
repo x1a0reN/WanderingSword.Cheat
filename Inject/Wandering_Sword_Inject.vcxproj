@@ -40,7 +40,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <Optimization>MaxSpeed</Optimization>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;$(ProjectDir)Core;$(ProjectDir)Widget;$(ProjectDir)Utility;$(ProjectDir)Widget\Tabs\Pages;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -51,22 +51,22 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;$(ProjectDir)Core;$(ProjectDir)Widget;$(ProjectDir)Utility;$(ProjectDir)Widget\Tabs\Pages;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="CheatState.cpp" />
-    <ClCompile Include="Logging.cpp" />
-    <ClCompile Include="GCManager.cpp" />
-    <ClCompile Include="WidgetUtils.cpp" />
-    <ClCompile Include="WidgetFactory.cpp" />
-    <ClCompile Include="ItemBrowser.cpp" />
-    <ClCompile Include="TabContent.cpp" />
-    <ClCompile Include="PanelManager.cpp" />
-    <ClCompile Include="FrameHook.cpp" />
-    <ClCompile Include="Main.cpp" />
+    <ClCompile Include="Core\CheatState.cpp" />
+    <ClCompile Include="Utility\Logging.cpp" />
+    <ClCompile Include="Utility\GCManager.cpp" />
+    <ClCompile Include="Widget\WidgetUtils.cpp" />
+    <ClCompile Include="Widget\WidgetFactory.cpp" />
+    <ClCompile Include="Widget\ItemBrowser.cpp" />
+    <ClCompile Include="Widget\TabContent.cpp" />
+    <ClCompile Include="Widget\PanelManager.cpp" />
+    <ClCompile Include="Core\FrameHook.cpp" />
+    <ClCompile Include="Core\Main.cpp" />
     <ClCompile Include="..\SDK\Basic.cpp" />
     <ClCompile Include="..\SDK\CoreUObject_functions.cpp" />
     <ClCompile Include="..\SDK\Engine_functions.cpp" />
@@ -82,15 +82,23 @@
 
 
   <ItemGroup>
-    <ClInclude Include="CheatState.hpp" />
-    <ClInclude Include="Logging.hpp" />
-    <ClInclude Include="GCManager.hpp" />
-    <ClInclude Include="WidgetUtils.hpp" />
-    <ClInclude Include="WidgetFactory.hpp" />
-    <ClInclude Include="ItemBrowser.hpp" />
-    <ClInclude Include="TabContent.hpp" />
-    <ClInclude Include="PanelManager.hpp" />
-    <ClInclude Include="FrameHook.hpp" />
+    <ClInclude Include="Core\CheatState.hpp" />
+    <ClInclude Include="Utility\Logging.hpp" />
+    <ClInclude Include="Utility\GCManager.hpp" />
+    <ClInclude Include="Widget\WidgetUtils.hpp" />
+    <ClInclude Include="Widget\WidgetFactory.hpp" />
+    <ClInclude Include="Widget\ItemBrowser.hpp" />
+    <ClInclude Include="Widget\TabContent.hpp" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab0Character.inl" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab1Items.inl" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab2Battle.inl" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab3Life.inl" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab4Social.inl" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab5System.inl" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab6Teammates.inl" />
+    <ClInclude Include="Widget\Tabs\Pages\Tab7Quests.inl" />
+    <ClInclude Include="Widget\PanelManager.hpp" />
+    <ClInclude Include="Core\FrameHook.hpp" />
     <ClInclude Include="..\VTHook.hpp" />
   </ItemGroup>
 
