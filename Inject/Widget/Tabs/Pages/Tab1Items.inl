@@ -439,31 +439,21 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	UListView* BuiltListView = nullptr;
 	bool bUsingPlainTile = false;
 
-	// 优先使用纯 UTileView，避免 BP_ItemGridWDT 在当前版本下出现 entry 不生成的问题。
-	auto* PlainTile = static_cast<UTileView*>(CreateRawWidget(UTileView::StaticClass(), Outer));
-	if (PlainTile && IsSafeLiveObjectOfClass(static_cast<UObject*>(PlainTile), UTileView::StaticClass()))
+	// 使用 BP_ItemGridWDT，确保走游戏原生 WDT 初始化与数据绑定链路。
+	auto* ItemGridTemplate = static_cast<UObject*>(UBP_ItemGridWDT_C::GetDefaultObj());
+	auto* ItemGrid = static_cast<UBP_ItemGridWDT_C*>(
+		CreateRawWidgetFromTemplate(
+			UBP_ItemGridWDT_C::StaticClass(),
+			Outer,
+			ItemGridTemplate,
+			"Tab1.ItemGridWDT"));
+	if (!ItemGrid)
+		ItemGrid = static_cast<UBP_ItemGridWDT_C*>(CreateRawWidget(UBP_ItemGridWDT_C::StaticClass(), Outer));
+	if (ItemGrid && IsSafeLiveObject(static_cast<UObject*>(ItemGrid)))
 	{
-		GridRootWidget = static_cast<UWidget*>(PlainTile);
-		BuiltListView = static_cast<UListView*>(PlainTile);
-		bUsingPlainTile = true;
-	}
-	else
-	{
-		// 回退到 BP_ItemGridWDT。
-		auto* ItemGridTemplate = static_cast<UObject*>(UBP_ItemGridWDT_C::GetDefaultObj());
-		auto* ItemGrid = static_cast<UBP_ItemGridWDT_C*>(
-			CreateRawWidgetFromTemplate(
-				UBP_ItemGridWDT_C::StaticClass(),
-				Outer,
-				ItemGridTemplate,
-				"Tab1.ItemGridWDT"));
-		if (!ItemGrid)
-			ItemGrid = static_cast<UBP_ItemGridWDT_C*>(CreateRawWidget(UBP_ItemGridWDT_C::StaticClass(), Outer));
-		if (ItemGrid && IsSafeLiveObject(static_cast<UObject*>(ItemGrid)))
-		{
-			GridRootWidget = static_cast<UWidget*>(ItemGrid);
-			BuiltListView = static_cast<UListView*>(ItemGrid);
-		}
+		ItemGrid->EVT_InitOnce();
+		GridRootWidget = static_cast<UWidget*>(ItemGrid);
+		BuiltListView = static_cast<UListView*>(ItemGrid);
 	}
 
 	if (GridRootWidget && BuiltListView)
@@ -545,7 +535,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	GItemCurrentPage = 0;
 	FilterItems(0);
-	RefreshItemPage();
+	LOGI_STREAM("Tab1Items") << "[SDK] ItemGrid init deferred: wait Tab8 shown then refresh\n";
 }
 
 namespace

@@ -10,6 +10,7 @@
 #include "WidgetUtils.hpp"
 #include "SDK/BPEntry_Item_classes.hpp"
 #include "SDK/BPEntry_Item_WDT_classes.hpp"
+#include "SDK/BP_ItemGridWDT_classes.hpp"
 #include "SDK/BPVE_JHTips_Item_classes.hpp"
 #include "SDK/BPVE_TipsBlock_classes.hpp"
 #include "Logging.hpp"
@@ -20,6 +21,7 @@ namespace
 	std::vector<UItemInfoSpec*> GCurrentPageSpecs;
 	constexpr int32 kItemTipZOrder = 20050;
 	constexpr bool kVerboseItemHoverLogs = false;
+	constexpr bool kVerboseItemFeedLogs = false;
 	constexpr float kItemTipDefaultWidth = 520.0f;
 	constexpr float kItemTipDefaultHeight = 420.0f;
 	constexpr float kItemTipMouseOffset = 18.0f;
@@ -71,6 +73,159 @@ namespace
 			return UGameplayStatics::GetGameInstance(PC);
 
 		return World->OwningGameInstance;
+	}
+
+	constexpr uintptr_t kNeoTileInitWeakOffsetA = 0x388;
+	constexpr uintptr_t kNeoTileInitWeakOffsetB = 0x8A0;
+
+	FWeakObjectPtr ReadWeakPtrAt(UObject* Obj, uintptr_t Offset)
+	{
+		FWeakObjectPtr Out{};
+		if (!Obj)
+			return Out;
+		const uint8* Base = reinterpret_cast<const uint8*>(Obj);
+		Out = *reinterpret_cast<const FWeakObjectPtr*>(Base + Offset);
+		return Out;
+	}
+
+	void WriteWeakPtrAt(UObject* Obj, uintptr_t Offset, const FWeakObjectPtr& Value)
+	{
+		if (!Obj)
+			return;
+		uint8* Base = reinterpret_cast<uint8*>(Obj);
+		*reinterpret_cast<FWeakObjectPtr*>(Base + Offset) = Value;
+	}
+
+	bool IsWeakPtrFilled(const FWeakObjectPtr& Weak)
+	{
+		return Weak.ObjectIndex >= 0 && Weak.ObjectSerialNumber > 0;
+	}
+
+	UObject* ResolveWeakPtrLoose(const FWeakObjectPtr& Weak)
+	{
+		if (!IsWeakPtrFilled(Weak))
+			return nullptr;
+		UObject* Obj = Weak.Get();
+		if (!Obj)
+			return nullptr;
+		if (!IsSafeLiveObject(static_cast<UObject*>(Obj)))
+			return nullptr;
+		if (Obj->IsDefaultObject())
+			return nullptr;
+		return Obj;
+	}
+
+	FWeakObjectPtr GCachedEntryInitWeakB{};
+	bool GHasCachedEntryInitWeakB = false;
+
+	void CacheEntryInitWeakB(const FWeakObjectPtr& WeakB)
+	{
+		if (!IsWeakPtrFilled(WeakB))
+			return;
+		GCachedEntryInitWeakB = WeakB;
+		GHasCachedEntryInitWeakB = true;
+	}
+
+	bool HasUsableEntryInitWeakContext(UObject* GridObj)
+	{
+		if (!GridObj)
+			return false;
+		const FWeakObjectPtr B = ReadWeakPtrAt(GridObj, kNeoTileInitWeakOffsetB);
+		return IsWeakPtrFilled(B);
+	}
+
+	void LogEntryInitWeakContext(const char* Stage, UObject* GridObj)
+	{
+		if (!GridObj)
+			return;
+		const FWeakObjectPtr A = ReadWeakPtrAt(GridObj, kNeoTileInitWeakOffsetA);
+		const FWeakObjectPtr B = ReadWeakPtrAt(GridObj, kNeoTileInitWeakOffsetB);
+		UObject* AO = ResolveWeakPtrLoose(A);
+		UObject* BO = ResolveWeakPtrLoose(B);
+		LOGI_STREAM("ItemBrowser")
+			<< "[SDK] ItemGrid entry-init context(" << Stage << "): self=0x"
+			<< std::hex << reinterpret_cast<uintptr_t>(GridObj)
+			<< std::dec
+			<< " A=(" << A.ObjectIndex << "," << A.ObjectSerialNumber << ")"
+			<< " B=(" << B.ObjectIndex << "," << B.ObjectSerialNumber << ")"
+			<< " AObj=0x" << std::hex << reinterpret_cast<uintptr_t>(AO)
+			<< " BObj=0x" << reinterpret_cast<uintptr_t>(BO)
+			<< std::dec
+			<< "\n";
+	}
+
+	bool TryCopyEntryInitWeakContextFromLiveGrid(UObject* DestGridObj)
+	{
+		if (!DestGridObj || !IsSafeLiveObjectOfClass(DestGridObj, UJHNeoUIItemGrid::StaticClass()))
+			return false;
+
+		auto* ObjArray = UObject::GObjects.GetTypedPtr();
+		if (!ObjArray)
+			return false;
+
+		const int32 Num = ObjArray->Num();
+		for (int32 i = 0; i < Num; ++i)
+		{
+			UObject* Candidate = ObjArray->GetByIndex(i);
+			if (!Candidate || Candidate == DestGridObj)
+				continue;
+			if (!IsSafeLiveObjectOfClass(Candidate, UNeoUITileView::StaticClass()))
+				continue;
+			if (Candidate->IsDefaultObject())
+				continue;
+
+			const FWeakObjectPtr A = ReadWeakPtrAt(Candidate, kNeoTileInitWeakOffsetA);
+			const FWeakObjectPtr B = ReadWeakPtrAt(Candidate, kNeoTileInitWeakOffsetB);
+			if (!IsWeakPtrFilled(B))
+				continue;
+
+			if (IsWeakPtrFilled(A))
+				WriteWeakPtrAt(DestGridObj, kNeoTileInitWeakOffsetA, A);
+			WriteWeakPtrAt(DestGridObj, kNeoTileInitWeakOffsetB, B);
+			CacheEntryInitWeakB(B);
+			UObject* BO = ResolveWeakPtrLoose(B);
+			LOGI_STREAM("ItemBrowser")
+				<< "[SDK] ItemGrid entry-init context copied: src=0x"
+				<< std::hex << reinterpret_cast<uintptr_t>(Candidate)
+				<< " dst=0x" << reinterpret_cast<uintptr_t>(DestGridObj)
+				<< " BObj=0x" << reinterpret_cast<uintptr_t>(BO)
+				<< " srcClass=" << Candidate->GetFullName()
+				<< std::dec
+				<< "\n";
+			return true;
+		}
+
+		if (GHasCachedEntryInitWeakB && IsWeakPtrFilled(GCachedEntryInitWeakB))
+		{
+			WriteWeakPtrAt(DestGridObj, kNeoTileInitWeakOffsetB, GCachedEntryInitWeakB);
+			LOGI_STREAM("ItemBrowser")
+				<< "[SDK] ItemGrid entry-init context copied from cache: dst=0x"
+				<< std::hex << reinterpret_cast<uintptr_t>(DestGridObj)
+				<< std::dec
+				<< " B=(" << GCachedEntryInitWeakB.ObjectIndex << "," << GCachedEntryInitWeakB.ObjectSerialNumber << ")\n";
+			return true;
+		}
+
+		return false;
+	}
+
+	void EnsureEntryInitWeakContext(UObject* GridObj)
+	{
+		if (!GridObj || !IsSafeLiveObjectOfClass(GridObj, UJHNeoUIItemGrid::StaticClass()))
+			return;
+
+		LogEntryInitWeakContext("before", GridObj);
+		if (HasUsableEntryInitWeakContext(GridObj))
+		{
+			CacheEntryInitWeakB(ReadWeakPtrAt(GridObj, kNeoTileInitWeakOffsetB));
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemGrid entry-init context already valid\n";
+			return;
+		}
+
+		const bool Copied = TryCopyEntryInitWeakContextFromLiveGrid(GridObj);
+		if (!Copied)
+			LOGE_STREAM("ItemBrowser") << "[SDK] ItemGrid entry-init context repair failed: no live donor grid\n";
+		LogEntryInitWeakContext("after", GridObj);
 	}
 
 	UTexture2D* ResolveTextureFromSoftData(const uint8* SoftTextureData28)
@@ -634,16 +789,54 @@ void RefreshItemPage()
 	}
 	else
 	{
+		const int32 EntryInitBindCountBefore = ListView->BP_OnEntryInitialized.InvocationList.Num();
+		if (EntryInitBindCountBefore <= 0 &&
+			IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UBP_ItemGridWDT_C::StaticClass()))
+		{
+			auto* ItemGridWdt = static_cast<UBP_ItemGridWDT_C*>(ListView);
+			// BP 反编译显示 EntryPoint=66 走 BindDelegate(BP_OnEntryInitialized_Event_0) 分支。
+			ItemGridWdt->ExecuteUbergraph_BP_ItemGridWDT(66);
+			ItemGridWdt->EVT_InitOnce();
+		}
+		const int32 EntryInitBindCountAfter = ListView->BP_OnEntryInitialized.InvocationList.Num();
+		LOGI_STREAM("ItemBrowser")
+			<< "[SDK] ItemGrid entry-init delegate binds: before=" << EntryInitBindCountBefore
+			<< " after=" << EntryInitBindCountAfter
+			<< "\n";
+		if (EntryInitBindCountAfter > 0)
+		{
+			const auto& BindList = ListView->BP_OnEntryInitialized.InvocationList;
+			const int32 DumpCount = (BindList.Num() < 3) ? BindList.Num() : 3;
+			for (int32 Bi = 0; Bi < DumpCount; ++Bi)
+			{
+				const FScriptDelegate& D = BindList[Bi];
+				UObject* TargetObj = D.Object.Get();
+				LOGI_STREAM("ItemBrowser")
+					<< "[SDK] ItemGrid entry-init delegate[" << Bi << "]: target=0x"
+					<< std::hex << reinterpret_cast<uintptr_t>(TargetObj)
+					<< " self=0x" << reinterpret_cast<uintptr_t>(ListView)
+					<< std::dec
+					<< " isSelf=" << ((TargetObj == static_cast<UObject*>(ListView)) ? 1 : 0)
+					<< " func=" << D.FunctionName.ToString()
+					<< "\n";
+			}
+		}
+
+		EnsureEntryInitWeakContext(static_cast<UObject*>(ListView));
+
 		for (UItemInfoSpec* Spec : GCurrentPageSpecs)
 		{
 			if (Spec && IsSafeLiveObject(static_cast<UObject*>(Spec)))
 				ClearGCRoot(static_cast<UObject*>(Spec));
 		}
 		GCurrentPageSpecs.clear();
+		ListView->ClearListItems();
 
 		std::vector<int32> PageItemIndices;
 		PageItemIndices.reserve(ITEMS_PER_PAGE);
 		int32 BuiltSlots = 0;
+		int32 SpecCreateFail = 0;
+		int32 SpecInvalidFail = 0;
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 		{
 			const int32 FiltIdx = StartIdx + i;
@@ -656,8 +849,16 @@ void RefreshItemPage()
 
 			const CachedItem& CI = GAllItems[ItemIdx];
 			UItemInfoSpec* Spec = UItemFuncLib::MakeItemInfoSpec(CI.DefId, 1, EItemRandPoolType::None);
-			if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Spec), UItemInfoSpec::StaticClass()))
+			if (!Spec)
+			{
+				++SpecCreateFail;
 				continue;
+			}
+			if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Spec), UItemInfoSpec::StaticClass()))
+			{
+				++SpecInvalidFail;
+				continue;
+			}
 
 			MarkAsGCRoot(static_cast<UObject*>(Spec));
 			GCurrentPageSpecs.push_back(Spec);
@@ -665,15 +866,92 @@ void RefreshItemPage()
 			++BuiltSlots;
 		}
 
-		ListView->ClearListItems();
-		for (UItemInfoSpec* Spec : GCurrentPageSpecs)
+		TAllocatedArray<UObject*> InListItems(ITEMS_PER_PAGE);
+		int32 SpecNonNullAtFeed = 0;
+		int32 SpecLiveAtFeed = 0;
+		int32 SpecClassOkAtFeed = 0;
+		for (int32 SpecIdx = 0; SpecIdx < static_cast<int32>(GCurrentPageSpecs.size()); ++SpecIdx)
 		{
-			if (Spec && IsSafeLiveObject(static_cast<UObject*>(Spec)))
-				ListView->AddItem(static_cast<UObject*>(Spec));
+			UItemInfoSpec* Spec = GCurrentPageSpecs[static_cast<size_t>(SpecIdx)];
+			const bool NonNull = (Spec != nullptr);
+			const bool Live = NonNull && IsSafeLiveObject(static_cast<UObject*>(Spec));
+			const bool ClassOk = NonNull &&
+				IsSafeLiveObjectOfClass(static_cast<UObject*>(Spec), UItemInfoSpec::StaticClass());
+			if (NonNull) ++SpecNonNullAtFeed;
+			if (Live) ++SpecLiveAtFeed;
+			if (ClassOk) ++SpecClassOkAtFeed;
+
+			const int32 BeforeNum = InListItems.Num();
+			// Spec 在创建阶段已做 IsSafeLiveObjectOfClass 校验，这里直接入列，
+			// 避免重复 validity 检查在某些时机导致误判为 invalid。
+			if (Spec)
+				InListItems.Add(static_cast<UObject*>(Spec));
+			const int32 AfterNum = InListItems.Num();
+
+			if (kVerboseItemFeedLogs)
+			{
+				LOGI_STREAM("ItemBrowser")
+					<< "[SDK] ItemGrid feed spec[" << SpecIdx
+					<< "]: ptr=0x" << std::hex << reinterpret_cast<uintptr_t>(Spec) << std::dec
+					<< " nonNull=" << (NonNull ? 1 : 0)
+					<< " live=" << (Live ? 1 : 0)
+					<< " classOk=" << (ClassOk ? 1 : 0)
+					<< " addNum=" << BeforeNum << "->" << AfterNum
+					<< "\n";
+			}
+		}
+		LOGI_STREAM("ItemBrowser")
+			<< "[SDK] ItemGrid feed pre-set: page=" << (GItemCurrentPage + 1)
+			<< "/" << GItemTotalPages
+			<< " builtSlots=" << BuiltSlots
+			<< " specVec=" << GCurrentPageSpecs.size()
+			<< " inListItems=" << InListItems.Num()
+			<< " specNonNullAtFeed=" << SpecNonNullAtFeed
+			<< " specLiveAtFeed=" << SpecLiveAtFeed
+			<< " specClassOkAtFeed=" << SpecClassOkAtFeed
+			<< " specCreateFail=" << SpecCreateFail
+			<< " specInvalidFail=" << SpecInvalidFail
+			<< "\n";
+
+		const TArray<UObject*> InListItemsView = InListItems;
+		ListView->BP_SetListItems(InListItemsView);
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemGrid feed post BP_SetListItems: numItems="
+			<< ListView->GetNumItems() << "\n";
+		if (ListView->GetNumItems() > 0)
+		{
+			UObject* FirstItem = ListView->GetItemAt(0);
+			LOGI_STREAM("ItemBrowser")
+				<< "[SDK] ItemGrid list first item: ptr=0x"
+				<< std::hex << reinterpret_cast<uintptr_t>(FirstItem)
+				<< std::dec
+				<< " classOk="
+				<< (IsSafeLiveObjectOfClass(FirstItem, UItemInfoSpec::StaticClass()) ? 1 : 0)
+				<< "\n";
 		}
 		ListView->ScrollToTop();
 		ListView->RequestRefresh();
 		ListView->RegenerateAllEntries();
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemGrid feed post base refresh: numItems="
+			<< ListView->GetNumItems() << "\n";
+
+		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UNeoUITileView::StaticClass()))
+		{
+			auto* NeoTile = static_cast<UNeoUITileView*>(ListView);
+			NeoTile->ResetAndScrollToTop();
+			ListView->RequestRefresh();
+			ListView->RegenerateAllEntries();
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemGrid feed post NeoTile reset: numItems="
+				<< ListView->GetNumItems() << "\n";
+		}
+		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UJHNeoUIItemGrid::StaticClass()))
+		{
+			auto* ItemGrid = static_cast<UJHNeoUIItemGrid*>(ListView);
+			ItemGrid->EVT_InitOnce();
+			ListView->RequestRefresh();
+			ListView->RegenerateAllEntries();
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemGrid feed post ItemGrid EVT_InitOnce: numItems="
+				<< ListView->GetNumItems() << "\n";
+		}
 		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UNeoUIListView::StaticClass()))
 		{
 			auto* NeoList = static_cast<UNeoUIListView*>(ListView);
@@ -681,14 +959,125 @@ void RefreshItemPage()
 			UJHNeoUIUtilLib::NeoUIListRender(NeoList);
 			ListView->RequestRefresh();
 			ListView->RegenerateAllEntries();
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemGrid feed post NeoUIListRender: numItems="
+				<< ListView->GetNumItems() << "\n";
 		}
 
 		const int32 NumItemsInList = ListView->GetNumItems();
-		const TArray<UUserWidget*> Displayed = ListView->GetDisplayedEntryWidgets();
-		const int32 DisplayedNum = Displayed.Num();
+		TArray<UUserWidget*> Displayed = ListView->GetDisplayedEntryWidgets();
+		int32 DisplayedNum = Displayed.Num();
+		const int32 PoolActiveNum0 = ListView->EntryWidgetPool.ActiveWidgets.Num();
+		const int32 PoolInactiveNum0 = ListView->EntryWidgetPool.InactiveWidgets.Num();
+		if (DisplayedNum == 0 && PoolActiveNum0 > 0)
+		{
+			Displayed = ListView->EntryWidgetPool.ActiveWidgets;
+			DisplayedNum = Displayed.Num();
+			LOGI_STREAM("ItemBrowser")
+				<< "[SDK] ItemGrid displayed fallback: source=EntryWidgetPool.ActiveWidgets"
+				<< " active=" << PoolActiveNum0
+				<< " inactive=" << PoolInactiveNum0
+				<< " displayed=" << DisplayedNum
+				<< "\n";
+		}
+		int32 LayoutRetryCount = 0;
+		if (NumItemsInList > 0 && DisplayedNum == 0)
+		{
+			// 初始化阶段经常先喂数据、后完成布局；补几轮 prepass/refresh 让 entry 真正实例化。
+			for (int32 Retry = 0; Retry < 3 && DisplayedNum == 0; ++Retry)
+			{
+				++LayoutRetryCount;
+				if (GItemGridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+				{
+					GItemGridPanel->ForceLayoutPrepass();
+					UPanelWidget* P0 = GItemGridPanel->GetParent();
+					if (P0 && IsSafeLiveObject(static_cast<UObject*>(P0)))
+					{
+						P0->ForceLayoutPrepass();
+						UPanelWidget* P1 = P0->GetParent();
+						if (P1 && IsSafeLiveObject(static_cast<UObject*>(P1)))
+							P1->ForceLayoutPrepass();
+					}
+				}
+				ListView->ForceLayoutPrepass();
+				ListView->RequestRefresh();
+				ListView->RegenerateAllEntries();
+				Displayed = ListView->GetDisplayedEntryWidgets();
+				DisplayedNum = Displayed.Num();
+				if (DisplayedNum == 0)
+				{
+					const int32 PoolActiveNumRetry = ListView->EntryWidgetPool.ActiveWidgets.Num();
+					const int32 PoolInactiveNumRetry = ListView->EntryWidgetPool.InactiveWidgets.Num();
+					if (PoolActiveNumRetry > 0)
+					{
+						Displayed = ListView->EntryWidgetPool.ActiveWidgets;
+						DisplayedNum = Displayed.Num();
+						LOGI_STREAM("ItemBrowser")
+							<< "[SDK] ItemGrid displayed fallback(retry): source=EntryWidgetPool.ActiveWidgets"
+							<< " active=" << PoolActiveNumRetry
+							<< " inactive=" << PoolInactiveNumRetry
+							<< " displayed=" << DisplayedNum
+							<< "\n";
+					}
+				}
+			}
+
+			const char* ListVis = VisName(ListView->GetVisibility());
+			const char* GridVis = GItemGridPanel ? VisName(GItemGridPanel->GetVisibility()) : "null";
+			const char* ParentVis = "null";
+			if (GItemGridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+			{
+				UPanelWidget* P0 = GItemGridPanel->GetParent();
+				if (P0 && IsSafeLiveObject(static_cast<UObject*>(P0)))
+					ParentVis = VisName(P0->GetVisibility());
+			}
+			LOGI_STREAM("ItemBrowser")
+				<< "[SDK] ItemGrid layout retry: tries=" << LayoutRetryCount
+				<< " numItems=" << NumItemsInList
+				<< " displayedAfter=" << DisplayedNum
+				<< " poolActive=" << ListView->EntryWidgetPool.ActiveWidgets.Num()
+				<< " poolInactive=" << ListView->EntryWidgetPool.InactiveWidgets.Num()
+				<< " listVis=" << ListVis
+				<< " gridVis=" << GridVis
+				<< " parentVis=" << ParentVis
+				<< "\n";
+		}
+		auto HasUsableGridRectForMap = [&]() -> bool
+		{
+			if (!GItemGridPanel || !IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+				return false;
+
+			UObject* WorldCtx = static_cast<UObject*>(UWorld::GetWorld());
+			if (!WorldCtx)
+				WorldCtx = static_cast<UObject*>(GetCurrentGameInstance());
+			if (!WorldCtx)
+				return false;
+
+			const FGeometry GridGeo = GItemGridPanel->GetCachedGeometry();
+			const FVector2D GridSize = USlateBlueprintLibrary::GetLocalSize(GridGeo);
+			if (GridSize.X <= 1.0f || GridSize.Y <= 1.0f)
+				return false;
+
+			FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+			USlateBlueprintLibrary::LocalToViewport(WorldCtx, GridGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+			USlateBlueprintLibrary::LocalToViewport(WorldCtx, GridGeo, GridSize, &PixelBR, &ViewBR);
+
+			const float W = std::fabs(ViewBR.X - ViewTL.X);
+			const float H = std::fabs(ViewBR.Y - ViewTL.Y);
+			return (W > 1.0f && H > 1.0f);
+		};
+		const bool HasGridRectForMap = HasUsableGridRectForMap();
+		const bool CanRunEntryMap = (DisplayedNum > 0) || HasGridRectForMap;
+		if (!CanRunEntryMap)
+		{
+			LOGI_STREAM("ItemBrowser")
+				<< "[SDK] ItemGrid map skipped: reason=no-entry-and-no-grid-rect"
+				<< " numItems=" << NumItemsInList
+				<< " displayed=" << DisplayedNum
+				<< " hasGridRectForMap=0\n";
+		}
 		const int32 MappedNum = static_cast<int32>(PageItemIndices.size());
 
-		auto BindEntryToSlot = [&](int32 Slot, UUserWidget* EntryWidget, int32 ItemIdx) -> bool
+		auto BindEntryToSlot = [&](int32 Slot, UUserWidget* EntryWidget, int32 ItemIdx, UObject* ListItemObj) -> bool
 		{
 			if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
 				return false;
@@ -696,6 +1085,18 @@ void RefreshItemPage()
 				return false;
 			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
 				return false;
+
+			// 强制触发 ListEntry 数据绑定与渲染转换，避免某些 WDT 路径只生成壳子不刷内容。
+			if (ListItemObj && EntryWidget->IsA(IUserObjectListEntry::StaticClass()))
+			{
+				auto* ObjEntry = reinterpret_cast<IUserObjectListEntry*>(EntryWidget);
+				ObjEntry->OnListItemObjectSet(ListItemObj);
+			}
+			if (EntryWidget->IsA(UNeoUIReusableVisualEntryWithDataTransformer::StaticClass()))
+			{
+				auto* ReusableXform = static_cast<UNeoUIReusableVisualEntryWithDataTransformer*>(EntryWidget);
+				ReusableXform->ForceConvertAndRender();
+			}
 
 			GItemSlotItemIndices[Slot] = ItemIdx;
 			GItemSlotEntryWidgets[Slot] = EntryWidget;
@@ -822,7 +1223,10 @@ void RefreshItemPage()
 		const int32 DisplayMapCount = (DisplayedNum < MappedNum) ? DisplayedNum : MappedNum;
 		for (int32 i = 0; i < DisplayMapCount && i < ITEMS_PER_PAGE; ++i)
 		{
-			if (BindEntryToSlot(i, Displayed[i], PageItemIndices[i]))
+			UObject* BindObj = nullptr;
+			if (i >= 0 && i < static_cast<int32>(GCurrentPageSpecs.size()))
+				BindObj = static_cast<UObject*>(GCurrentPageSpecs[static_cast<size_t>(i)]);
+			if (BindEntryToSlot(i, Displayed[i], PageItemIndices[i], BindObj))
 				++SlotCount;
 		}
 
@@ -830,7 +1234,7 @@ void RefreshItemPage()
 		int32 ScanFound = 0;
 		int32 ScanInGrid = 0;
 		int32 OrderMapped = 0;
-		if (SlotCount < MappedNum)
+		if (CanRunEntryMap && SlotCount < MappedNum)
 		{
 			std::unordered_map<UObject*, int32> SpecToSlot;
 			SpecToSlot.reserve(GCurrentPageSpecs.size());
@@ -887,9 +1291,29 @@ void RefreshItemPage()
 						return false;
 					return true;
 				};
+				auto IsWidgetVisibleForScan = [](UWidget* Widget) -> bool
+				{
+					if (!Widget || !IsSafeLiveObject(static_cast<UObject*>(Widget)))
+						return false;
+					const ESlateVisibility V = Widget->GetVisibility();
+					return (V == ESlateVisibility::Visible ||
+						V == ESlateVisibility::HitTestInvisible ||
+						V == ESlateVisibility::SelfHitTestInvisible);
+				};
 
 				ViewRect GridRect{};
 				const bool HasGridRect = TryGetViewportRect(static_cast<UWidget*>(GItemGridPanel), GridRect);
+				struct CandidateDiagStats
+				{
+					int32 InputTotal = 0;
+					int32 RejectedDead = 0;
+					int32 RejectedInvisible = 0;
+					int32 RejectedDuplicate = 0;
+					int32 RejectedNoRect = 0;
+					int32 RejectedOutOfGrid = 0;
+					int32 Accepted = 0;
+					int32 RejectedDetailLogCount = 0;
+				} Diag{};
 
 				TArray<UUserWidget*> FoundWdtEntries;
 				TArray<UUserWidget*> FoundLegacyEntries;
@@ -908,28 +1332,89 @@ void RefreshItemPage()
 				CandidateEntries.reserve(static_cast<size_t>(ScanFound));
 				auto PushCandidate = [&](UUserWidget* W)
 				{
+					++Diag.InputTotal;
 					if (!IsSafeLiveObject(static_cast<UObject*>(W)))
+					{
+						++Diag.RejectedDead;
 						return;
+					}
+					if (!IsWidgetVisibleForScan(static_cast<UWidget*>(W)))
+					{
+						++Diag.RejectedInvisible;
+						return;
+					}
 
 					const uintptr_t Key = reinterpret_cast<uintptr_t>(W);
 					if (SeenEntries.find(Key) != SeenEntries.end())
+					{
+						++Diag.RejectedDuplicate;
 						return;
+					}
 					SeenEntries.insert(Key);
 
 					if (HasGridRect)
 					{
 						ViewRect EntryRect{};
 						if (!TryGetViewportRect(static_cast<UWidget*>(W), EntryRect))
+						{
+							++Diag.RejectedNoRect;
+							if (Diag.RejectedDetailLogCount < 8)
+							{
+								++Diag.RejectedDetailLogCount;
+								LOGI_STREAM("ItemBrowser")
+									<< "[SDK] ItemGrid scan reject(no-rect): entry=0x"
+									<< std::hex << Key << std::dec << "\n";
+							}
 							return;
+						}
 						if (!IntersectsRect(GridRect, EntryRect))
+						{
+							++Diag.RejectedOutOfGrid;
+							if (Diag.RejectedDetailLogCount < 8)
+							{
+								++Diag.RejectedDetailLogCount;
+								LOGI_STREAM("ItemBrowser")
+									<< "[SDK] ItemGrid scan reject(out-grid): entry=0x"
+									<< std::hex << Key << std::dec
+									<< " entryRect=(" << EntryRect.MinX << "," << EntryRect.MinY
+									<< ")-(" << EntryRect.MaxX << "," << EntryRect.MaxY << ")"
+									<< " gridRect=(" << GridRect.MinX << "," << GridRect.MinY
+									<< ")-(" << GridRect.MaxX << "," << GridRect.MaxY << ")"
+									<< "\n";
+							}
 							return;
+						}
 					}
 
+					++Diag.Accepted;
 					CandidateEntries.push_back(W);
 				};
 				for (UUserWidget* W : FoundWdtEntries) PushCandidate(W);
 				for (UUserWidget* W : FoundLegacyEntries) PushCandidate(W);
 				ScanInGrid = static_cast<int32>(CandidateEntries.size());
+				LOGI_STREAM("ItemBrowser")
+					<< "[SDK] ItemGrid scan detail: foundWdt=" << FoundWdtEntries.Num()
+					<< " foundLegacy=" << FoundLegacyEntries.Num()
+					<< " hasGridRect=" << (HasGridRect ? 1 : 0)
+					<< " listVis=" << VisName(ListView->GetVisibility())
+					<< " gridVis=" << (GItemGridPanel ? VisName(GItemGridPanel->GetVisibility()) : "null")
+					<< "\n";
+				if (HasGridRect)
+				{
+					LOGI_STREAM("ItemBrowser")
+						<< "[SDK] ItemGrid scan gridRect: ("
+						<< GridRect.MinX << "," << GridRect.MinY << ")-("
+						<< GridRect.MaxX << "," << GridRect.MaxY << ")\n";
+				}
+				LOGI_STREAM("ItemBrowser")
+					<< "[SDK] ItemGrid scan filter: input=" << Diag.InputTotal
+					<< " accepted=" << Diag.Accepted
+					<< " dead=" << Diag.RejectedDead
+					<< " invisible=" << Diag.RejectedInvisible
+					<< " duplicate=" << Diag.RejectedDuplicate
+					<< " noRect=" << Diag.RejectedNoRect
+					<< " outOfGrid=" << Diag.RejectedOutOfGrid
+					<< "\n";
 
 				for (UUserWidget* Entry : CandidateEntries)
 				{
@@ -947,7 +1432,10 @@ void RefreshItemPage()
 						continue;
 
 					const int32 ItemIdx = PageItemIndices[static_cast<size_t>(Slot)];
-					if (BindEntryToSlot(Slot, Entry, ItemIdx))
+					UObject* BindObj = nullptr;
+					if (Slot >= 0 && Slot < static_cast<int32>(GCurrentPageSpecs.size()))
+						BindObj = static_cast<UObject*>(GCurrentPageSpecs[static_cast<size_t>(Slot)]);
+					if (BindEntryToSlot(Slot, Entry, ItemIdx, BindObj))
 					{
 						SlotUsed[Slot] = true;
 						++ScanMapped;
@@ -1000,7 +1488,10 @@ void RefreshItemPage()
 							break;
 
 						const int32 ItemIdx = PageItemIndices[static_cast<size_t>(OrderIdx)];
-						if (BindEntryToSlot(OrderIdx, P.Entry, ItemIdx))
+						UObject* BindObj = nullptr;
+						if (OrderIdx >= 0 && OrderIdx < static_cast<int32>(GCurrentPageSpecs.size()))
+							BindObj = static_cast<UObject*>(GCurrentPageSpecs[static_cast<size_t>(OrderIdx)]);
+						if (BindEntryToSlot(OrderIdx, P.Entry, ItemIdx, BindObj))
 						{
 							SlotUsed[OrderIdx] = true;
 							++OrderMapped;
@@ -1017,6 +1508,7 @@ void RefreshItemPage()
 			<< " dataSlots=" << BuiltSlots
 			<< " listItems=" << NumItemsInList
 			<< " displayedEntries=" << DisplayedNum
+			<< " hasGridRectForMap=" << (HasGridRectForMap ? 1 : 0)
 			<< " mappedEntries=" << (SlotCount + ScanMapped + OrderMapped)
 			<< " scanFound=" << ScanFound
 			<< " scanInGrid=" << ScanInGrid
@@ -1485,6 +1977,39 @@ void PollItemBrowserHoverTips()
 		          << " opacity=" << GItemHoverTipsWidget->GetRenderOpacity()
 		          << " size=(" << TipsSize.X << "," << TipsSize.Y << ")\n";
 	}
+}
+
+void OnItemBrowserTabShown()
+{
+	UListView* ListView = GItemListView;
+	if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UListView::StaticClass()))
+		return;
+
+	if (GItemGridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+	{
+		GItemGridPanel->ForceLayoutPrepass();
+		UPanelWidget* P0 = GItemGridPanel->GetParent();
+		if (P0 && IsSafeLiveObject(static_cast<UObject*>(P0)))
+		{
+			P0->ForceLayoutPrepass();
+			UPanelWidget* P1 = P0->GetParent();
+			if (P1 && IsSafeLiveObject(static_cast<UObject*>(P1)))
+				P1->ForceLayoutPrepass();
+		}
+	}
+
+	ListView->ForceLayoutPrepass();
+	ListView->RequestRefresh();
+	ListView->RegenerateAllEntries();
+	EnsureEntryInitWeakContext(static_cast<UObject*>(ListView));
+
+	LOGI_STREAM("ItemBrowser")
+		<< "[SDK] ItemGrid tab-shown pre-refresh: numItems=" << ListView->GetNumItems()
+		<< " gridVis=" << (GItemGridPanel ? VisName(GItemGridPanel->GetVisibility()) : "null")
+		<< " listVis=" << VisName(ListView->GetVisibility())
+		<< "\n";
+
+	RefreshItemPage();
 }
 
 // Clear item browser widget state (called when panel closes)
