@@ -43,9 +43,9 @@ struct CachedItem {
 };
 
 /// 鐗╁搧缃戞牸甯冨眬甯搁噺
-inline constexpr int32 ITEM_GRID_COLS = 6;
-inline constexpr int32 ITEM_GRID_ROWS = 4;
-inline constexpr int32 ITEMS_PER_PAGE = ITEM_GRID_COLS * ITEM_GRID_ROWS; // 24
+inline constexpr int32 ITEM_GRID_COLS = 8;
+inline constexpr int32 ITEM_GRID_ROWS = 5;
+inline constexpr int32 ITEMS_PER_PAGE = ITEM_GRID_COLS * ITEM_GRID_ROWS; // 40
 
 // 鈹€鈹€ Hook 涓庢牳蹇冪姸鎬?鈹€鈹€
 

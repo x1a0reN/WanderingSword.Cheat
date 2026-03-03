@@ -474,7 +474,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemListView), UTileView::StaticClass()))
 		{
 			auto* Tile = static_cast<UTileView*>(GItemListView);
-			Tile->SetEntryWidth(72.0f);
+			// 8 列布局：激进收窄，优先压缩横向占用。
+			Tile->SetEntryWidth(80.0f);
 			Tile->SetEntryHeight(88.0f);
 		}
 
@@ -483,10 +484,13 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (GridHostSize)
 		{
 			// TileView 在 VerticalBox 中若无稳定高度，容易布局塌缩为 0，导致不生成可见 Entry。
-			GridHostSize->SetHeightOverride(420.0f);
+			// 与 EntryWidth/Height 成比例，目标约 8x5 可见格（激进收窄）。
+			GridHostSize->SetWidthOverride(660.0f);
+			GridHostSize->SetHeightOverride(452.0f);
 			GridHostSize->SetContent(GridRootWidget);
 			GridHostWidget = static_cast<UWidget*>(GridHostSize);
 		}
+		GridHostWidget->SetRenderTranslation(FVector2D{ -10.0f, 0.0f });
 
 		if (BrowserBox) BrowserBox->AddChild(GridHostWidget);
 		else Container->AddChild(GridHostWidget);
@@ -535,7 +539,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	GItemCurrentPage = 0;
 	FilterItems(0);
-	LOGI_STREAM("Tab1Items") << "[SDK] ItemGrid init deferred: wait Tab8 shown then refresh\n";
+	RefreshItemPage();
+	LOGI_STREAM("Tab1Items") << "[SDK] ItemGrid init immediate: created and refreshed\n";
 }
 
 namespace

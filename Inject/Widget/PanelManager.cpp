@@ -578,8 +578,6 @@ void ShowDynamicTab(UBPMV_ConfigView2_C* CV, int32 DynIdx)
 
 	if (DynIdx == 8 && GDynTabContent8)
 	{
-		OnItemBrowserTabShown();
-
 		int32 Cnt = GDynTabContent8->GetChildrenCount();
 		UWidget* Child0 = (Cnt > 0) ? GDynTabContent8->GetChildAt(0) : nullptr;
 		LOGI_STREAM("PanelManager") << "[SDK] ShowDynamicTab8: content=" << (void*)GDynTabContent8

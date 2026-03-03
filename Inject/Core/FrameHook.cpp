@@ -1050,6 +1050,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;
 	static UObject* sLastConsumedListSelection = nullptr;
+	static bool sLastLmbDown = false;
 	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
 		const DWORD ItemUiNow = GetTickCount();
@@ -1057,6 +1058,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		if (RunItemUiPoll)
 		{
 			sLastItemUiPollTick = ItemUiNow;
+			const bool LmbDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+			const bool LmbReleased = sLastLmbDown && !LmbDown;
+			sLastLmbDown = LmbDown;
 			PollCollapsiblePanelsInput();
 
 			if (GVolumeLastValues.size() != GVolumeItems.size())
@@ -1224,21 +1228,73 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 					return true;
 				};
 
+				auto GetMouseSlotInGrid = [&]() -> int32
+				{
+					if (!GItemGridPanel || !IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+						return -1;
+
+					UObject* WorldCtx = static_cast<UObject*>(UWorld::GetWorld());
+					if (!WorldCtx)
+						return -1;
+
+					const FGeometry GridGeo = GItemGridPanel->GetCachedGeometry();
+					const FVector2D GridSize = USlateBlueprintLibrary::GetLocalSize(GridGeo);
+					if (GridSize.X <= 1.0f || GridSize.Y <= 1.0f)
+						return -1;
+
+					FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+					USlateBlueprintLibrary::LocalToViewport(WorldCtx, GridGeo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+					USlateBlueprintLibrary::LocalToViewport(WorldCtx, GridGeo, GridSize, &PixelBR, &ViewBR);
+
+					const float MinX = (ViewTL.X < ViewBR.X) ? ViewTL.X : ViewBR.X;
+					const float MaxX = (ViewTL.X > ViewBR.X) ? ViewTL.X : ViewBR.X;
+					const float MinY = (ViewTL.Y < ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+					const float MaxY = (ViewTL.Y > ViewBR.Y) ? ViewTL.Y : ViewBR.Y;
+
+					const FVector2D MouseVP = UWidgetLayoutLibrary::GetMousePositionOnViewport(WorldCtx);
+					if (MouseVP.X < MinX || MouseVP.X > MaxX || MouseVP.Y < MinY || MouseVP.Y > MaxY)
+						return -1;
+
+					const float GridW = MaxX - MinX;
+					const float GridH = MaxY - MinY;
+					if (GridW <= 1.0f || GridH <= 1.0f)
+						return -1;
+
+					const float CellW = GridW / static_cast<float>(ITEM_GRID_COLS);
+					const float CellH = GridH / static_cast<float>(ITEM_GRID_ROWS);
+					const int32 Col = static_cast<int32>((MouseVP.X - MinX) / CellW);
+					const int32 Row = static_cast<int32>((MouseVP.Y - MinY) / CellH);
+					if (Col < 0 || Col >= ITEM_GRID_COLS || Row < 0 || Row >= ITEM_GRID_ROWS)
+						return -1;
+
+					const int32 Slot = Row * ITEM_GRID_COLS + Col;
+					if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
+						return -1;
+					return Slot;
+				};
+
+				const int32 MouseSlotOnRelease = LmbReleased ? GetMouseSlotInGrid() : -1;
+				const bool MouseReleaseOnGrid = (MouseSlotOnRelease >= 0);
+
 				UObject* Selected = GItemListView->BP_GetSelectedItem();
 				const bool SelectionValid = IsSafeLiveObjectOfClass(Selected, UItemInfoSpec::StaticClass());
 				const bool SelectionChanged = SelectionValid && (Selected != sLastConsumedListSelection);
+				bool AddedBySelection = false;
 				if (SelectionChanged)
 				{
-					auto* Spec = static_cast<UItemInfoSpec*>(Selected);
-					const int32 DefId = Spec->ItemDefId;
-					if (DefId > 0)
+					if (LmbReleased && MouseReleaseOnGrid)
 					{
-						const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
-						UItemFuncLib::AddItem(DefId, Quantity);
-						LOGI_STREAM("FrameHook") << "[SDK] AddItem(list-click): defId=" << DefId
-							<< " x" << Quantity << "\n";
+						auto* Spec = static_cast<UItemInfoSpec*>(Selected);
+						const int32 DefId = Spec->ItemDefId;
+						if (DefId > 0)
+						{
+							const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
+							UItemFuncLib::AddItem(DefId, Quantity);
+							LOGI_STREAM("FrameHook") << "[SDK] AddItem(list-left-click): defId=" << DefId
+								<< " x" << Quantity << "\n";
+							AddedBySelection = true;
+						}
 					}
-					GItemListView->BP_ClearSelection();
 					sLastConsumedListSelection = Selected;
 				}
 				else if (!SelectionValid)
@@ -1254,9 +1310,15 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 						continue;
 
 					const bool Pressed = Btn->IsPressed();
-					if (GItemSlotWasPressed[i] && !Pressed)
+					if (LmbReleased && GItemSlotWasPressed[i] && !Pressed && !AddedBySelection)
 						AddItemBySlot(i, "button-edge");
 					GItemSlotWasPressed[i] = Pressed;
+				}
+
+				if (LmbReleased && !AddedBySelection)
+				{
+					if (MouseReleaseOnGrid)
+						AddItemBySlot(MouseSlotOnRelease, "mouse-grid-left-edge");
 				}
 			}
 		}
@@ -1265,12 +1327,12 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	{
 		sLastItemUiPollTick = 0;
 		sLastConsumedListSelection = nullptr;
+		sLastLmbDown = false;
 		GItemPrevWasPressed = false;
 		GItemNextWasPressed = false;
 		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
 			GItemSlotWasPressed[i] = false;
-		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemListView), UListView::StaticClass()))
-			GItemListView->BP_ClearSelection();
+		// Avoid BP_ClearSelection while UMG object is unreachable/destroying.
 	}
 
 	const bool CanReadTab1FromUI =
@@ -1306,7 +1368,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			sLastHoverPollTick = HoverPollNow;
 			// 临时禁用：用于验证物品 Tab 悬浮 Tip 轮询是否为卡顿主因
-			// PollItemBrowserHoverTips();
 		}
 	}
 
