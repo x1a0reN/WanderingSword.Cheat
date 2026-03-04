@@ -22,11 +22,128 @@ namespace
 	constexpr float kSliderTitleOffsetX = -33.5f;
 	constexpr float kSliderTitleOffsetY = 0.0f;
 
+	struct VideoItemBinding
+	{
+		UBPVE_JHConfigVideoItem2_C* Item = nullptr;
+		std::wstring TitleKey;
+	};
+
+	struct VolumeItemBinding
+	{
+		UBPVE_JHConfigVolumeItem2_C* Item = nullptr;
+		std::wstring TitleKey;
+	};
+
+	struct EditBoxBinding
+	{
+		UEditableTextBox* Edit = nullptr;
+		std::wstring TitleKey;
+	};
+
 	std::vector<UVE_JHVideoPanel2_C*> GCollapsiblePanels;
 	std::unordered_map<UVE_JHVideoPanel2_C*, bool> GCollapsibleStates;
 	std::vector<UEditableTextBox*> GNumericOnlyEditBoxes;
 	bool GCollapsibleLmbWasDown = false;
 	UVE_JHVideoPanel2_C* GCollapsiblePressedPanel = nullptr;
+
+	std::vector<VideoItemBinding> GRememberVideoItems;
+	std::vector<VolumeItemBinding> GRememberVolumeItems;
+	std::vector<EditBoxBinding> GRememberEditBoxes;
+
+	std::wstring NormalizeTitleKey(const wchar_t* Title)
+	{
+		if (!Title)
+			return {};
+		std::wstring Key = Title;
+		// 去掉前后空白，避免同名控件因空格不一致导致无法命中记忆
+		while (!Key.empty() && std::iswspace(static_cast<wint_t>(Key.front())))
+			Key.erase(Key.begin());
+		while (!Key.empty() && std::iswspace(static_cast<wint_t>(Key.back())))
+			Key.pop_back();
+		return Key;
+	}
+
+	void RegisterVideoBinding(UBPVE_JHConfigVideoItem2_C* Item, const wchar_t* Title)
+	{
+		if (!Item)
+			return;
+		const std::wstring Key = NormalizeTitleKey(Title);
+		if (Key.empty())
+			return;
+		GRememberVideoItems.push_back({ Item, Key });
+	}
+
+	void RegisterVolumeBinding(UBPVE_JHConfigVolumeItem2_C* Item, const wchar_t* Title)
+	{
+		if (!Item)
+			return;
+		const std::wstring Key = NormalizeTitleKey(Title);
+		if (Key.empty())
+			return;
+		GRememberVolumeItems.push_back({ Item, Key });
+	}
+
+	void RegisterEditBinding(UEditableTextBox* Edit, const wchar_t* Title)
+	{
+		if (!Edit)
+			return;
+		const std::wstring Key = NormalizeTitleKey(Title);
+		if (Key.empty())
+			return;
+		GRememberEditBoxes.push_back({ Edit, Key });
+	}
+
+	void ApplyRememberedComboState(const std::wstring& TitleKey, UComboBoxString* Combo)
+	{
+		if (TitleKey.empty() || !Combo || !IsSafeLiveObject(static_cast<UObject*>(Combo)))
+			return;
+
+		const auto It = GUIRememberState.ComboIndexByTitle.find(TitleKey);
+		if (It == GUIRememberState.ComboIndexByTitle.end())
+			return;
+
+		const int32 OptCount = Combo->GetOptionCount();
+		if (OptCount <= 0)
+			return;
+
+		int32 Index = It->second;
+		if (Index < 0)
+			Index = 0;
+		if (Index >= OptCount)
+			Index = OptCount - 1;
+		Combo->SetSelectedIndex(Index);
+	}
+
+	void ApplyRememberedSliderState(const std::wstring& TitleKey, USlider* Slider)
+	{
+		if (TitleKey.empty() || !Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+			return;
+
+		const auto It = GUIRememberState.SliderValueByTitle.find(TitleKey);
+		if (It == GUIRememberState.SliderValueByTitle.end())
+			return;
+
+		const float MinV = Slider->MinValue;
+		const float MaxV = Slider->MaxValue;
+		float Value = It->second;
+		const float Low = (MinV <= MaxV) ? MinV : MaxV;
+		const float High = (MinV <= MaxV) ? MaxV : MinV;
+		if (Value < Low) Value = Low;
+		if (Value > High) Value = High;
+		Slider->SetValue(Value);
+	}
+
+	void ApplyRememberedEditState(const std::wstring& TitleKey, UEditableTextBox* Edit)
+	{
+		if (TitleKey.empty() || !Edit || !IsSafeLiveObject(static_cast<UObject*>(Edit)))
+			return;
+
+		const auto It = GUIRememberState.EditTextByTitle.find(TitleKey);
+		if (It == GUIRememberState.EditTextByTitle.end())
+			return;
+
+		Edit->SetText(MakeText(It->second.c_str()));
+	}
 }
 void HideTabIcon(UJHNeoUIConfigV2TabBtn* TabBtn)
 {
@@ -302,6 +419,12 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItem(APlayerController* PC, const wchar_t
 	if (Item->IMG_Icon)
 		Item->IMG_Icon->SetVisibility(ESlateVisibility::Collapsed);
 
+	if (Item->CB_Main)
+	{
+		RegisterVideoBinding(Item, Title);
+		ApplyRememberedComboState(NormalizeTitleKey(Title), Item->CB_Main);
+	}
+
 	if (kEnableUICreateLog)
 		LOGI_STREAM("WidgetFactory") << "[SDK] CreateVideoItem: created OK (game binding cleared)\n";
 	return Item;
@@ -316,6 +439,8 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItemWithOptions(
 	if (!Item || !Item->CB_Main)
 		return Item;
 
+	const std::wstring TitleKey = NormalizeTitleKey(Title);
+
 	Item->CB_Main->ClearOptions();
 	for (const wchar_t* Opt : Options)
 		Item->CB_Main->AddOption(FString(Opt));
@@ -323,6 +448,8 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItemWithOptions(
 	// Select first option by default
 	if (Item->CB_Main->GetOptionCount() > 0)
 		Item->CB_Main->SetSelectedIndex(0);
+
+	ApplyRememberedComboState(TitleKey, Item->CB_Main);
 
 	return Item;
 }
@@ -380,6 +507,9 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 		Item->IMG_Icon->SetVisibility(ESlateVisibility::Collapsed);
 
 	GVolumeItems.push_back(Item);
+	RegisterVolumeBinding(Item, Title);
+	ApplyRememberedSliderState(NormalizeTitleKey(Title), Item->VolumeSlider);
+
 	const float InitValue = Item->VolumeSlider ? Item->VolumeSlider->GetValue() : 0.0f;
 	GVolumeLastValues.push_back(InitValue);
 	GVolumeMinusWasPressed.push_back(false);
@@ -496,6 +626,8 @@ namespace
 
 		Edit->SetHintText(MakeText(Hint ? Hint : L""));
 		Edit->SetText(MakeText(InitialText.c_str()));
+		ApplyRememberedEditState(NormalizeTitleKey(Title), Edit);
+		RegisterEditBinding(Edit, Title);
 		Edit->SetJustification(ETextJustify::Right);
 		Edit->MinimumDesiredWidth = 320.0f;
 		Edit->SelectAllTextWhenFocused = true;
@@ -785,6 +917,69 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 	GCollapsibleStates[Panel] = Panel->IsCollapsed;
 
 	return Panel;
+}
+
+void RememberUIControlStatesFromLiveWidgets()
+{
+	// 下拉/开关
+	GRememberVideoItems.erase(
+		std::remove_if(
+			GRememberVideoItems.begin(),
+			GRememberVideoItems.end(),
+			[](const VideoItemBinding& B)
+			{
+				if (!B.Item || !IsSafeLiveObject(static_cast<UObject*>(B.Item)))
+					return true;
+				auto* Combo = B.Item->CB_Main;
+				if (!Combo || !IsSafeLiveObject(static_cast<UObject*>(Combo)))
+					return false;
+				const int32 Idx = Combo->GetSelectedIndex();
+				if (Idx >= 0)
+					GUIRememberState.ComboIndexByTitle[B.TitleKey] = Idx;
+				return false;
+			}),
+		GRememberVideoItems.end());
+
+	// 滑块
+	GRememberVolumeItems.erase(
+		std::remove_if(
+			GRememberVolumeItems.begin(),
+			GRememberVolumeItems.end(),
+			[](const VolumeItemBinding& B)
+			{
+				if (!B.Item || !IsSafeLiveObject(static_cast<UObject*>(B.Item)))
+					return true;
+				auto* Slider = B.Item->VolumeSlider;
+				if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+					return false;
+				GUIRememberState.SliderValueByTitle[B.TitleKey] = Slider->GetValue();
+				return false;
+			}),
+		GRememberVolumeItems.end());
+
+	// 编辑框
+	GRememberEditBoxes.erase(
+		std::remove_if(
+			GRememberEditBoxes.begin(),
+			GRememberEditBoxes.end(),
+			[](const EditBoxBinding& B)
+			{
+				if (!B.Edit || !IsSafeLiveObject(static_cast<UObject*>(B.Edit)))
+					return true;
+				const FText Text = B.Edit->GetText();
+				const FString Raw = UKismetTextLibrary::Conv_TextToString(Text);
+				const wchar_t* WS = Raw.CStr();
+				GUIRememberState.EditTextByTitle[B.TitleKey] = WS ? std::wstring(WS) : std::wstring();
+				return false;
+			}),
+		GRememberEditBoxes.end());
+}
+
+void ResetRuntimeControlStateBindings()
+{
+	GRememberVideoItems.clear();
+	GRememberVolumeItems.clear();
+	GRememberEditBoxes.clear();
 }
 
 void PollCollapsiblePanelsInput()

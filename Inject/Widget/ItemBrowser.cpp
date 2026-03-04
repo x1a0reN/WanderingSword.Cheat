@@ -835,6 +835,8 @@ static void HideCurrentItemTips()
 // Filter items by category, rebuild GFilteredIndices
 void FilterItems(int32 category)
 {
+	GUIRememberState.ItemCategoryIndex = category;
+
 	GFilteredIndices.clear();
 	for (int32 i = 0; i < (int32)GAllItems.size(); i++)
 	{
@@ -877,6 +879,7 @@ void RefreshItemPage()
 		GItemCurrentPage = GItemTotalPages - 1;
 	if (GItemCurrentPage < 0)
 		GItemCurrentPage = 0;
+	GUIRememberState.ItemCurrentPage = GItemCurrentPage;
 
 	const int32 StartIdx = GItemCurrentPage * ITEMS_PER_PAGE;
 	for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
@@ -1902,6 +1905,8 @@ bool RefreshEntryInitContextFromAnchorScan(bool* OutChanged)
 void SetItemSearchEditBox(UEditableTextBox* Edit)
 {
 	GItemSearchEdit = Edit;
+	if (GItemSearchEdit && IsSafeLiveObject(static_cast<UObject*>(GItemSearchEdit)))
+		GItemSearchEdit->SetText(MakeText(GUIRememberState.ItemSearchText.c_str()));
 }
 
 bool UpdateItemSearchKeywordFromEdit()
@@ -1921,6 +1926,7 @@ bool UpdateItemSearchKeywordFromEdit()
 
 	GItemSearchKeyword = NewKeyword;
 	GItemSearchKeywordFolded = FoldSearchText(GItemSearchKeyword);
+	GUIRememberState.ItemSearchText = GItemSearchKeyword;
 	return true;
 }
 

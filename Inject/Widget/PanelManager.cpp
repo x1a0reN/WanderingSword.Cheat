@@ -52,6 +52,8 @@ namespace
 		if (!InternalWidget)
 			return;
 
+		RememberUIControlStatesFromLiveWidgets();
+
 		LOGI_STREAM("PanelManager") << "[SDK] ShowInternalWidget: recreate old widget, reason=" << (Reason ? Reason : "unknown") << "\n";
 
 		if (IsValidUObject(static_cast<UObject*>(InternalWidget)))
@@ -72,9 +74,54 @@ namespace
 		GInternalWidgetOwnerGI = nullptr;
 		ClearRuntimeWidgetState();
 	}
+
+	void RestoreRememberedActiveTab(UBPMV_ConfigView2_C* CV)
+	{
+		if (!CV || !IsSafeLiveObject(static_cast<UObject*>(CV)))
+			return;
+
+		int32 TabIdx = GUIRememberState.LastActiveTabIndex;
+		if (TabIdx < 0 || TabIdx > 8)
+			TabIdx = 0;
+
+		if (TabIdx <= 5)
+		{
+			CV->EVT_SyncTabIndex(TabIdx);
+			ShowOriginalTab(CV);
+
+			if (CV->BTN_Sound)   CV->BTN_Sound->EVT_UpdateActiveStatus(TabIdx == 0);
+			if (CV->BTN_Video)   CV->BTN_Video->EVT_UpdateActiveStatus(TabIdx == 1);
+			if (CV->BTN_Keys)    CV->BTN_Keys->EVT_UpdateActiveStatus(TabIdx == 2);
+			if (CV->BTN_Lan)     CV->BTN_Lan->EVT_UpdateActiveStatus(TabIdx == 3);
+			if (CV->BTN_Others)  CV->BTN_Others->EVT_UpdateActiveStatus(TabIdx == 4);
+			if (CV->BTN_Gamepad) CV->BTN_Gamepad->EVT_UpdateActiveStatus(TabIdx == 5);
+
+			if (GDynTabBtn6) GDynTabBtn6->EVT_UpdateActiveStatus(false);
+			if (GDynTabBtn7) GDynTabBtn7->EVT_UpdateActiveStatus(false);
+			if (GDynTabBtn8) GDynTabBtn8->EVT_UpdateActiveStatus(false);
+
+			LOGI_STREAM("PanelManager") << "[SDK] Restore remembered tab: native=" << TabIdx << "\n";
+			return;
+		}
+
+		// 动态 tab（6/7/8）：原生 Switcher 不支持，直接切动态容器可见性。
+		ShowDynamicTab(CV, TabIdx);
+		if (CV->BTN_Sound)   CV->BTN_Sound->EVT_UpdateActiveStatus(false);
+		if (CV->BTN_Video)   CV->BTN_Video->EVT_UpdateActiveStatus(false);
+		if (CV->BTN_Keys)    CV->BTN_Keys->EVT_UpdateActiveStatus(false);
+		if (CV->BTN_Lan)     CV->BTN_Lan->EVT_UpdateActiveStatus(false);
+		if (CV->BTN_Others)  CV->BTN_Others->EVT_UpdateActiveStatus(false);
+		if (CV->BTN_Gamepad) CV->BTN_Gamepad->EVT_UpdateActiveStatus(false);
+
+		if (GDynTabBtn6) GDynTabBtn6->EVT_UpdateActiveStatus(TabIdx == 6);
+		if (GDynTabBtn7) GDynTabBtn7->EVT_UpdateActiveStatus(TabIdx == 7);
+		if (GDynTabBtn8) GDynTabBtn8->EVT_UpdateActiveStatus(TabIdx == 8);
+		LOGI_STREAM("PanelManager") << "[SDK] Restore remembered tab: dynamic=" << TabIdx << "\n";
+	}
 }
 void ClearRuntimeWidgetState()
 {
+	ResetRuntimeControlStateBindings();
 	ClearItemBrowserState();
 
 	GDynTabBtn6 = nullptr;
@@ -422,6 +469,8 @@ void EnsureMouseCursorVisible()
 }
 void HideInternalWidget(APlayerController* PlayerController)
 {
+	RememberUIControlStatesFromLiveWidgets();
+
 	if (InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)))
 	{
 		if (InternalWidget->IsInViewport())
@@ -449,6 +498,8 @@ void HideInternalWidget(APlayerController* PlayerController)
 }
 void DestroyInternalWidget(APlayerController* PlayerController)
 {
+	RememberUIControlStatesFromLiveWidgets();
+
 	if (InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)) && InternalWidget->IsInViewport())
 		InternalWidget->RemoveFromParent();
 	GCachedBtnExit = nullptr;
@@ -514,6 +565,8 @@ void ShowInternalWidget(APlayerController* PlayerController)
 			InitializeConfigView2BySDK(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
 
 		ApplyConfigView2TextPatch(InternalWidget, PlayerController);
+		if (InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
+			RestoreRememberedActiveTab(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
 		InternalWidget->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
 		InternalWidget->SetRenderScale(FVector2D{ kInternalPanelScale, kInternalPanelScale });
 	}

@@ -1482,6 +1482,23 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	const bool IsItemsTabActive = (ActiveNativeTabIndex == 1);
 	const bool IsCharacterTabActive = (ActiveNativeTabIndex == 0);
+	if (InternalWidgetVisible && LiveConfigView)
+	{
+		int32 RememberTab = ActiveNativeTabIndex;
+		if (GDynTabContent6 && IsSafeLiveObject(static_cast<UObject*>(GDynTabContent6)) &&
+			GDynTabContent6->GetVisibility() != ESlateVisibility::Collapsed)
+			RememberTab = 6;
+		else if (GDynTabContent7 && IsSafeLiveObject(static_cast<UObject*>(GDynTabContent7)) &&
+			GDynTabContent7->GetVisibility() != ESlateVisibility::Collapsed)
+			RememberTab = 7;
+		else if (GDynTabContent8 && IsSafeLiveObject(static_cast<UObject*>(GDynTabContent8)) &&
+			GDynTabContent8->GetVisibility() != ESlateVisibility::Collapsed)
+			RememberTab = 8;
+
+		if (RememberTab < 0 || RememberTab > 8)
+			RememberTab = 0;
+		GUIRememberState.LastActiveTabIndex = RememberTab;
+	}
 
 	// On each HOME show: run anchor scan; rebuild item manager only when ctx changes.
 	if (HomeNeedAnchorCtxRefresh &&
@@ -1555,6 +1572,18 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	ExitWasPressed = ExitPressed;
 
 	// BackpackView ProcessEvent hook path is intentionally disabled.
+
+	// 控件状态记忆（节流），用于下次重建时恢复 UI。
+	if (InternalWidgetVisible && LiveInternalWidget)
+	{
+		static DWORD sLastRememberUiTick = 0;
+		const DWORD Now = GetTickCount();
+		if (sLastRememberUiTick == 0 || (Now - sLastRememberUiTick) >= 80)
+		{
+			sLastRememberUiTick = Now;
+			RememberUIControlStatesFromLiveWidgets();
+		}
+	}
 
 	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;
@@ -1696,6 +1725,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			}
 
 			GItemAddQuantity = GetItemAddQuantityFromEdit();
+			GUIRememberState.ItemAddQuantity = GItemAddQuantity;
 
 			int32 ClickDefId = 0;
 			if (TryConsumeItemEntryClickDefId(ClickDefId))

@@ -175,7 +175,9 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GItemCategoryDD = CreateVideoItemWithOptions(PC,
 		L"\u2501\u2501\u7269\u54C1\u7BA1\u7406\u2501\u2501",
 		{ L"\u5168\u90E8", L"\u6B66\u5668", L"\u9632\u5177", L"\u6D88\u8017\u54C1", L"\u5176\u4ED6" });
-	GItemLastCatIdx = 0;
+	GItemLastCatIdx = GUIRememberState.ItemCategoryIndex;
+	if (GItemLastCatIdx < 0 || GItemLastCatIdx > 4)
+		GItemLastCatIdx = 0;
 
 	GItemQuantityRow = nullptr;
 	if (GItemCategoryDD)
@@ -186,7 +188,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		{
 			SetItemSearchEditBox(SearchEdit);
 			SearchEdit->SetHintText(MakeText(L"\u8F93\u5165\u4EE5\u641C\u7D22..."));
-			SearchEdit->SetText(MakeText(L""));
+			SearchEdit->SetText(MakeText(GUIRememberState.ItemSearchText.c_str()));
 			SearchEdit->SetJustification(ETextJustify::Left);
 			SearchEdit->MinimumDesiredWidth = 380.0f;
 			SearchEdit->SelectAllTextWhenFocused = true;
@@ -538,7 +540,26 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddPanelWithFixedGap(BrowserPanel, 0.0f, 8.0f);
 
 	GItemCurrentPage = 0;
-	FilterItems(0);
+	if (GItemCategoryDD && GItemCategoryDD->CB_Main &&
+		IsSafeLiveObject(static_cast<UObject*>(GItemCategoryDD->CB_Main)))
+	{
+		const int32 OptCount = GItemCategoryDD->CB_Main->GetOptionCount();
+		int32 RestoreIdx = GItemLastCatIdx;
+		if (OptCount <= 0)
+			RestoreIdx = 0;
+		else if (RestoreIdx >= OptCount)
+			RestoreIdx = OptCount - 1;
+		if (RestoreIdx < 0)
+			RestoreIdx = 0;
+		GItemCategoryDD->CB_Main->SetSelectedIndex(RestoreIdx);
+		GItemLastCatIdx = RestoreIdx;
+	}
+
+	GItemCurrentPage = (GUIRememberState.ItemCurrentPage >= 0) ? GUIRememberState.ItemCurrentPage : 0;
+	GItemAddQuantity = (GUIRememberState.ItemAddQuantity > 0) ? GUIRememberState.ItemAddQuantity : 1;
+	UpdateItemSearchKeywordFromEdit();
+
+	FilterItems(GItemLastCatIdx);
 	RefreshItemPage();
 	LOGI_STREAM("Tab1Items") << "[SDK] ItemGrid init immediate: created and refreshed\n";
 }

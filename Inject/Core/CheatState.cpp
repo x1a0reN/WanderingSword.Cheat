@@ -9,6 +9,7 @@ std::atomic<bool> GUnloadCleanupDone = false;
 std::atomic<bool> GHooksRemoved = false;
 std::atomic<bool> GConsoleClosed = false;
 std::atomic<int32> GPostRenderInFlight = 0;
+UIRememberState GUIRememberState{};
 
 // 物品不减功能开关
 std::atomic<bool> GItemNoDecreaseEnabled = false;

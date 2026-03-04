@@ -63,3 +63,9 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(
 
 // 每帧轮询折叠面板标题点击，手动切换展开/收起
 void PollCollapsiblePanelsInput();
+
+/// 读取当前已创建控件的实时状态，写入 GUIRememberState。
+void RememberUIControlStatesFromLiveWidgets();
+
+/// 重建/销毁时清空“当前运行时控件绑定”，保留 GUIRememberState 中的记忆值。
+void ResetRuntimeControlStateBindings();
