@@ -146,15 +146,7 @@ namespace
 
 	struct FTab2RuntimeConfig final
 	{
-		bool DamageBoost = false;
-		bool FriendlyOnly = false;
-		float DamageMultiplier = 2.0f;
-	};
-
-	struct FTab2DamageMultiplierOriginalState final
-	{
-		float BaseValue = 1.0f;
-		float CurrentValue = 1.0f;
+		bool SkillNoCooldown = false;
 	};
 
 	struct FItemRowOriginalState final
@@ -185,7 +177,6 @@ namespace
 	std::unordered_map<uintptr_t, FItemRowOriginalState> GTab1ItemRowOriginals;
 	std::unordered_map<uintptr_t, FDropPoolOriginalState> GTab1DropPoolOriginals;
 	std::unordered_map<uintptr_t, FRandPoolOriginalState> GTab1RandPoolOriginals;
-	std::unordered_map<uintptr_t, FTab2DamageMultiplierOriginalState> GTab2DamageMultiplierOriginals;
 
 	using UObjectProcessEventFn = void(__fastcall*)(const UObject* /* This */, UFunction* /* Function */, void* /* Params */);
 	VTableHook GItemEntryProcessEventHook;
@@ -1316,157 +1307,13 @@ namespace
 		}
 	}
 
-	void RestoreTab2DamageMultiplierOriginals()
-	{
-		for (const auto& KV : GTab2DamageMultiplierOriginals)
-		{
-			auto* Attr = reinterpret_cast<UJHAttributeSet*>(KV.first);
-			if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Attr), UJHAttributeSet::StaticClass()))
-				continue;
-			Attr->DamageMultiplier.BaseValue = KV.second.BaseValue;
-			Attr->DamageMultiplier.CurrentValue = KV.second.CurrentValue;
-		}
-		GTab2DamageMultiplierOriginals.clear();
-	}
-
-	void CaptureTab2DamageMultiplierOriginal(UJHAttributeSet* Attr)
-	{
-		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Attr), UJHAttributeSet::StaticClass()))
-			return;
-
-		const uintptr_t Key = reinterpret_cast<uintptr_t>(Attr);
-		if (GTab2DamageMultiplierOriginals.find(Key) != GTab2DamageMultiplierOriginals.end())
-			return;
-
-		FTab2DamageMultiplierOriginalState State{};
-		State.BaseValue = Attr->DamageMultiplier.BaseValue;
-		State.CurrentValue = Attr->DamageMultiplier.CurrentValue;
-		GTab2DamageMultiplierOriginals.emplace(Key, State);
-	}
-
-	int32 ResolveLocalFightTeamId()
-	{
-		APlayerController* PC = GetFirstLocalPlayerController();
-		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(PC), AJHPlayerController::StaticClass()))
-			return 0;
-
-		auto* JHPC = static_cast<AJHPlayerController*>(PC);
-		AFightNPC* Selected = JHPC->GetSelectedCharacter();
-		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Selected), AFightNPC::StaticClass()))
-			return 0;
-
-		return static_cast<int32>(Selected->TeamId.TeamId);
-	}
-
-	void ApplyTab2DamageBoostFeature(const FTab2RuntimeConfig& Cfg)
-	{
-		const bool InFight = UFightFuncLib::IsInFight();
-		if (!Cfg.DamageBoost || !InFight)
-		{
-			RestoreTab2DamageMultiplierOriginals();
-			return;
-		}
-
-		UObject* WorldContext = static_cast<UObject*>(UWorld::GetWorld());
-		if (!IsSafeLiveObject(WorldContext))
-			return;
-
-		float TargetMultiplier = Cfg.DamageMultiplier;
-		if (TargetMultiplier < 1.0f) TargetMultiplier = 1.0f;
-		if (TargetMultiplier > 10.0f) TargetMultiplier = 10.0f;
-
-		std::unordered_set<uintptr_t> TouchedAttrs;
-		TouchedAttrs.reserve(32);
-
-		auto ApplyToTeam = [&](int32 TeamId)
-		{
-			TArray<AFightNPC*> TeamNPCs{};
-			UFightFuncLib::GetFightNPCsByTeamId(WorldContext, TeamId, &TeamNPCs);
-			if (!TeamNPCs.IsValid())
-				return;
-
-			for (int32 i = 0; i < TeamNPCs.Num(); ++i)
-			{
-				AFightNPC* NPC = TeamNPCs[i];
-				if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(NPC), AFightNPC::StaticClass()))
-					continue;
-
-				UTeamInfo* TeamInfo = NPC->BP_GetTeamInfo();
-				if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(TeamInfo), UTeamInfo::StaticClass()))
-					continue;
-
-				UJHAttributeSet* Attr = TeamInfo->GetAttributeSet();
-				if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(Attr), UJHAttributeSet::StaticClass()))
-					continue;
-
-				CaptureTab2DamageMultiplierOriginal(Attr);
-				Attr->DamageMultiplier.BaseValue = TargetMultiplier;
-				Attr->DamageMultiplier.CurrentValue = TargetMultiplier;
-				TouchedAttrs.insert(reinterpret_cast<uintptr_t>(Attr));
-			}
-		};
-
-		if (Cfg.FriendlyOnly)
-		{
-			ApplyToTeam(ResolveLocalFightTeamId());
-		}
-		else
-		{
-			for (int32 TeamId = 0; TeamId <= 7; ++TeamId)
-				ApplyToTeam(TeamId);
-		}
-
-		for (auto It = GTab2DamageMultiplierOriginals.begin(); It != GTab2DamageMultiplierOriginals.end(); )
-		{
-			if (TouchedAttrs.find(It->first) != TouchedAttrs.end())
-			{
-				++It;
-				continue;
-			}
-
-			auto* Attr = reinterpret_cast<UJHAttributeSet*>(It->first);
-			if (IsSafeLiveObjectOfClass(static_cast<UObject*>(Attr), UJHAttributeSet::StaticClass()))
-			{
-				Attr->DamageMultiplier.BaseValue = It->second.BaseValue;
-				Attr->DamageMultiplier.CurrentValue = It->second.CurrentValue;
-			}
-			It = GTab2DamageMultiplierOriginals.erase(It);
-		}
-	}
-
 	void ReadTab2ConfigFromUI(FTab2RuntimeConfig& Cfg)
 	{
-		const bool NewDamageBoost = ReadToggleValue(GTab2DamageBoostToggle, Cfg.DamageBoost);
-		if (NewDamageBoost != Cfg.DamageBoost)
+		const bool NewSkillNoCooldown = ReadToggleValue(GTab2SkillNoCooldownToggle, Cfg.SkillNoCooldown);
+		if (NewSkillNoCooldown != Cfg.SkillNoCooldown)
 		{
-			LOGI_STREAM("FrameHook") << "[SDK] Tab2 DamageBoost: " << (NewDamageBoost ? "ON" : "OFF") << "\n";
-			Cfg.DamageBoost = NewDamageBoost;
-		}
-
-		const bool NewFriendlyOnly = ReadToggleValue(GTab2DamageFriendlyOnlyToggle, Cfg.FriendlyOnly);
-		if (NewFriendlyOnly != Cfg.FriendlyOnly)
-		{
-			LOGI_STREAM("FrameHook") << "[SDK] Tab2 DamageBoostFriendlyOnly: " << (NewFriendlyOnly ? "ON" : "OFF") << "\n";
-			Cfg.FriendlyOnly = NewFriendlyOnly;
-		}
-
-		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float
-		{
-			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
-				return DefaultValue;
-			USlider* Slider = SliderItem->VolumeSlider;
-			if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
-				return DefaultValue;
-			return Slider->GetValue();
-		};
-
-		float NewMultiplier = ReadSliderValue(GTab2DamageMultiplierSlider, Cfg.DamageMultiplier);
-		if (NewMultiplier < 1.0f) NewMultiplier = 1.0f;
-		if (NewMultiplier > 10.0f) NewMultiplier = 10.0f;
-		if (std::fabs(NewMultiplier - Cfg.DamageMultiplier) > 0.001f)
-		{
-			LOGI_STREAM("FrameHook") << "[SDK] Tab2 DamageMultiplier: " << NewMultiplier << "x\n";
-			Cfg.DamageMultiplier = NewMultiplier;
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 SkillNoCooldown: " << (NewSkillNoCooldown ? "ON" : "OFF") << "\n";
+			Cfg.SkillNoCooldown = NewSkillNoCooldown;
 		}
 	}
 
@@ -1476,7 +1323,16 @@ namespace
 		if (CanReadFromUI)
 			ReadTab2ConfigFromUI(Config);
 
-		ApplyTab2DamageBoostFeature(Config);
+		static bool LastSkillNoCooldownHook = false;
+		if (Config.SkillNoCooldown != LastSkillNoCooldownHook)
+		{
+			if (Config.SkillNoCooldown)
+				EnableSkillNoCooldownHooks();
+			else
+				DisableSkillNoCooldownHooks();
+			LastSkillNoCooldownHook = Config.SkillNoCooldown;
+		}
+
 	}
 }
 
@@ -1497,7 +1353,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			RemoveItemEntryProcessEventHook();
 			if (kEnableBackpackViewProcessEventHook)
 				RemoveBackpackViewProcessEventHook();
-			RestoreTab2DamageMultiplierOriginals();
+			DisableSkillNoCooldownHooks();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
 			LOGI_STREAM("FrameHook") << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
@@ -1527,7 +1383,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			InternalWidget = nullptr;
 			InternalWidgetVisible = false;
 			GCachedBtnExit = nullptr;
-			RestoreTab2DamageMultiplierOriginals();
 			ClearRuntimeWidgetState();
 			ResetBackpackCtxCaptureState();
 			TransitionGuardFrames = 120;
