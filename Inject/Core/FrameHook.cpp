@@ -1418,6 +1418,86 @@ namespace
 		ApplyFightTimeDilationIfNeeded(DesiredFightDilation, false);
 
 	}
+
+	void PollVolumeItemsButtonsAndText()
+	{
+		if (GVolumeLastValues.size() != GVolumeItems.size())
+			GVolumeLastValues.resize(GVolumeItems.size(), 0.0f);
+		if (GVolumeMinusWasPressed.size() != GVolumeItems.size())
+			GVolumeMinusWasPressed.resize(GVolumeItems.size(), false);
+		if (GVolumePlusWasPressed.size() != GVolumeItems.size())
+			GVolumePlusWasPressed.resize(GVolumeItems.size(), false);
+
+		for (size_t i = 0; i < GVolumeItems.size(); ++i)
+		{
+			auto* Item = GVolumeItems[i];
+			if (!IsSafeLiveObject(static_cast<UObject*>(Item)))
+				continue;
+
+			auto* Slider = Item->VolumeSlider;
+			if (!IsSafeLiveObject(static_cast<UObject*>(Slider)))
+				continue;
+
+			bool MinusPressed = false;
+			bool PlusPressed = false;
+			if (Item->BTN_Minus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Minus)))
+				MinusPressed = Item->BTN_Minus->IsPressed();
+			if (Item->BTN_Plus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Plus)))
+				PlusPressed = Item->BTN_Plus->IsPressed();
+
+			const bool MinusClicked = GVolumeMinusWasPressed[i] && !MinusPressed;
+			const bool PlusClicked = GVolumePlusWasPressed[i] && !PlusPressed;
+
+			float CurValue = Slider->GetValue();
+			bool bValueChanged = std::fabs(CurValue - GVolumeLastValues[i]) > 0.0001f;
+
+			if (MinusClicked || PlusClicked)
+			{
+				float Step = Slider->StepSize;
+				if (Step <= 0.0001f)
+					Step = 0.01f;
+
+				float NewValue = CurValue + (PlusClicked ? Step : 0.0f) - (MinusClicked ? Step : 0.0f);
+				float MinValue = Slider->MinValue;
+				float MaxValue = Slider->MaxValue;
+				if (MaxValue < MinValue)
+				{
+					const float Tmp = MinValue;
+					MinValue = MaxValue;
+					MaxValue = Tmp;
+				}
+
+				if (NewValue < MinValue) NewValue = MinValue;
+				if (NewValue > MaxValue) NewValue = MaxValue;
+
+				if (std::fabs(NewValue - CurValue) > 0.0001f)
+				{
+					Slider->SetValue(NewValue);
+					CurValue = NewValue;
+					bValueChanged = true;
+				}
+			}
+
+			if (bValueChanged)
+			{
+				CurValue = Slider->GetValue();
+				if (Item->TXT_CurrentValue)
+				{
+					// 滑块值 1-10，直接显示
+					int32 DisplayValue = static_cast<int32>(CurValue + 0.5f);
+					if (DisplayValue < 1) DisplayValue = 1;
+					if (DisplayValue > 10) DisplayValue = 10;
+					wchar_t Buf[16] = {};
+					swprintf_s(Buf, 16, L"%d", DisplayValue);
+					Item->TXT_CurrentValue->SetText(MakeText(Buf));
+				}
+			}
+
+			GVolumeLastValues[i] = CurValue;
+			GVolumeMinusWasPressed[i] = MinusPressed;
+			GVolumePlusWasPressed[i] = PlusPressed;
+		}
+	}
 }
 
 void __fastcall HookedGVCPostRender(void* This, void* Canvas)
@@ -1486,6 +1566,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	// Edge-trigger HOME so one press toggles once
 	static bool HomeWasDown = false;
 	static bool HomeNeedAnchorCtxRefresh = false;
+	static bool HomeNeedDynTabRestore = false;
 	const bool HomeDown = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
 	if (!InTransitionGuard && HomeDown && !HomeWasDown)
 	{
@@ -1496,6 +1577,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			IsSafeLiveObject(static_cast<UObject*>(InternalWidget)) &&
 			InternalWidget->IsInViewport();
 		HomeNeedAnchorCtxRefresh = (!WasVisible && IsNowVisible);
+		HomeNeedDynTabRestore = (!WasVisible && IsNowVisible);
 	}
 	HomeWasDown = HomeDown;
 
@@ -1569,23 +1651,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	const bool IsItemsTabActive = (ActiveNativeTabIndex == 1);
 	const bool IsCharacterTabActive = (ActiveNativeTabIndex == 0);
-	if (InternalWidgetVisible && LiveConfigView)
-	{
-		int32 RememberTab = ActiveNativeTabIndex;
-		if (GDynTabContent6 && IsSafeLiveObject(static_cast<UObject*>(GDynTabContent6)) &&
-			GDynTabContent6->GetVisibility() != ESlateVisibility::Collapsed)
-			RememberTab = 6;
-		else if (GDynTabContent7 && IsSafeLiveObject(static_cast<UObject*>(GDynTabContent7)) &&
-			GDynTabContent7->GetVisibility() != ESlateVisibility::Collapsed)
-			RememberTab = 7;
-		else if (GDynTabContent8 && IsSafeLiveObject(static_cast<UObject*>(GDynTabContent8)) &&
-			GDynTabContent8->GetVisibility() != ESlateVisibility::Collapsed)
-			RememberTab = 8;
-
-		if (RememberTab < 0 || RememberTab > 8)
-			RememberTab = 0;
-		GUIRememberState.LastActiveTabIndex = RememberTab;
-	}
+	const bool IsBattleTabActive = (ActiveNativeTabIndex == 2);
 
 	// On each HOME show: run anchor scan; rebuild item manager only when ctx changes.
 	if (HomeNeedAnchorCtxRefresh &&
@@ -1674,83 +1740,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			sLastItemUiPollTick = ItemUiNow;
 			PollCollapsiblePanelsInput();
-
-			if (GVolumeLastValues.size() != GVolumeItems.size())
-				GVolumeLastValues.resize(GVolumeItems.size(), 0.0f);
-			if (GVolumeMinusWasPressed.size() != GVolumeItems.size())
-				GVolumeMinusWasPressed.resize(GVolumeItems.size(), false);
-			if (GVolumePlusWasPressed.size() != GVolumeItems.size())
-				GVolumePlusWasPressed.resize(GVolumeItems.size(), false);
-
-			for (size_t i = 0; i < GVolumeItems.size(); ++i)
-			{
-				auto* Item = GVolumeItems[i];
-				if (!IsSafeLiveObject(static_cast<UObject*>(Item)))
-					continue;
-
-				auto* Slider = Item->VolumeSlider;
-				if (!IsSafeLiveObject(static_cast<UObject*>(Slider)))
-					continue;
-
-				bool MinusPressed = false;
-				bool PlusPressed = false;
-				if (Item->BTN_Minus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Minus)))
-					MinusPressed = Item->BTN_Minus->IsPressed();
-				if (Item->BTN_Plus && IsSafeLiveObject(static_cast<UObject*>(Item->BTN_Plus)))
-					PlusPressed = Item->BTN_Plus->IsPressed();
-
-				const bool MinusClicked = GVolumeMinusWasPressed[i] && !MinusPressed;
-				const bool PlusClicked = GVolumePlusWasPressed[i] && !PlusPressed;
-
-				float CurValue = Slider->GetValue();
-				bool bValueChanged = std::fabs(CurValue - GVolumeLastValues[i]) > 0.0001f;
-
-				if (MinusClicked || PlusClicked)
-				{
-					float Step = Slider->StepSize;
-					if (Step <= 0.0001f)
-						Step = 0.01f;
-
-					float NewValue = CurValue + (PlusClicked ? Step : 0.0f) - (MinusClicked ? Step : 0.0f);
-					float MinValue = Slider->MinValue;
-					float MaxValue = Slider->MaxValue;
-					if (MaxValue < MinValue)
-					{
-						const float Tmp = MinValue;
-						MinValue = MaxValue;
-						MaxValue = Tmp;
-					}
-
-					if (NewValue < MinValue) NewValue = MinValue;
-					if (NewValue > MaxValue) NewValue = MaxValue;
-
-					if (std::fabs(NewValue - CurValue) > 0.0001f)
-					{
-						Slider->SetValue(NewValue);
-						CurValue = NewValue;
-						bValueChanged = true;
-					}
-				}
-
-				if (bValueChanged)
-				{
-					CurValue = Slider->GetValue();
-					if (Item->TXT_CurrentValue)
-					{
-						// 婊戝潡鍊?-10锛岀洿鎺ユ樉绀?
-						int32 DisplayValue = static_cast<int32>(CurValue + 0.5f);
-						if (DisplayValue < 1) DisplayValue = 1;
-						if (DisplayValue > 10) DisplayValue = 10;
-						wchar_t Buf[16] = {};
-						swprintf_s(Buf, 16, L"%d", DisplayValue);
-						Item->TXT_CurrentValue->SetText(MakeText(Buf));
-					}
-				}
-
-				GVolumeLastValues[i] = CurValue;
-				GVolumeMinusWasPressed[i] = MinusPressed;
-				GVolumePlusWasPressed[i] = PlusPressed;
-			}
+			PollVolumeItemsButtonsAndText();
 
 			static DWORD LastItemCacheRetryTick = 0;
 			if (!GItemCacheBuilt && (GItemCategoryDD || GItemGridPanel))
@@ -1865,6 +1855,25 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		// Avoid BP_ClearSelection while UMG object is unreachable/destroying.
 	}
 
+	// Battle tab sliders share the same +/- and right-side value mechanism as Tab1.
+	// They are not in the item-tab branch, so poll them separately here.
+	static DWORD sLastBattleSliderPollTick = 0;
+	if (InternalWidgetVisible && LiveInternalWidget && IsBattleTabActive)
+	{
+		const DWORD BattleUiNow = GetTickCount();
+		const bool RunBattleSliderPoll =
+			(sLastBattleSliderPollTick == 0) || ((BattleUiNow - sLastBattleSliderPollTick) >= 16);
+		if (RunBattleSliderPoll)
+		{
+			sLastBattleSliderPollTick = BattleUiNow;
+			PollVolumeItemsButtonsAndText();
+		}
+	}
+	else
+	{
+		sLastBattleSliderPollTick = 0;
+	}
+
 	const bool CanReadTab1FromUI =
 		InternalWidgetVisible &&
 		LiveInternalWidget &&
@@ -1874,7 +1883,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	const bool CanReadTab2FromUI =
 		InternalWidgetVisible &&
 		LiveInternalWidget &&
-		(ActiveNativeTabIndex == 2);
+		IsBattleTabActive;
 	PollAndApplyTab2Features(CanReadTab2FromUI);
 
 	// Hover tips polling:
@@ -1920,6 +1929,104 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		// HandleMainBtn() 閳?EVT_SyncTabIndex(). We only manage dynamic tab
 		// content visibility (VBoxes outside the Switcher) and active state.
 		static int32 sActiveDynTab = -1;
+		static int32 sPendingNativeRestoreIdx = -1;
+		static int32 sPendingNativeHighlightSettleFrames = 0;
+		static int32 sPendingNativeInactiveSettleFrames = 0;
+		auto ApplyNativeTabHighlight = [&](int32 ActiveIdx)
+		{
+			if (IsLiveTabBtn(CV->BTN_Sound))   CV->BTN_Sound->EVT_UpdateActiveStatus(ActiveIdx == 0);
+			if (IsLiveTabBtn(CV->BTN_Video))   CV->BTN_Video->EVT_UpdateActiveStatus(ActiveIdx == 1);
+			if (IsLiveTabBtn(CV->BTN_Keys))    CV->BTN_Keys->EVT_UpdateActiveStatus(ActiveIdx == 2);
+			if (IsLiveTabBtn(CV->BTN_Lan))     CV->BTN_Lan->EVT_UpdateActiveStatus(ActiveIdx == 3);
+			if (IsLiveTabBtn(CV->BTN_Others))  CV->BTN_Others->EVT_UpdateActiveStatus(ActiveIdx == 4);
+			if (IsLiveTabBtn(CV->BTN_Gamepad)) CV->BTN_Gamepad->EVT_UpdateActiveStatus(ActiveIdx == 5);
+		};
+		if (HomeNeedDynTabRestore)
+		{
+			HomeNeedDynTabRestore = false;
+			const int32 LastClosedTab = GetLastClosedTabIndex();
+			if (LastClosedTab >= 6 && LastClosedTab <= 8)
+			{
+				sPendingNativeRestoreIdx = -1;
+				sPendingNativeHighlightSettleFrames = 0;
+				sPendingNativeInactiveSettleFrames = 30;
+				ShowDynamicTab(CV, LastClosedTab);
+				if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(LastClosedTab == 6);
+				if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(LastClosedTab == 7);
+				if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(LastClosedTab == 8);
+				sActiveDynTab = LastClosedTab;
+				LOGI_STREAM("FrameHook") << "[SDK] Restore dynamic tab on HOME-show: idx=" << LastClosedTab << "\n";
+			}
+			else if (LastClosedTab >= 0 && LastClosedTab <= 5)
+			{
+				sPendingNativeRestoreIdx = LastClosedTab;
+				sPendingNativeHighlightSettleFrames = 0;
+				sPendingNativeInactiveSettleFrames = 0;
+				sActiveDynTab = -1;
+				LOGI_STREAM("FrameHook") << "[SDK] Restore native tab on HOME-show: idx=" << LastClosedTab << "\n";
+			}
+			else
+			{
+				sPendingNativeRestoreIdx = -1;
+				sPendingNativeHighlightSettleFrames = 0;
+				sPendingNativeInactiveSettleFrames = 0;
+				sActiveDynTab = -1;
+			}
+		}
+
+		// Native tab restore (0-5): keep calling EVT_SyncTabIndex until active index matches.
+		if ((sPendingNativeRestoreIdx >= 0 && sPendingNativeRestoreIdx <= 5) || sPendingNativeHighlightSettleFrames > 0)
+		{
+			const int32 TargetIdx = (sPendingNativeRestoreIdx >= 0 && sPendingNativeRestoreIdx <= 5)
+				? sPendingNativeRestoreIdx
+				: GetLastClosedTabIndex();
+			ApplyNativeTabHighlight(TargetIdx);
+
+			int32 CurrentIdx = -1;
+			if (CV->CT_Contents &&
+				IsSafeLiveObject(static_cast<UObject*>(CV->CT_Contents)))
+			{
+				CurrentIdx = CV->CT_Contents->GetActiveWidgetIndex();
+			}
+
+			if (sPendingNativeRestoreIdx >= 0 && sPendingNativeRestoreIdx <= 5 && CurrentIdx != sPendingNativeRestoreIdx)
+			{
+				static uint64 sSyncTabInvokeCount = 0;
+				++sSyncTabInvokeCount;
+				LOGI_STREAM("FrameHook") << "[SDK] EVT_SyncTabIndex call#" << sSyncTabInvokeCount
+					<< ": target=" << sPendingNativeRestoreIdx
+					<< " current=" << CurrentIdx
+					<< "\n";
+				CV->EVT_SyncTabIndex(sPendingNativeRestoreIdx);
+				ShowOriginalTab(CV);
+				if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(false);
+				sActiveDynTab = -1;
+			}
+			else
+			{
+				if (sPendingNativeRestoreIdx >= 0 && sPendingNativeRestoreIdx <= 5)
+				{
+					// Content is already on target tab; keep forcing active visual state
+					// for a few frames to survive blueprint focus/highlight overwrite.
+					sPendingNativeRestoreIdx = -1;
+					sPendingNativeHighlightSettleFrames = 30;
+				}
+				else if (sPendingNativeHighlightSettleFrames > 0)
+				{
+					--sPendingNativeHighlightSettleFrames;
+				}
+			}
+		}
+
+		// Dynamic tab remembered/active: keep native 0-5 highlight turned off.
+		if (sActiveDynTab >= 6 || sPendingNativeInactiveSettleFrames > 0)
+		{
+			ApplyNativeTabHighlight(-1);
+			if (sPendingNativeInactiveSettleFrames > 0)
+				--sPendingNativeInactiveSettleFrames;
+		}
 
 		int32 dynHoverIdx = -1;
 		if      (IsLiveTabBtn(GDynTabBtn6) && GDynTabBtn6->IsHovered()) dynHoverIdx = 6;
@@ -1930,6 +2037,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			// Entering a (different) dynamic tab 閳?show its content
 			ShowDynamicTab(CV, dynHoverIdx);
+			sPendingNativeInactiveSettleFrames = 30;
 			if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
 			if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
 			if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(dynHoverIdx == 8);
@@ -1950,6 +2058,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			if (nativeHovered)
 			{
 				ShowOriginalTab(CV);
+				sPendingNativeInactiveSettleFrames = 0;
 				if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(false);
 				if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(false);
 				if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(false);

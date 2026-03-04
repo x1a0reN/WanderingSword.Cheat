@@ -50,6 +50,10 @@ void ShowInternalWidget(APlayerController* PlayerController);
 /// 调用 ShowInternalWidget 或 HideInternalWidget。
 void ToggleInternalWidget();
 
+/// 最近一次关闭/销毁面板时记录的Tab索引。
+/// 返回值：0~5 原生Tab，6~8 动态Tab，-1 表示未知。
+int32 GetLastClosedTabIndex();
+
 /// 切换到动态 Tab: 隐藏原生 CT_Contents，显示 DynIdx 对应的动态内容容器。
 /// DynIdx = 6(队友) / 7(任务) / 8(控件)
 void ShowDynamicTab(UBPMV_ConfigView2_C* CV, int32 DynIdx);

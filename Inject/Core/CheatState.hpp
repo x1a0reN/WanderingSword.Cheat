@@ -52,9 +52,6 @@ struct UIRememberState
 	std::unordered_map<std::wstring, float> SliderValueByTitle;
 	std::unordered_map<std::wstring, std::wstring> EditTextByTitle;
 
-	// 0~5 原生Tab，6~8 动态Tab
-	int32 LastActiveTabIndex = 0;
-
 	// 物品浏览器附加状态
 	int32 ItemCategoryIndex = 0;
 	int32 ItemCurrentPage = 0;
