@@ -11,9 +11,6 @@
 
 	int Count = 0;
 
-	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
-	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
-
 	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
 	{
 		if (!Panel)
@@ -44,25 +41,25 @@
 		auto* Item = CreateVolumeItem(PC, Title);
 		if (Item)
 		{
+			if (Item->VolumeSlider)
+			{
+				Item->VolumeSlider->MinValue = 1.0f;
+				Item->VolumeSlider->MaxValue = 10.0f;
+				Item->VolumeSlider->StepSize = 1.0f;
+				Item->VolumeSlider->SetValue(2.0f);
+			}
+
 			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
 			Count++;
 			return Item;
 		}
 		return nullptr;
 	};
-	auto AddNumeric = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue) {
-		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : Container, Title, L"杈撳叆鏁板瓧", DefaultValue);
-		if (Item)
-		{
-			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
-			Count++;
-		}
-	};
 
 	auto* SwitchPanel = CreateCollapsiblePanel(PC, L"战斗开关");
 	auto* SwitchBox = SwitchPanel ? SwitchPanel->CT_Contents : nullptr;
 	GTab2SkillNoCooldownToggle = AddToggle(SwitchBox, L"招式无视冷却");
-	AddToggle(SwitchBox, L"战斗加速");
+	GTab2DamageBoostToggle = AddToggle(SwitchBox, L"战斗加速");
 	AddToggle(SwitchBox, L"不遇敌");
 	AddToggle(SwitchBox, L"全队友参战");
 	AddToggle(SwitchBox, L"战败视为胜利");
@@ -74,15 +71,10 @@
 
 	auto* RatioPanel = CreateCollapsiblePanel(PC, L"倍数与速度");
 	auto* RatioBox = RatioPanel ? RatioPanel->CT_Contents : nullptr;
-	AddSlider(RatioBox, L"战斗加速倍数");
+	GTab2DamageMultiplierSlider = AddSlider(RatioBox, L"战斗加速倍数");
 	AddSlider(RatioBox, L"移动倍数");
 	AddSlider(RatioBox, L"逃跑成功率");
 	AddPanelWithFixedGap(RatioPanel, 0.0f, 10.0f);
-
-	auto* ExtraPanel = CreateCollapsiblePanel(PC, L"额外参数");
-	auto* ExtraBox = ExtraPanel ? ExtraPanel->CT_Contents : nullptr;
-	AddNumeric(ExtraBox, L"战斗时间流速", L"1");
-	AddPanelWithFixedGap(ExtraPanel, 0.0f, 8.0f);
 }
 
 namespace

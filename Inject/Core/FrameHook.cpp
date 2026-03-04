@@ -1,4 +1,4 @@
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
@@ -147,6 +147,8 @@ namespace
 	struct FTab2RuntimeConfig final
 	{
 		bool SkillNoCooldown = false;
+		bool BattleSpeedEnabled = false;
+		float BattleSpeedMultiplier = 2.0f;
 	};
 
 	struct FItemRowOriginalState final
@@ -198,6 +200,8 @@ namespace
 	int32 GBackpackCtxSourceGridIndex = -1;
 	int32 GBackpackCtxSourceGridDistance = (std::numeric_limits<int32>::max)();
 	bool GBackpackCtxSourceGridExact = false;
+	float GTab2AppliedFightDilation = 1.0f;
+	bool GTab2FightDilationApplied = false;
 
 	bool IsInterestingBackpackPEName(const std::string& Name)
 	{
@@ -233,6 +237,29 @@ namespace
 		GBackpackCtxSourceGridIndex = -1;
 		GBackpackCtxSourceGridDistance = (std::numeric_limits<int32>::max)();
 		GBackpackCtxSourceGridExact = false;
+	}
+
+	void ApplyFightTimeDilationIfNeeded(float NewValue, bool ForceApply = false)
+	{
+		if (NewValue < 1.0f)
+			NewValue = 1.0f;
+		if (NewValue > 10.0f)
+			NewValue = 10.0f;
+
+		if (!ForceApply &&
+			GTab2FightDilationApplied &&
+			std::fabs(GTab2AppliedFightDilation - NewValue) <= 0.001f)
+		{
+			return;
+		}
+
+		UGameTimeManager* TimeMgr = UManagerFuncLib::GetGameTimeManager();
+		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(TimeMgr), UGameTimeManager::StaticClass()))
+			return;
+
+		TimeMgr->SetGameTimeDilationInFight(NewValue, true);
+		GTab2AppliedFightDilation = NewValue;
+		GTab2FightDilationApplied = true;
 	}
 
 	bool ShouldCaptureBackpackCtxFromGrid(UObject* GridObj, int32& OutGridIndex, int32& OutDistance, bool& OutExact)
@@ -354,7 +381,7 @@ namespace
 					<< " this=" << (void*)ThisObj << "\n";
 			}
 
-			// 只吃 ItemEntry 左键点击事件，上一页/下一页不会走到这里。
+			// 鍙悆 ItemEntry 宸﹂敭鐐瑰嚮浜嬩欢锛屼笂涓€椤?涓嬩竴椤典笉浼氳蛋鍒拌繖閲屻€?
 			const bool IsClickedDelegate =
 				(FuncName.find("JHNeoUIGamepadConfirmButtonClicked__DelegateSignature") != std::string::npos);
 			const bool IsDoubleClickedDelegate =
@@ -990,7 +1017,7 @@ namespace
 	void ApplyTab1BackpackFeatures(const FTab1RuntimeConfig& Cfg)
 	{
 		const bool EnableNoDecrease = Cfg.ItemNoDecrease;
-		// 物品获得加倍改由 InlineHook 实现，避免与这里的轮询增量逻辑叠加。
+		// 鐗╁搧鑾峰緱鍔犲€嶆敼鐢?InlineHook 瀹炵幇锛岄伩鍏嶄笌杩欓噷鐨勮疆璇㈠閲忛€昏緫鍙犲姞銆?
 		const bool EnableGainMultiplier = false;
 		if (!EnableNoDecrease && !EnableGainMultiplier)
 		{
@@ -1062,7 +1089,7 @@ namespace
 
 	void ReadTab1ConfigFromUI(FTab1RuntimeConfig& Cfg)
 	{
-		// 读取开关选项
+		// 璇诲彇寮€鍏抽€夐」
 		const bool NewItemNoDecrease = ReadToggleValue(GTab1ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
 		if (NewItemNoDecrease != Cfg.ItemNoDecrease)
 		{
@@ -1112,7 +1139,7 @@ namespace
 			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
 		}
 
-		// Sliders - 直接读取滑块值
+		// Sliders - 鐩存帴璇诲彇婊戝潡鍊?
 		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
 			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
 				return DefaultValue;
@@ -1161,7 +1188,7 @@ namespace
 		if (CanReadFromUI)
 			ReadTab1ConfigFromUI(Config);
 
-		// 根据开关状态动态启用/禁用 Hook
+		// 鏍规嵁寮€鍏崇姸鎬佸姩鎬佸惎鐢?绂佺敤 Hook
 		static bool LastItemNoDecrease = false;
 		if (Config.ItemNoDecrease != LastItemNoDecrease)
 		{
@@ -1172,7 +1199,7 @@ namespace
 			LastItemNoDecrease = Config.ItemNoDecrease;
 		}
 
-		// 只在倍率值变化时更新
+		// 鍙湪鍊嶇巼鍊煎彉鍖栨椂鏇存柊
 		static int32 LastItemGainMultiplierValue = 2;
 		if (Config.ItemGainMultiplierValue != LastItemGainMultiplierValue)
 		{
@@ -1205,7 +1232,7 @@ namespace
 			LastItemGainMultiplierHook = WantItemGainMultiplierHook;
 		}
 
-		// 所有物品可出售
+		// 鎵€鏈夌墿鍝佸彲鍑哄敭
 		static bool LastAllItemsSellable = false;
 		if (Config.AllItemsSellable != LastAllItemsSellable)
 		{
@@ -1266,8 +1293,8 @@ namespace
 			LastMaxExtraAffixesHook = Config.MaxExtraAffixes;
 		}
 
-		// 包括任务物品
-		// 更新全局开关
+		// 鍖呮嫭浠诲姟鐗╁搧
+		// 鏇存柊鍏ㄥ眬寮€鍏?
 		GItemNoDecreaseEnabled.store(Config.ItemNoDecrease, std::memory_order_release);
 
 		UItemResManager* ResMgr = UManagerFuncLib::GetItemResManager();
@@ -1283,30 +1310,44 @@ namespace
 
 		ResetTab1TableCachesIfNeeded(ItemTable, DropTable, RandTable);
 
-		static DWORD LastInventoryTick = 0;
-		const DWORD NowTick = GetTickCount();
-		if (LastInventoryTick == 0 || (NowTick - LastInventoryTick) >= 80)
-		{
-			LastInventoryTick = NowTick;
-			ApplyTab1BackpackFeatures(Config);
-		}
+        const DWORD NowTick = GetTickCount();
 
-		static DWORD LastTableTick = 0;
-		if (LastTableTick == 0 || (NowTick - LastTableTick) >= 300)
-		{
-			LastTableTick = NowTick;
-			FTab1RuntimeConfig TableConfig = Config;
-			// DropRate100 与 CraftEffectMultiplier 已切换到 AOB/InlineHook 路线，避免双重叠加。
-			TableConfig.DropRate100 = false;
-			TableConfig.CraftEffectMultiplier = false;
-			TableConfig.IgnoreItemUseCount = false;
-			TableConfig.IgnoreItemRequirements = false;
-			ApplyTab1ItemDefinitionFeatures(TableConfig, ItemTable);
-			ApplyTab1DropPoolFeature(TableConfig, DropTable);
-			ApplyTab1RandPoolFeature(TableConfig, RandTable);
-		}
-	}
+        // 背包数量类能力需要周期同步；无需求时跳过，避免常驻扫描。
+        static DWORD LastInventoryTick = 0;
+        const bool NeedBackpackSync = Config.ItemNoDecrease || Config.ItemGainMultiplier || !GTab1ItemSnapshots.empty();
+        if (NeedBackpackSync && (LastInventoryTick == 0 || (NowTick - LastInventoryTick) >= 80))
+        {
+            LastInventoryTick = NowTick;
+            ApplyTab1BackpackFeatures(Config);
+        }
 
+        // 物品定义表改为“状态变化/表切换时”同步一次，避免 300ms 全表轮询。
+        // Drop/Rand/UseCount/Requirements 已走 Hook/硬改路径，这里不再做全表恢复。
+        static UDataTable* LastSyncedItemTable = nullptr;
+        static bool LastSyncedAllItemsSellable = false;
+        static bool HasItemTableSync = false;
+
+        if (!ItemTable)
+        {
+            LastSyncedItemTable = nullptr;
+            HasItemTableSync = false;
+        }
+        else
+        {
+            const bool ItemTableChanged = (ItemTable != LastSyncedItemTable);
+            const bool SellableStateChanged = (!HasItemTableSync) || (Config.AllItemsSellable != LastSyncedAllItemsSellable);
+            if (ItemTableChanged || SellableStateChanged)
+            {
+                FTab1RuntimeConfig TableConfig{};
+                TableConfig.AllItemsSellable = Config.AllItemsSellable;
+                ApplyTab1ItemDefinitionFeatures(TableConfig, ItemTable);
+
+                LastSyncedItemTable = ItemTable;
+                LastSyncedAllItemsSellable = Config.AllItemsSellable;
+                HasItemTableSync = true;
+            }
+        }
+		}
 	void ReadTab2ConfigFromUI(FTab2RuntimeConfig& Cfg)
 	{
 		const bool NewSkillNoCooldown = ReadToggleValue(GTab2SkillNoCooldownToggle, Cfg.SkillNoCooldown);
@@ -1314,6 +1355,31 @@ namespace
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 SkillNoCooldown: " << (NewSkillNoCooldown ? "ON" : "OFF") << "\n";
 			Cfg.SkillNoCooldown = NewSkillNoCooldown;
+		}
+
+		const bool NewBattleSpeedEnabled = ReadToggleValue(GTab2DamageBoostToggle, Cfg.BattleSpeedEnabled);
+		if (NewBattleSpeedEnabled != Cfg.BattleSpeedEnabled)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 BattleSpeed: " << (NewBattleSpeedEnabled ? "ON" : "OFF") << "\n";
+			Cfg.BattleSpeedEnabled = NewBattleSpeedEnabled;
+		}
+
+		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
+			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
+				return DefaultValue;
+			USlider* Slider = SliderItem->VolumeSlider;
+			if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+				return DefaultValue;
+			return Slider->GetValue();
+		};
+
+		float NewBattleSpeedMultiplier = ReadSliderValue(GTab2DamageMultiplierSlider, Cfg.BattleSpeedMultiplier);
+		if (NewBattleSpeedMultiplier < 1.0f) NewBattleSpeedMultiplier = 1.0f;
+		if (NewBattleSpeedMultiplier > 10.0f) NewBattleSpeedMultiplier = 10.0f;
+		if (std::fabs(NewBattleSpeedMultiplier - Cfg.BattleSpeedMultiplier) > 0.001f)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 BattleSpeedMultiplier: " << NewBattleSpeedMultiplier << "x\n";
+			Cfg.BattleSpeedMultiplier = NewBattleSpeedMultiplier;
 		}
 	}
 
@@ -1332,6 +1398,24 @@ namespace
 				DisableSkillNoCooldownHooks();
 			LastSkillNoCooldownHook = Config.SkillNoCooldown;
 		}
+
+		// 鎴樻枟鍔犻€燂細绂佺敤鏃朵笉鍋氫笘鐣屾€佹煡璇紱鍚敤鏃惰妭娴佹煡璇紝閬垮厤姣忓抚鍙嶅皠璋冪敤瀵艰嚧鍗￠】銆?		if (!Config.BattleSpeedEnabled)
+		{
+			if (GTab2FightDilationApplied)
+				ApplyFightTimeDilationIfNeeded(1.0f, false);
+			return;
+		}
+
+		static DWORD LastBattleSpeedEvalTick = 0;
+		const DWORD NowTick = GetTickCount();
+		if (LastBattleSpeedEvalTick != 0 && (NowTick - LastBattleSpeedEvalTick) < 1000)
+			return;
+		LastBattleSpeedEvalTick = NowTick;
+
+		const EWorldStateType WorldState = UManagerFuncLib::GetWorldType();
+		const bool IsInFight = (WorldState == EWorldStateType::Fighting);
+		const float DesiredFightDilation = IsInFight ? Config.BattleSpeedMultiplier : 1.0f;
+		ApplyFightTimeDilationIfNeeded(DesiredFightDilation, false);
 
 	}
 }
@@ -1354,6 +1438,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			if (kEnableBackpackViewProcessEventHook)
 				RemoveBackpackViewProcessEventHook();
 			DisableSkillNoCooldownHooks();
+			ApplyFightTimeDilationIfNeeded(1.0f, true);
+			GTab2AppliedFightDilation = 1.0f;
+			GTab2FightDilationApplied = false;
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
 			LOGI_STREAM("FrameHook") << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
@@ -1412,7 +1499,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	HomeWasDown = HomeDown;
 
-	// PGUP: 输出当前世界状态
+	// PGUP: 杈撳嚭褰撳墠涓栫晫鐘舵€?
 	static bool PGUPWasDown = false;
 	const bool PGUPDown = (GetAsyncKeyState(VK_PRIOR) & 0x8000) != 0;
 	if (PGUPDown && !PGUPWasDown)
@@ -1437,7 +1524,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				default: LOGI_STREAM("FrameHook") << "[SDK]   -> Unknown\n"; break;
 			}
 
-			// 获取当前关卡名称
+			// 鑾峰彇褰撳墠鍏冲崱鍚嶇О
 			FString LevelName = UGameplayStatics::GetCurrentLevelName(World, false);
 			const wchar_t* LevelNameWs = LevelName.CStr();
 			if (LevelNameWs && LevelNameWs[0])
@@ -1449,7 +1536,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				LOGI_STREAM("FrameHook") << "[SDK] LevelName: (empty)\n";
 			}
 
-			// 检查 PersistentLevel 是否存在
+			// 妫€鏌?PersistentLevel 鏄惁瀛樺湪
 			if (World->PersistentLevel)
 			{
 				LOGI_STREAM("FrameHook") << "[SDK] PersistentLevel: " << (void*)World->PersistentLevel << "\n";
@@ -1530,7 +1617,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 	}
 
-	// Tab0（角色）编辑框：按 Enter 提交写回并回填。
+	// Tab0锛堣鑹诧級缂栬緫妗嗭細鎸?Enter 鎻愪氦鍐欏洖骞跺洖濉€?
 	PollTab0CharacterInput(IsCharacterTabActive);
 
 	// Detect BTN_Exit click (edge-triggered).
@@ -1573,18 +1660,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	// BackpackView ProcessEvent hook path is intentionally disabled.
 
-	// 控件状态记忆（节流），用于下次重建时恢复 UI。
-	if (InternalWidgetVisible && LiveInternalWidget)
-	{
-		static DWORD sLastRememberUiTick = 0;
-		const DWORD Now = GetTickCount();
-		if (sLastRememberUiTick == 0 || (Now - sLastRememberUiTick) >= 80)
-		{
-			sLastRememberUiTick = Now;
-			RememberUIControlStatesFromLiveWidgets();
-		}
-	}
-
+	// 鎺т欢鐘舵€佽蹇嗘敼涓轰簨浠堕┍鍔細
+	// 鍦?Hide/Destroy/Recreate 鏃剁粺涓€閲囨牱锛岄伩鍏嶈繖閲屾寔缁疆璇㈠鑷?UI 甯ф姈鍔ㄣ€?
 	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;
 	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
@@ -1660,7 +1737,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 					CurValue = Slider->GetValue();
 					if (Item->TXT_CurrentValue)
 					{
-						// 滑块值1-10，直接显示
+						// 婊戝潡鍊?-10锛岀洿鎺ユ樉绀?
 						int32 DisplayValue = static_cast<int32>(CurValue + 0.5f);
 						if (DisplayValue < 1) DisplayValue = 1;
 						if (DisplayValue > 10) DisplayValue = 10;
@@ -1801,8 +1878,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	PollAndApplyTab2Features(CanReadTab2FromUI);
 
 	// Hover tips polling:
-	// 1) 物品 Tab 内高频轮询（节流到约 60Hz）
-	// 2) 非物品 Tab 仅在已有 tips 残留时低频轮询，用于快速收口隐藏
+	// 1) 鐗╁搧 Tab 鍐呴珮棰戣疆璇紙鑺傛祦鍒扮害 60Hz锛?
+	// 2) 闈炵墿鍝?Tab 浠呭湪宸叉湁 tips 娈嬬暀鏃朵綆棰戣疆璇紝鐢ㄤ簬蹇€熸敹鍙ｉ殣钘?
 	bool HoverGridValid = false;
 	if (GItemGridPanel)
 	{
@@ -1826,11 +1903,11 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		if (sLastHoverPollTick == 0 || (HoverPollNow - sLastHoverPollTick) >= PollIntervalMs)
 		{
 			sLastHoverPollTick = HoverPollNow;
-			// 临时禁用：用于验证物品 Tab 悬浮 Tip 轮询是否为卡顿主因
+			// 涓存椂绂佺敤锛氱敤浜庨獙璇佺墿鍝?Tab 鎮诞 Tip 杞鏄惁涓哄崱椤夸富鍥?
 		}
 	}
 
-	// 鈹€鈹€ Dynamic tab button click detection 鈹€鈹€
+	// 閳光偓閳光偓 Dynamic tab button click detection 閳光偓閳光偓
 	if (InternalWidgetVisible && LiveConfigView)
 	{
 		auto* CV = LiveConfigView;
@@ -1839,8 +1916,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			return IsSafeLiveObject(static_cast<UObject*>(Btn));
 		};
 
-		// Native tabs fully handle themselves via AutoFocusForMouseEntering 鈫?
-		// HandleMainBtn() 鈫?EVT_SyncTabIndex(). We only manage dynamic tab
+		// Native tabs fully handle themselves via AutoFocusForMouseEntering 閳?
+		// HandleMainBtn() 閳?EVT_SyncTabIndex(). We only manage dynamic tab
 		// content visibility (VBoxes outside the Switcher) and active state.
 		static int32 sActiveDynTab = -1;
 
@@ -1851,7 +1928,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 		if (dynHoverIdx >= 6 && dynHoverIdx != sActiveDynTab)
 		{
-			// Entering a (different) dynamic tab 鈥?show its content
+			// Entering a (different) dynamic tab 閳?show its content
 			ShowDynamicTab(CV, dynHoverIdx);
 			if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
 			if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
@@ -1862,7 +1939,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			// Only restore original content when a NATIVE tab is hovered.
 			// Moving mouse to content area or empty space keeps dynamic tab active
-			// 鈥?same behavior as native tabs.
+			// 閳?same behavior as native tabs.
 			bool nativeHovered =
 				(CV->BTN_Sound && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Sound)) && CV->BTN_Sound->IsHovered()) ||
 				(CV->BTN_Video && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Video)) && CV->BTN_Video->IsHovered()) ||

@@ -565,11 +565,13 @@ void ShowInternalWidget(APlayerController* PlayerController)
 			InitializeConfigView2BySDK(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
 
 		ApplyConfigView2TextPatch(InternalWidget, PlayerController);
-		if (InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
-			RestoreRememberedActiveTab(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
 		InternalWidget->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
 		InternalWidget->SetRenderScale(FVector2D{ kInternalPanelScale, kInternalPanelScale });
 	}
+
+	// 每次显示都恢复一次上次关闭时的 Tab（缓存实例同样需要恢复，不能只在首次创建时恢复）。
+	if (InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
+		RestoreRememberedActiveTab(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
 
 	if (!IsValidPlayerController(PlayerController) ||
 		!IsValidUObject(static_cast<UObject*>(InternalWidget)))
