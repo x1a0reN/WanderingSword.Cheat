@@ -185,6 +185,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			CreateRawWidget(UEditableTextBox::StaticClass(), Outer));
 		if (SearchEdit)
 		{
+			SetItemSearchEditBox(SearchEdit);
 			SearchEdit->SetHintText(MakeText(L"\u8F93\u5165\u4EE5\u641C\u7D22..."));
 			SearchEdit->SetText(MakeText(L""));
 			SearchEdit->SetJustification(ETextJustify::Left);

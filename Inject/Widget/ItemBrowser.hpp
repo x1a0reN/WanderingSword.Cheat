@@ -27,6 +27,12 @@ void OnItemBrowserTabShown();
 /// 由外部（如 Backpack ProcessEvent）注入可用的 entry-init context（grid+0x8A0）。
 void CacheEntryInitContextWeakB(const FWeakObjectPtr& WeakB, const char* SourceTag = nullptr);
 
+/// 绑定物品浏览器搜索输入框。
+void SetItemSearchEditBox(UEditableTextBox* Edit);
+
+/// 从搜索输入框读取文本并更新过滤关键字；返回是否发生变化。
+bool UpdateItemSearchKeywordFromEdit();
+
 /// 娓呯悊鐗╁搧娴忚鍣ㄧ殑鎵€鏈?Widget 鐘舵€佹寚閽?(缃戞牸/缈婚〉鎸夐挳/杈撳叆妗嗙瓑)锛?
 /// 鍦ㄩ潰鏉垮叧闂垨閿€姣佹椂璋冪敤銆?
 void ClearItemBrowserState();

@@ -1600,16 +1600,28 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				}
 			}
 
+			int32 catIdx = GItemLastCatIdx;
+			bool needFilterRefresh = false;
 			if (GItemCategoryDD && GItemCategoryDD->CB_Main)
 			{
-				int32 catIdx = GetComboSelectedIndexSafe(GItemCategoryDD->CB_Main);
-				if (catIdx != GItemLastCatIdx && catIdx >= 0)
+				int32 Selected = GetComboSelectedIndexSafe(GItemCategoryDD->CB_Main);
+				if (Selected >= 0)
 				{
-					GItemLastCatIdx = catIdx;
-					GItemCurrentPage = 0;
-					FilterItems(catIdx);
-					RefreshItemPage();
+					catIdx = Selected;
+					if (catIdx != GItemLastCatIdx)
+					{
+						GItemLastCatIdx = catIdx;
+						needFilterRefresh = true;
+					}
 				}
+			}
+			if (UpdateItemSearchKeywordFromEdit())
+				needFilterRefresh = true;
+			if (needFilterRefresh)
+			{
+				GItemCurrentPage = 0;
+				FilterItems((catIdx >= 0) ? catIdx : 0);
+				RefreshItemPage();
 			}
 
 			GItemAddQuantity = GetItemAddQuantityFromEdit();
@@ -1617,10 +1629,13 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			int32 ClickDefId = 0;
 			if (TryConsumeItemEntryClickDefId(ClickDefId))
 			{
-				const int32 Quantity = (GItemAddQuantity > 0) ? GItemAddQuantity : 1;
+				const bool CtrlDown = ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
+				const int32 Quantity = CtrlDown ? 10 : ((GItemAddQuantity > 0) ? GItemAddQuantity : 1);
 				UItemFuncLib::AddItem(ClickDefId, Quantity);
 				LOGI_STREAM("FrameHook") << "[SDK] AddItem(list-left-click): defId=" << ClickDefId
-					<< " x" << Quantity << "\n";
+					<< " x" << Quantity
+					<< " ctrl=" << (CtrlDown ? 1 : 0)
+					<< "\n";
 			}
 
 			auto GetClickableButton = [](UJHCommon_Btn_Free_C* W) -> UButton* {

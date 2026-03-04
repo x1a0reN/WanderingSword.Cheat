@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+#include <cwctype>
+#include <string>
 #include <unordered_map>
 
 #include "ItemBrowser.hpp"
@@ -25,6 +27,9 @@ namespace
 	constexpr float kItemTipDefaultHeight = 420.0f;
 	constexpr float kItemTipMouseOffset = 18.0f;
 	constexpr float kItemTipViewportMargin = 12.0f;
+	UEditableTextBox* GItemSearchEdit = nullptr;
+	std::wstring GItemSearchKeyword;
+	std::wstring GItemSearchKeywordFolded;
 
 	const char* VisName(ESlateVisibility V)
 	{
@@ -59,6 +64,23 @@ namespace
 		if (!SoftTextureData28)
 			return nullptr;
 		return reinterpret_cast<const FName*>(SoftTextureData28 + 0x10);
+	}
+
+	std::wstring FoldSearchText(const std::wstring& In)
+	{
+		std::wstring Out;
+		Out.reserve(In.size());
+		for (wchar_t Ch : In)
+			Out.push_back(static_cast<wchar_t>(std::towlower(Ch)));
+		return Out;
+	}
+
+	bool ContainsSearchInsensitive(const wchar_t* Haystack, const std::wstring& NeedleFolded)
+	{
+		if (!Haystack || NeedleFolded.empty())
+			return true;
+		std::wstring Folded = FoldSearchText(std::wstring(Haystack));
+		return Folded.find(NeedleFolded) != std::wstring::npos;
 	}
 
 	UGameInstance* GetCurrentGameInstance()
@@ -819,12 +841,26 @@ void FilterItems(int32 category)
 		case 3: match = (st >= 14 && st <= 17); break;       // 婵炴垵鐗愰埀顒侇殔閹?
 		default: match = (st == 0 || st > 17); break;        // 闁稿繑婀圭划?
 		}
+		if (match && !GItemSearchKeywordFolded.empty())
+		{
+			bool SearchMatch = ContainsSearchInsensitive(GAllItems[i].Name, GItemSearchKeywordFolded);
+			if (!SearchMatch)
+			{
+				wchar_t DefIdBuf[32] = {};
+				swprintf_s(DefIdBuf, 32, L"%d", GAllItems[i].DefId);
+				SearchMatch = ContainsSearchInsensitive(DefIdBuf, GItemSearchKeywordFolded);
+			}
+			match = SearchMatch;
+		}
+
 		if (match)
 			GFilteredIndices.push_back(i);
 	}
 	GItemTotalPages = ((int32)GFilteredIndices.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
 	if (GItemTotalPages < 1) GItemTotalPages = 1;
-	LOGI_STREAM("ItemBrowser") << "[SDK] Filter cat=" << category << ": " << GFilteredIndices.size()
+	LOGI_STREAM("ItemBrowser") << "[SDK] Filter cat=" << category
+		<< " searchLen=" << GItemSearchKeyword.size()
+		<< ": " << GFilteredIndices.size()
 	          << " items, " << GItemTotalPages << " pages\n";
 }
 
@@ -1798,6 +1834,31 @@ void CacheEntryInitContextWeakB(const FWeakObjectPtr& WeakB, const char* SourceT
 		<< "\n";
 }
 
+void SetItemSearchEditBox(UEditableTextBox* Edit)
+{
+	GItemSearchEdit = Edit;
+}
+
+bool UpdateItemSearchKeywordFromEdit()
+{
+	std::wstring NewKeyword;
+	if (GItemSearchEdit && IsSafeLiveObject(static_cast<UObject*>(GItemSearchEdit)))
+	{
+		const FText Text = GItemSearchEdit->GetText();
+		const FString Raw = UKismetTextLibrary::Conv_TextToString(Text);
+		const wchar_t* WS = Raw.CStr();
+		if (WS)
+			NewKeyword = WS;
+	}
+
+	if (NewKeyword == GItemSearchKeyword)
+		return false;
+
+	GItemSearchKeyword = NewKeyword;
+	GItemSearchKeywordFolded = FoldSearchText(GItemSearchKeyword);
+	return true;
+}
+
 // Clear item browser widget state (called when panel closes)
 void ClearItemBrowserState()
 {
@@ -1829,6 +1890,9 @@ void ClearItemBrowserState()
 	GItemQuantityRow = nullptr;
 	GItemQuantityEdit = nullptr;
 	GItemAddQuantity = 1;
+	GItemSearchEdit = nullptr;
+	GItemSearchKeyword.clear();
+	GItemSearchKeywordFolded.clear();
 
 	GItemGridPanel = nullptr;
 	GItemListView = nullptr;
