@@ -178,6 +178,109 @@ namespace
 	UObjectProcessEventFn GOriginalItemEntryProcessEvent = nullptr;
 	std::atomic<int32> GPendingItemEntryClickDefId = 0;
 	constexpr bool kVerboseItemEntryProcessEventLogs = false;
+	VTableHook GBackpackViewProcessEventHook;
+	UObjectProcessEventFn GOriginalBackpackViewProcessEvent = nullptr;
+	constexpr bool kVerboseBackpackViewProcessEventLogs = false;
+	constexpr uintptr_t kBackpackGridCtxWeakOffset = 0x8A0;
+	constexpr int32 kBackpackCtxSourceAnchorIndex = 59720;
+	constexpr int32 kBackpackCtxSourceWindow = 1000;
+	std::unordered_map<std::string, int32> GBackpackPECallCounts;
+	std::unordered_set<std::string> GBackpackPESeenFuncs;
+	DWORD GBackpackPELastDumpTick = 0;
+	FWeakObjectPtr GLastCapturedBackpackCtxWeak{};
+	uintptr_t GLastCapturedBackpackGrid = 0;
+	int32 GBackpackCtxSourceGridIndex = -1;
+	int32 GBackpackCtxSourceGridDistance = (std::numeric_limits<int32>::max)();
+	bool GBackpackCtxSourceGridExact = false;
+
+	bool IsInterestingBackpackPEName(const std::string& Name)
+	{
+		return
+			(Name.find("Backpack") != std::string::npos) ||
+			(Name.find("EVT_") != std::string::npos) ||
+			(Name.find("SetupHierarchy") != std::string::npos) ||
+			(Name.find("RenderView") != std::string::npos) ||
+			(Name.find("OnEntry") != std::string::npos) ||
+			(Name.find("Handle") != std::string::npos);
+	}
+
+	FWeakObjectPtr ReadWeakAt(UObject* Obj, uintptr_t Offset)
+	{
+		FWeakObjectPtr Out{};
+		if (!Obj)
+			return Out;
+		const uint8* Base = reinterpret_cast<const uint8*>(Obj);
+		Out = *reinterpret_cast<const FWeakObjectPtr*>(Base + Offset);
+		return Out;
+	}
+
+	bool IsSameWeak(const FWeakObjectPtr& A, const FWeakObjectPtr& B)
+	{
+		return A.ObjectIndex == B.ObjectIndex &&
+			A.ObjectSerialNumber == B.ObjectSerialNumber;
+	}
+
+	void ResetBackpackCtxCaptureState()
+	{
+		GLastCapturedBackpackCtxWeak = {};
+		GLastCapturedBackpackGrid = 0;
+		GBackpackCtxSourceGridIndex = -1;
+		GBackpackCtxSourceGridDistance = (std::numeric_limits<int32>::max)();
+		GBackpackCtxSourceGridExact = false;
+	}
+
+	bool ShouldCaptureBackpackCtxFromGrid(UObject* GridObj, int32& OutGridIndex, int32& OutDistance, bool& OutExact)
+	{
+		OutGridIndex = -1;
+		OutDistance = (std::numeric_limits<int32>::max)();
+		OutExact = false;
+		if (!IsSafeLiveObject(GridObj) || GridObj->IsDefaultObject())
+			return false;
+
+		OutGridIndex = GridObj->Index;
+		if (OutGridIndex < 0)
+			return false;
+
+		OutDistance = std::abs(OutGridIndex - kBackpackCtxSourceAnchorIndex);
+		OutExact = (OutGridIndex == kBackpackCtxSourceAnchorIndex);
+		if (OutDistance > kBackpackCtxSourceWindow)
+			return false;
+
+		if (GBackpackCtxSourceGridExact && !OutExact && GBackpackCtxSourceGridIndex != OutGridIndex)
+			return false;
+		if (GBackpackCtxSourceGridIndex < 0 || GBackpackCtxSourceGridIndex == OutGridIndex || OutExact)
+			return true;
+		return OutDistance < GBackpackCtxSourceGridDistance;
+	}
+
+	void DumpBackpackPECountsIfNeeded()
+	{
+		const DWORD Now = GetTickCount();
+		if (GBackpackPELastDumpTick != 0 && (Now - GBackpackPELastDumpTick) < 1000)
+			return;
+		GBackpackPELastDumpTick = Now;
+
+		if (GBackpackPECallCounts.empty())
+			return;
+
+		std::vector<std::pair<std::string, int32>> Pairs;
+		Pairs.reserve(GBackpackPECallCounts.size());
+		for (const auto& KV : GBackpackPECallCounts)
+			Pairs.emplace_back(KV.first, KV.second);
+		std::sort(Pairs.begin(), Pairs.end(),
+			[](const auto& A, const auto& B) { return A.second > B.second; });
+
+		const int32 DumpNum = (static_cast<int32>(Pairs.size()) < 6) ? static_cast<int32>(Pairs.size()) : 6;
+		for (int32 i = 0; i < DumpNum; ++i)
+		{
+			LOGI_STREAM("FrameHook")
+				<< "[SDK] BackpackView ProcessEvent hot[" << i << "]: func="
+				<< Pairs[static_cast<size_t>(i)].first
+				<< " count=" << Pairs[static_cast<size_t>(i)].second
+				<< "\n";
+		}
+		GBackpackPECallCounts.clear();
+	}
 
 	bool TryQueueDefIdFromItemEntry(UObject* EntryObj, const std::string& TriggerFunc)
 	{
@@ -320,12 +423,178 @@ namespace
 		return OutDefId > 0;
 	}
 
+	void __fastcall HookedBackpackViewProcessEvent(const UObject* ThisObj, UFunction* Function, void* Params)
+	{
+		if (ThisObj && Function)
+		{
+			UObject* MutableThis = const_cast<UObject*>(ThisObj);
+			if (IsSafeLiveObjectOfClass(MutableThis, UJHBackpackViewBase::StaticClass()))
+			{
+				const std::string FuncName = Function->GetName();
+				++GBackpackPECallCounts[FuncName];
+
+				// Core path: continuously capture ctx from backpack RenderView.
+				if (FuncName == "EVT_RenderView")
+				{
+					auto* View = static_cast<UJHBackpackViewBase*>(MutableThis);
+					UObject* GridObj = static_cast<UObject*>(View->GRID_ITEM);
+					int32 GridIndex = -1;
+					int32 GridDist = (std::numeric_limits<int32>::max)();
+					bool bGridExact = false;
+					if (ShouldCaptureBackpackCtxFromGrid(GridObj, GridIndex, GridDist, bGridExact))
+					{
+						FWeakObjectPtr CtxWeak = ReadWeakAt(GridObj, kBackpackGridCtxWeakOffset);
+						if (CtxWeak.ObjectIndex >= 0 && CtxWeak.ObjectSerialNumber > 0)
+						{
+							UObject* CtxObj = CtxWeak.Get();
+							if (!IsSafeLiveObject(CtxObj))
+								CtxObj = nullptr;
+
+							const bool SourceChanged =
+								(GBackpackCtxSourceGridIndex != GridIndex) ||
+								(GBackpackCtxSourceGridExact != bGridExact);
+							GBackpackCtxSourceGridIndex = GridIndex;
+							GBackpackCtxSourceGridDistance = GridDist;
+							GBackpackCtxSourceGridExact = bGridExact;
+
+							CacheEntryInitContextWeakB(CtxWeak, "BackpackView.EVT_RenderView");
+							const uintptr_t GridAddr = reinterpret_cast<uintptr_t>(GridObj);
+							if (!IsSameWeak(CtxWeak, GLastCapturedBackpackCtxWeak) ||
+								GLastCapturedBackpackGrid != GridAddr ||
+								SourceChanged)
+							{
+								GLastCapturedBackpackCtxWeak = CtxWeak;
+								GLastCapturedBackpackGrid = GridAddr;
+								LOGI_STREAM("FrameHook")
+									<< "[SDK] BackpackView ctx captured: func=EVT_RenderView"
+									<< " this=0x" << std::hex << reinterpret_cast<uintptr_t>(MutableThis)
+									<< " grid=0x" << GridAddr
+									<< std::dec
+									<< " gridIndex=" << GridIndex
+									<< " anchorDiff=" << GridDist
+									<< " exact=" << (bGridExact ? 1 : 0)
+									<< " ctxWeak=(" << CtxWeak.ObjectIndex << "," << CtxWeak.ObjectSerialNumber << ")"
+									<< " ctxObj=0x" << std::hex << reinterpret_cast<uintptr_t>(CtxObj)
+									<< std::dec
+									<< "\n";
+							}
+						}
+					}
+				}
+
+				if (kVerboseBackpackViewProcessEventLogs)
+				{
+					if (GBackpackPESeenFuncs.insert(FuncName).second && IsInterestingBackpackPEName(FuncName))
+					{
+						LOGI_STREAM("FrameHook")
+							<< "[SDK] BackpackView ProcessEvent first-seen: func="
+							<< FuncName
+							<< " this=0x" << std::hex << reinterpret_cast<uintptr_t>(MutableThis)
+							<< std::dec
+							<< "\n";
+					}
+
+					if (IsInterestingBackpackPEName(FuncName))
+					{
+						auto* View = static_cast<UJHBackpackViewBase*>(MutableThis);
+						UObject* GridObj = static_cast<UObject*>(View->GRID_ITEM);
+						FWeakObjectPtr CtxWeak = ReadWeakAt(GridObj, kBackpackGridCtxWeakOffset);
+						UObject* CtxObj = CtxWeak.Get();
+						if (!IsSafeLiveObject(CtxObj))
+							CtxObj = nullptr;
+
+						LOGI_STREAM("FrameHook")
+							<< "[SDK] BackpackView PE: func=" << FuncName
+							<< " this=0x" << std::hex << reinterpret_cast<uintptr_t>(MutableThis)
+							<< " params=0x" << reinterpret_cast<uintptr_t>(Params)
+							<< " grid=0x" << reinterpret_cast<uintptr_t>(GridObj)
+							<< std::dec
+							<< " ctxWeak=(" << CtxWeak.ObjectIndex << "," << CtxWeak.ObjectSerialNumber << ")"
+							<< " ctxObj=0x" << std::hex << reinterpret_cast<uintptr_t>(CtxObj)
+							<< std::dec
+							<< "\n";
+					}
+
+					DumpBackpackPECountsIfNeeded();
+				}
+			}
+		}
+
+		if (GOriginalBackpackViewProcessEvent)
+			GOriginalBackpackViewProcessEvent(ThisObj, Function, Params);
+	}
+
+	UObject* FindLiveBackpackViewForHook()
+	{
+		auto* ObjArray = UObject::GObjects.GetTypedPtr();
+		if (!ObjArray)
+			return nullptr;
+
+		UObject* Fallback = nullptr;
+		const int32 Num = ObjArray->Num();
+		for (int32 i = 0; i < Num; ++i)
+		{
+			UObject* Obj = ObjArray->GetByIndex(i);
+			if (!IsSafeLiveObjectOfClass(Obj, UJHBackpackViewBase::StaticClass()))
+				continue;
+			if (Obj->IsDefaultObject())
+				continue;
+
+			if (!Fallback)
+				Fallback = Obj;
+
+			auto* View = static_cast<UJHBackpackViewBase*>(Obj);
+			UObject* GridObj = static_cast<UObject*>(View->GRID_ITEM);
+			if (IsSafeLiveObjectOfClass(GridObj, UJHNeoUIItemGrid::StaticClass()))
+				return Obj;
+		}
+		return Fallback;
+	}
+
+	bool EnsureBackpackViewProcessEventHookInstalled()
+	{
+		if (GOriginalBackpackViewProcessEvent)
+			return true;
+
+		UObject* BackpackObj = FindLiveBackpackViewForHook();
+		if (!BackpackObj)
+			return false;
+
+		GBackpackViewProcessEventHook = VTableHook(BackpackObj, Offsets::ProcessEventIdx);
+		GOriginalBackpackViewProcessEvent =
+			GBackpackViewProcessEventHook.Install<UObjectProcessEventFn>(HookedBackpackViewProcessEvent);
+		if (!GOriginalBackpackViewProcessEvent)
+		{
+			LOGE_STREAM("FrameHook") << "[SDK] BackpackView ProcessEvent hook install failed (idx="
+				<< Offsets::ProcessEventIdx << ")\n";
+			return false;
+		}
+
+		LOGI_STREAM("FrameHook") << "[SDK] BackpackView ProcessEvent hook installed (idx="
+			<< Offsets::ProcessEventIdx << ") this=0x"
+			<< std::hex << reinterpret_cast<uintptr_t>(BackpackObj)
+			<< std::dec
+			<< "\n";
+		return true;
+	}
+
 	void RemoveItemEntryProcessEventHook()
 	{
 		GPendingItemEntryClickDefId.store(0, std::memory_order_release);
 		if (GItemEntryProcessEventHook.IsInstalled())
 			GItemEntryProcessEventHook.Remove();
 		GOriginalItemEntryProcessEvent = nullptr;
+	}
+
+	void RemoveBackpackViewProcessEventHook()
+	{
+		if (GBackpackViewProcessEventHook.IsInstalled())
+			GBackpackViewProcessEventHook.Remove();
+		GOriginalBackpackViewProcessEvent = nullptr;
+		GBackpackPECallCounts.clear();
+		GBackpackPESeenFuncs.clear();
+		GBackpackPELastDumpTick = 0;
+		ResetBackpackCtxCaptureState();
 	}
 
 	bool IsLiveComboBox(UComboBoxString* Combo)
@@ -1044,6 +1313,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		if (!GUnloadCleanupDone.exchange(true, std::memory_order_acq_rel))
 		{
 			RemoveItemEntryProcessEventHook();
+			RemoveBackpackViewProcessEventHook();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
 			LOGI_STREAM("FrameHook") << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
@@ -1074,6 +1344,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			InternalWidgetVisible = false;
 			GCachedBtnExit = nullptr;
 			ClearRuntimeWidgetState();
+			ResetBackpackCtxCaptureState();
 			TransitionGuardFrames = 120;
 		}
 		LastWorld = CurrentWorld;
@@ -1203,6 +1474,16 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			HideInternalWidget(PC);
 	}
 	ExitWasPressed = ExitPressed;
+
+	// Backpack view ProcessEvent hook: low-frequency global install retry
+	static DWORD sLastBackpackPEInstallTryTick = 0;
+	const DWORD HookTryNow = GetTickCount();
+	if (!GOriginalBackpackViewProcessEvent &&
+		(sLastBackpackPEInstallTryTick == 0 || (HookTryNow - sLastBackpackPEInstallTryTick) >= 500))
+	{
+		sLastBackpackPEInstallTryTick = HookTryNow;
+		EnsureBackpackViewProcessEventHookInstalled();
+	}
 
 	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;

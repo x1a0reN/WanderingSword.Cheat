@@ -1,4 +1,4 @@
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -76,6 +76,10 @@ namespace
 
 	constexpr uintptr_t kNeoTileInitWeakOffsetA = 0x388;
 	constexpr uintptr_t kNeoTileInitWeakOffsetB = 0x8A0;
+	constexpr int32 kGridSearchAnchorIndex = 59720;
+	constexpr int32 kGridSearchWindow = 1000;
+	constexpr bool kEnableEntryInitSearch = true;    // Enable anchor-window search path.
+	constexpr bool kEnableFullScanFallback = false;  // 澶囩敤鍏ㄩ噺鎵紝榛樿鍏抽棴
 
 	FWeakObjectPtr ReadWeakPtrAt(UObject* Obj, uintptr_t Offset)
 	{
@@ -174,28 +178,22 @@ UListView* GEntryInitPreparedListView = nullptr;
 		if (!IsSupportedItemGridObject(DestGridObj))
 			return false;
 
-		auto* ObjArray = UObject::GObjects.GetTypedPtr();
-		if (!ObjArray)
-			return false;
-
-		const int32 Num = ObjArray->Num();
-		for (int32 i = 0; i < Num; ++i)
+		auto TryAdoptFromCandidate = [&](UObject* Candidate, int32 CandidateIndex) -> bool
 		{
-			UObject* Candidate = ObjArray->GetByIndex(i);
 			if (!Candidate || Candidate == DestGridObj)
-				continue;
+				return false;
 			if (!IsSupportedItemGridObject(Candidate))
-				continue;
+				return false;
 			if (Candidate->IsDefaultObject())
-				continue;
+				return false;
 
 			const FWeakObjectPtr A = ReadWeakPtrAt(Candidate, kNeoTileInitWeakOffsetA);
 			const FWeakObjectPtr B = ReadWeakPtrAt(Candidate, kNeoTileInitWeakOffsetB);
 			if (!IsWeakPtrFilled(B))
-				continue;
+				return false;
 			UObject* BO = ResolveWeakPtrLoose(B);
 			if (!IsSafeLiveObjectOfClass(BO, UNeoUIUniversalModuleVMBase::StaticClass()))
-				continue;
+				return false;
 
 			if (IsWeakPtrFilled(A))
 				WriteWeakPtrAt(DestGridObj, kNeoTileInitWeakOffsetA, A);
@@ -206,24 +204,62 @@ UListView* GEntryInitPreparedListView = nullptr;
 				<< std::hex << reinterpret_cast<uintptr_t>(Candidate)
 				<< " dst=0x" << reinterpret_cast<uintptr_t>(DestGridObj)
 				<< " BObj=0x" << reinterpret_cast<uintptr_t>(BO)
-				<< " srcClass=" << Candidate->GetFullName()
 				<< std::dec
+				<< " index=" << CandidateIndex
+				<< " srcClass=" << Candidate->GetFullName()
 				<< "\n";
 			return true;
-		}
+		};
 
-		if (GHasCachedEntryInitWeakB && IsWeakPtrFilled(GCachedEntryInitWeakB))
+		// 1) 闈炴悳绱㈣矾寰勶細浼樺厛鍚冪紦瀛?		if (GHasCachedEntryInitWeakB && IsWeakPtrFilled(GCachedEntryInitWeakB))
 		{
 			UObject* CachedBO = ResolveWeakPtrLoose(GCachedEntryInitWeakB);
-			if (!IsSafeLiveObjectOfClass(CachedBO, UNeoUIUniversalModuleVMBase::StaticClass()))
-				return false;
-			WriteWeakPtrAt(DestGridObj, kNeoTileInitWeakOffsetB, GCachedEntryInitWeakB);
-			LOGI_STREAM("ItemBrowser")
-				<< "[SDK] ItemGrid entry-init context copied from cache: dst=0x"
-				<< std::hex << reinterpret_cast<uintptr_t>(DestGridObj)
-				<< std::dec
-				<< " B=(" << GCachedEntryInitWeakB.ObjectIndex << "," << GCachedEntryInitWeakB.ObjectSerialNumber << ")\n";
-			return true;
+			if (IsSafeLiveObjectOfClass(CachedBO, UNeoUIUniversalModuleVMBase::StaticClass()))
+			{
+				WriteWeakPtrAt(DestGridObj, kNeoTileInitWeakOffsetB, GCachedEntryInitWeakB);
+				LOGI_STREAM("ItemBrowser")
+					<< "[SDK] ItemGrid entry-init context copied from cache: dst=0x"
+					<< std::hex << reinterpret_cast<uintptr_t>(DestGridObj)
+					<< std::dec
+					<< " B=(" << GCachedEntryInitWeakB.ObjectIndex << "," << GCachedEntryInitWeakB.ObjectSerialNumber << ")\n";
+				return true;
+			}
+		}
+
+		// 2) 搜索逻辑默认禁用，只依赖 EVT_RenderView 注入缓存。
+		if (!kEnableEntryInitSearch)
+			return false;
+
+		auto* ObjArray = UObject::GObjects.GetTypedPtr();
+		if (!ObjArray)
+			return false;
+
+		const int32 Num = ObjArray->Num();
+
+		// 3) 涓绘悳绱細閿氱偣绐楀彛鎵弿
+		if (Num > 0)
+		{
+			int32 Start = kGridSearchAnchorIndex - kGridSearchWindow;
+			int32 End = kGridSearchAnchorIndex + kGridSearchWindow;
+			if (Start < 0) Start = 0;
+			if (End >= Num) End = Num - 1;
+			for (int32 i = Start; i <= End; ++i)
+			{
+				UObject* Candidate = ObjArray->GetByIndex(i);
+				if (TryAdoptFromCandidate(Candidate, i))
+					return true;
+			}
+		}
+
+		// 4) 澶囩敤锛氬叏閲忔壂锛堥粯璁ゅ叧闂級
+		if (!kEnableFullScanFallback)
+			return false;
+
+		for (int32 i = 0; i < Num; ++i)
+		{
+			UObject* Candidate = ObjArray->GetByIndex(i);
+			if (TryAdoptFromCandidate(Candidate, i))
+				return true;
 		}
 
 		return false;
@@ -244,7 +280,17 @@ UListView* GEntryInitPreparedListView = nullptr;
 
 		const bool Copied = TryCopyEntryInitWeakContextFromLiveGrid(GridObj);
 		if (!Copied)
-			LOGE_STREAM("ItemBrowser") << "[SDK] ItemGrid entry-init context repair failed: no live donor grid\n";
+		{
+			static DWORD sLastContextMissLogTick = 0;
+			const DWORD Now = GetTickCount();
+			if (sLastContextMissLogTick == 0 || (Now - sLastContextMissLogTick) >= 1500)
+			{
+				sLastContextMissLogTick = Now;
+				LOGE_STREAM("ItemBrowser") << "[SDK] ItemGrid entry-init context repair failed: "
+					<< (kEnableEntryInitSearch ? "search miss" : "search disabled and cache empty")
+					<< "\n";
+			}
+		}
 		LogEntryInitWeakContext("after", GridObj);
 	}
 
@@ -308,7 +354,7 @@ UListView* GEntryInitPreparedListView = nullptr;
 			return Texture;
 		}
 
-		// 鏉烆剙婧€閺堢喖妫块張澶夌昂鐠у嫭绨导姘閺冩湹绗夐崣顖滄暏閿涘矁顔曠純顕€鍣哥拠鏇犵崶閸欙綁浼╅崗宥嗘娑?missing 濮光剝鐓嬮妴?
+		// 閺夌儐鍓欏┃鈧柡鍫㈠枛濡潡寮垫径澶屾槀閻犙冨缁喗瀵煎顐㈩槻闁哄啯婀圭粭澶愬矗椤栨粍鏆忛柨娑樼焷椤旀洜绱旈鈧崳鍝ユ嫚閺囩姷宕堕柛娆欑秮娴尖晠宕楀鍡橆攳濞?missing 婵厜鍓濋悡瀣Υ?
 		sMissingIconRetryUntil[Key] = NowTick + 2500;
 		LOGI_STREAM("ItemBrowser") << "[SDK] ItemIconMissing: " << AssetPathName->GetRawString() << "\n";
 		return nullptr;
@@ -399,7 +445,7 @@ UListView* GEntryInitPreparedListView = nullptr;
 		Created->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
 		Created->SetDesiredSizeInViewport(FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight });
 
-		// 鏉╂瑤绨洪崠鍝勭厵閸︺劎瀚粩瀣⒖閸?Tip 娑擃厼娴愮€规岸娈ｉ挊蹇ョ礉閸欘亜婀崚婵嗩潗閸栨牗妞傜拋鍓х枂娑撯偓濞喡扳偓?
+		// 閺夆晜鐟ょ花娲礌閸濆嫮鍘甸柛锔哄妿鐎氼厾绮╃€ｎ剙鈷栭柛?Tip 濞戞搩鍘煎ù鎰偓瑙勫哺濞堬綁鎸婅箛銉х闁告瑯浜滃﹢顏堝礆濠靛棭娼楅柛鏍ㄧ墬濡炲倻鎷嬮崜褏鏋傚☉鎾亾婵炲枴鎵冲亾?
 		if (Created->VE_Effects)
 			Created->VE_Effects->SetVisibility(ESlateVisibility::Collapsed);
 		if (Created->VE_Additional)
@@ -767,11 +813,11 @@ void FilterItems(int32 category)
 		bool match = false;
 		uint8 st = GAllItems[i].SubType;
 		switch (category) {
-		case 0: match = true; break;                          // 閸忋劑鍎?
-		case 1: match = (st >= 1 && st <= 6); break;         // 濮濓箑娅?
-		case 2: match = (st >= 10 && st <= 13); break;       // 闂冩彃鍙?
-		case 3: match = (st >= 14 && st <= 17); break;       // 濞戝牐鈧鎼?
-		default: match = (st == 0 || st > 17); break;        // 閸忔湹绮?
+		case 0: match = true; break;                          // 闁稿繈鍔戦崕?
+		case 1: match = (st >= 1 && st <= 6); break;         // 婵繐绠戝▍?
+		case 2: match = (st >= 10 && st <= 13); break;       // 闂傚啯褰冮崣?
+		case 3: match = (st >= 14 && st <= 17); break;       // 婵炴垵鐗愰埀顒侇殔閹?
+		default: match = (st == 0 || st > 17); break;        // 闁稿繑婀圭划?
 		}
 		if (match)
 			GFilteredIndices.push_back(i);
@@ -907,7 +953,7 @@ void RefreshItemPage()
 			if (ClassOk) ++SpecClassOkAtFeed;
 
 			const int32 BeforeNum = InListItems.Num();
-			// Spec 閸︺劌鍨卞娲▉濞堥潧鍑￠崑?IsSafeLiveObjectOfClass 閺嶏繝鐛欓敍宀冪箹闁插瞼娲块幒銉ュ弳閸掓绱?			// 闁灝鍘ら柌宥咁槻 validity 濡偓閺屻儱婀弻鎰昂閺冭埖婧€鐎佃壈鍤х拠顖氬灲娑?invalid閵?			if (Spec)
+			// Spec 闁革负鍔岄崹鍗烆嚈濞差亝鈻夋繛鍫ユ涧閸戯繝宕?IsSafeLiveObjectOfClass 闁哄稄绻濋悰娆撴晬瀹€鍐闂佹彃鐬煎ú鍧楀箳閵夈儱寮抽柛鎺擃殣缁?			// 闂侇剙鐏濋崢銈夋煂瀹ュ拋妲?validity 婵☆偀鍋撻柡灞诲劚濠€顏堝蓟閹邦亞鏄傞柡鍐煐濠р偓閻庝絻澹堥崵褏鎷犻姘伈濞?invalid闁?			if (Spec)
 				InListItems.Add(static_cast<UObject*>(Spec));
 			const int32 AfterNum = InListItems.Num();
 
@@ -1011,7 +1057,7 @@ void RefreshItemPage()
 		int32 LayoutRetryCount = 0;
 		if (NumItemsInList > 0 && DisplayedNum == 0)
 		{
-			// 閸掓繂顫愰崠鏍▉濞堢數绮＄敮绋垮帥閸犲倹鏆熼幑顔衡偓浣告倵鐎瑰本鍨氱敮鍐ㄧ湰閿涙稖藟閸戠姾鐤?prepass/refresh 鐠?entry 閻喐顒滅€圭偘绶ラ崠鏍モ偓?			for (int32 Retry = 0; Retry < 3 && DisplayedNum == 0; ++Retry)
+			// 闁告帗绻傞～鎰板礌閺嶎厽鈻夋繛鍫㈡暩缁紕鏁粙鍨弗闁哥姴鍊归弳鐔煎箲椤旇　鍋撴担鍛婂€甸悗鐟版湰閸ㄦ氨鏁崘銊ф拱闁挎稒绋栬棢闁告垹濮鹃悿?prepass/refresh 閻?entry 闁活亞鍠愰婊呪偓鍦仒缁躲儵宕犻弽銉㈠亾?			for (int32 Retry = 0; Retry < 3 && DisplayedNum == 0; ++Retry)
 			{
 				++LayoutRetryCount;
 				if (GItemGridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
@@ -1080,7 +1126,7 @@ void RefreshItemPage()
 			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
 				return false;
 
-			// 瀵搫鍩楃憴锕€褰?ListEntry 閺佺増宓佺紒鎴濈暰娑撳孩瑕嗛弻鎾规祮閹诡澁绱濋柆鍨帳閺屾劒绨?WDT 鐠侯垰绶為崣顏嗘晸閹存劕锛撶€涙劒绗夐崚宄板敶鐎瑰箍鈧?			if (ListItemObj && EntryWidget->IsA(IUserObjectListEntry::StaticClass()))
+			// 鐎殿喖鎼崺妤冩喆閿曗偓瑜?ListEntry 闁轰胶澧楀畵浣虹磼閹存繄鏆板☉鎾冲鐟曞棝寮婚幘瑙勭ギ闁硅婢佺槐婵嬫焼閸喖甯抽柡灞惧姃缁?WDT 閻犱警鍨扮欢鐐哄矗椤忓棙鏅搁柟瀛樺姇閿涙挾鈧稒鍔掔粭澶愬礆瀹勬澘鏁堕悗鐟扮畭閳?			if (ListItemObj && EntryWidget->IsA(IUserObjectListEntry::StaticClass()))
 			{
 				auto* ObjEntry = reinterpret_cast<IUserObjectListEntry*>(EntryWidget);
 				ObjEntry->OnListItemObjectSet(ListItemObj);
@@ -1286,7 +1332,7 @@ void PollItemBrowserHoverTips()
 	int32 HoverByGridFallbackCount = 0;
 
 	int32 HoveredSlot = -1;
-	// 娴兼ê鍘涙担璺ㄦ暏缂冩垶鐗搁崸鎰垼閸涙垝鑵戦敍宀勪缉閸忓秵鐦℃潪顕€鍏橀崑?24 閺嶅吋绻佹惔?IsHovered 閹恒垺绁撮妴?
+	// 濞村吋锚閸樻稒鎷呯捄銊︽殢缂傚啯鍨堕悧鎼佸锤閹邦厾鍨奸柛娑欏灊閼垫垿鏁嶅畝鍕級闁稿繐绉甸惁鈩冩姜椤曗偓閸忔﹢宕?24 闁哄秴鍚嬬换浣规償?IsHovered 闁规亽鍨虹粊鎾Υ?
 	if (IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
 	{
 		UObject* WorldCtx = nullptr;
@@ -1350,7 +1396,7 @@ void PollItemBrowserHoverTips()
 		}
 	}
 
-	// 缂冩垶鐗搁崨鎴掕厬婢惰精瑙﹂弮璁圭礉娴ｅ酣顣剁挧鐗堢箒鎼达附甯板ù瀣幑鎼存洩绱濋崗鐓庮啇閻楄鐣╃敮鍐ㄧ湰閵?
+	// 缂傚啯鍨堕悧鎼佸川閹存帟鍘鎯扮簿鐟欙箓寮拋鍦濞达絽閰ｉ。鍓佹導閻楀牏绠掗幖杈鹃檮鐢澘霉鐎ｎ亜骞戦幖瀛樻穿缁辨繈宕楅悡搴晣闁绘顫夐悾鈺冩暜閸愩劎婀伴柕?
 	if (HoveredSlot < 0)
 	{
 		static DWORD sLastDeepProbeTick = 0;
@@ -1484,7 +1530,7 @@ void PollItemBrowserHoverTips()
 		return;
 	}
 
-	// 閹剚璇為崚鍥ㄥ床缁嬭櫕鈧礁鍨界€规熬绱版Η鐘崇垼韫囶偊鈧喐澹傛潻鍥ㄧ壐鐎涙劖妞傞敍灞肩瑝鐟曚焦鐦＄敮褔鍏橀柌宥呯紦 Tip 閸愬懎顔愰妴?
+	// 闁诡噮鍓氱拠鐐哄礆閸ャ劌搴婄紒瀣珪閳ь兛绀侀崹鐣屸偓瑙勭啲缁辩増螚閻樺磭鍨奸煫鍥跺亰閳ь剛鍠愭竟鍌涙交閸ャ劎澹愰悗娑欏姈濡炲倿鏁嶇仦鑲╃憹閻熸洑鐒﹂惁锛勬暜瑜旈崗姗€鏌屽鍛处 Tip 闁告劕鎳庨鎰板Υ?
 	const bool HoverTargetChanged = (HoveredSlot != GItemHoveredSlot);
 	if (HoverTargetChanged)
 	{
@@ -1547,7 +1593,7 @@ void PollItemBrowserHoverTips()
 			GItemHoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
 		else
 			GItemHoverTipsWidget = nullptr;
-		// 娴犲懍濞囬悽銊ㄥ殰瀵?StandaloneGameTip閿涘奔绗夐崘宥堢殶閻劍鐖堕幋蹇撳斧閻?Tip VM 閹恒儱褰涢妴?
+		// 濞寸姴鎳嶆繛鍥偨閵娿劌娈扮€?StandaloneGameTip闁挎稑濂旂粭澶愬礃瀹ュ牏娈堕柣顫妽閻栧爼骞嬭箛鎾虫枾闁?Tip VM 闁规亽鍎辫ぐ娑㈠Υ?
 		if (!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)))
 		{
 			const bool StandaloneOK = UpdateStandaloneItemTipContent(CI);
@@ -1616,7 +1662,7 @@ void PollItemBrowserHoverTips()
 		FVector2D TipSize{};
 		if (IsStandaloneTip)
 		{
-			// UBPVE_JHTips_Item_C 閺嶇懓褰查懗鑺ユЦ閺佹潙鐫嗙€圭懓娅掗敍瀛瞭andalone 閸ュ搫鐣鹃悽銊ュ幢閻楀洤鏄傜€电寮稉搴＄暰娴ｅ秲鈧?
+			// UBPVE_JHTips_Item_C 闁哄秶鎳撹ぐ鏌ユ嚄閼恒儲笑闁轰焦娼欓惈鍡欌偓鍦嚀濞呮帡鏁嶇€涚灜andalone 闁搞儱鎼悾楣冩偨閵娿儱骞㈤柣妤€娲ら弰鍌溾偓鐢殿焾瀵剚绋夋惔锛勬毎濞达絽绉查埀?
 			TipSize = FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight };
 		}
 		else
@@ -1729,6 +1775,27 @@ void OnItemBrowserTabShown()
 		<< "\n";
 
 	RefreshItemPage();
+}
+
+void CacheEntryInitContextWeakB(const FWeakObjectPtr& WeakB, const char* SourceTag)
+{
+	if (!IsWeakPtrFilled(WeakB))
+		return;
+
+	UObject* CtxObj = ResolveWeakPtrLoose(WeakB);
+	if (!IsSafeLiveObjectOfClass(CtxObj, UNeoUIUniversalModuleVMBase::StaticClass()))
+		return;
+
+	CacheEntryInitWeakB(WeakB);
+	if (GItemListView && IsSafeLiveObject(static_cast<UObject*>(GItemListView)))
+		WriteWeakPtrAt(static_cast<UObject*>(GItemListView), kNeoTileInitWeakOffsetB, WeakB);
+
+	LOGI_STREAM("ItemBrowser")
+		<< "[SDK] ItemGrid entry-init context cached from external source: src="
+		<< (SourceTag ? SourceTag : "unknown")
+		<< " B=(" << WeakB.ObjectIndex << "," << WeakB.ObjectSerialNumber << ")"
+		<< " CtxObj=0x" << std::hex << reinterpret_cast<uintptr_t>(CtxObj) << std::dec
+		<< "\n";
 }
 
 // Clear item browser widget state (called when panel closes)
