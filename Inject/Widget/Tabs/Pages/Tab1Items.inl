@@ -103,7 +103,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		AddSlider(RatioBox, L"额外效果倍率");
 
 		auto* LimitBox = AddSubPanel(L"限制与词条");
-		GTab1MaxExtraAffixesToggle = AddToggle(LimitBox, L"最大额外词条数");
+		GTab1MaxExtraAffixesToggle = AddToggle(LimitBox, L"锻造制衣最大额外效果词条数");
 		AddToggle(LimitBox, L"无视物品使用次数");
 		AddToggle(LimitBox, L"无视物品使用要求");
 	}
@@ -569,6 +569,10 @@ namespace
     uintptr_t GIncludeQuestItemsAddr = 0;
     uintptr_t GIncludeQuestItemsAddr2 = 0;
     uintptr_t GDropRate100Addr = 0;
+    uintptr_t GIgnoreItemRequirementsAddr = 0;
+    uintptr_t GIgnoreItemUseCountPatchAddr = 0;
+    uintptr_t GIgnoreItemUseCountHookOffset = 0;
+    uint32_t GTab1IgnoreItemUseCountHookId = UINT32_MAX;
 
     // 物品不减特征码
     const char* kItemNoDecreasePattern = "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 41 0F B6 F1 41 8B E8 48 8B FA 48 8B D9";
@@ -585,6 +589,10 @@ namespace
     const char* kQuestItemsSellablePattern = "48 8B ?? 70 80 78 40 3C";
     // 掉落率100%（DropItem + A: 84 C0 -> 90 90）
     const char* kDropRate100Pattern = "F3 0F 2C ? 04 E8 ? ? ? ? 84 C0 74 ? 48";
+    // 无视物品使用要求（match + 0xB: 74 -> EB）
+    const char* kIgnoreItemRequirementsPattern = "?? 8D ?? ?? ?? 8D ?? ?? 48 ?? ?? 74 ?? 33 ED";
+    const char* kIgnoreItemUseCountHookPattern = "E8 ? ? ? ? 48 8B ? ? 8B ? ? ? 00 00 ? ? 7C ? 48";
+    const char* kIgnoreItemUseCountPatchPattern = "7C ? 48 8D 85 ? ? ? ? 48 89 44 24 ? 4C 8D";
 
     // 功能：如果 Num < 0，则设为 0（防止负数扣除）
     const unsigned char kItemNoDecreaseTrampolineCode[] = {
@@ -670,6 +678,9 @@ namespace
         0x48, 0x63, 0xF6,                               // movsxd rsi,esi
         0x4D, 0x8B, 0x3F                                // mov r15,[r15]
     };
+    const unsigned char kIgnoreItemUseCountTrampolineCode[] = {
+        0x31, 0xC0                                      // xor eax,eax
+    };
 
     uintptr_t ScanModulePatternRobust(const char* moduleName, const char* pattern)
     {
@@ -711,6 +722,10 @@ void EnableItemGainMultiplierHook();
 void DisableItemGainMultiplierHook();
 void EnableDropRate100Patch();
 void DisableDropRate100Patch();
+void EnableIgnoreItemUseCountFeature();
+void DisableIgnoreItemUseCountFeature();
+void EnableIgnoreItemRequirementsPatch();
+void DisableIgnoreItemRequirementsPatch();
 void SetCraftItemIncrementHookValue(float Value);
 void SetCraftExtraEffectHookValue(float Value);
 void EnableCraftEffectMultiplierHook();
@@ -1021,6 +1036,137 @@ void DisableDropRate100Patch()
     }
 
     LOGI_STREAM("Tab1Items") << "[SDK] DropRate100 disabled\n";
+}
+
+void EnableIgnoreItemUseCountFeature()
+{
+    if (GIgnoreItemUseCountHookOffset == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemUseCountHookPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount hook AobScan failed, pattern not found\n";
+            return;
+        }
+
+        HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+        if (!hModule)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount failed to get module handle\n";
+            return;
+        }
+
+        const uintptr_t hookAddr = foundAddr + 0x9; // CE: usageCount1+9
+        GIgnoreItemUseCountHookOffset = hookAddr - reinterpret_cast<uintptr_t>(hModule);
+        LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount hook found at: 0x" << std::hex
+            << hookAddr << ", offset: 0x" << GIgnoreItemUseCountHookOffset << std::dec << "\n";
+    }
+
+    if (GTab1IgnoreItemUseCountHookId == UINT32_MAX)
+    {
+        uint32_t hookId = UINT32_MAX;
+        if (!InlineHook::HookManager::InstallHook(
+            "JH-Win64-Shipping.exe",
+            static_cast<uint32_t>(GIgnoreItemUseCountHookOffset),
+            kIgnoreItemUseCountTrampolineCode,
+            sizeof(kIgnoreItemUseCountTrampolineCode),
+            hookId))
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount hook install failed\n";
+            return;
+        }
+        GTab1IgnoreItemUseCountHookId = hookId;
+        LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount hook enabled, ID: " << hookId << "\n";
+    }
+
+    if (GIgnoreItemUseCountPatchAddr == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemUseCountPatchPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount patch AobScan failed, pattern not found\n";
+            return;
+        }
+        GIgnoreItemUseCountPatchAddr = foundAddr; // CE: usageCount2
+        LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount patch found at: 0x" << std::hex
+            << GIgnoreItemUseCountPatchAddr << std::dec << "\n";
+    }
+
+    const unsigned char enableByte[] = { 0xEB };
+    if (!InlineHook::HookManager::WriteMemory(GIgnoreItemUseCountPatchAddr, enableByte, sizeof(enableByte)))
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount patch enable write failed at: 0x"
+            << std::hex << GIgnoreItemUseCountPatchAddr << std::dec << "\n";
+        return;
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount feature enabled\n";
+}
+
+void DisableIgnoreItemUseCountFeature()
+{
+    if (GTab1IgnoreItemUseCountHookId != UINT32_MAX)
+    {
+        InlineHook::HookManager::UninstallHook(GTab1IgnoreItemUseCountHookId);
+        GTab1IgnoreItemUseCountHookId = UINT32_MAX;
+    }
+
+    if (GIgnoreItemUseCountPatchAddr != 0)
+    {
+        const unsigned char disableByte[] = { 0x7C };
+        if (!InlineHook::HookManager::WriteMemory(GIgnoreItemUseCountPatchAddr, disableByte, sizeof(disableByte)))
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount patch disable write failed at: 0x"
+                << std::hex << GIgnoreItemUseCountPatchAddr << std::dec << "\n";
+            return;
+        }
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount feature disabled\n";
+}
+
+void EnableIgnoreItemRequirementsPatch()
+{
+    if (GIgnoreItemRequirementsAddr == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemRequirementsPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements AobScan failed, pattern not found\n";
+            return;
+        }
+
+        // CE: useRequirements + B
+        GIgnoreItemRequirementsAddr = foundAddr + 0xB;
+        LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements found at: 0x" << std::hex << foundAddr
+            << ", patch=0x" << GIgnoreItemRequirementsAddr << std::dec << "\n";
+    }
+
+    const unsigned char enableByte[] = { 0xEB };
+    if (!InlineHook::HookManager::WriteMemory(GIgnoreItemRequirementsAddr, enableByte, sizeof(enableByte)))
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements enable write failed at: 0x"
+            << std::hex << GIgnoreItemRequirementsAddr << std::dec << "\n";
+        return;
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements enabled\n";
+}
+
+void DisableIgnoreItemRequirementsPatch()
+{
+    if (GIgnoreItemRequirementsAddr == 0)
+        return;
+
+    const unsigned char disableByte[] = { 0x74 };
+    if (!InlineHook::HookManager::WriteMemory(GIgnoreItemRequirementsAddr, disableByte, sizeof(disableByte)))
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements disable write failed at: 0x"
+            << std::hex << GIgnoreItemRequirementsAddr << std::dec << "\n";
+        return;
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements disabled\n";
 }
 
 void EnableCraftEffectMultiplierHook()

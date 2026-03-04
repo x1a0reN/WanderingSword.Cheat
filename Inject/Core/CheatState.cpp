@@ -69,6 +69,9 @@ UBPVE_JHConfigVolumeItem2_C* GTab1CraftExtraEffectSlider = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1MaxExtraAffixesToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemUseCountToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemRequirementsToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab2DamageBoostToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab2DamageFriendlyOnlyToggle = nullptr;
+UBPVE_JHConfigVolumeItem2_C* GTab2DamageMultiplierSlider = nullptr;
 
 UBP_JHConfigTabBtn_C* GDynTabBtn6 = nullptr;
 UBP_JHConfigTabBtn_C* GDynTabBtn7 = nullptr;

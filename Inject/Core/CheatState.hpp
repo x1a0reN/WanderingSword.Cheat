@@ -114,6 +114,11 @@ extern UBPVE_JHConfigVolumeItem2_C* GTab1CraftExtraEffectSlider;
 extern UBPVE_JHConfigVideoItem2_C* GTab1MaxExtraAffixesToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemUseCountToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemRequirementsToggle;
+
+// Tab2（战斗）功能控件引用
+extern UBPVE_JHConfigVideoItem2_C* GTab2DamageBoostToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab2DamageFriendlyOnlyToggle;
+extern UBPVE_JHConfigVolumeItem2_C* GTab2DamageMultiplierSlider;
 // 鈹€鈹€ 鍔ㄦ€?Tab (6/7/8) 鈹€鈹€
 
 extern UBP_JHConfigTabBtn_C* GDynTabBtn6;         // Tab 6 (闃熷弸) 鎸夐挳
@@ -169,3 +174,7 @@ void EnableAllItemsSellable();
 void DisableAllItemsSellable();
 void EnableDropRate100Patch();
 void DisableDropRate100Patch();
+void EnableIgnoreItemUseCountFeature();
+void DisableIgnoreItemUseCountFeature();
+void EnableIgnoreItemRequirementsPatch();
+void DisableIgnoreItemRequirementsPatch();
