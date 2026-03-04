@@ -1756,7 +1756,8 @@ public:
 
     static bool InstallHook(const char* moduleName, uint32_t offset,
         const void* trampolineCode, size_t trampolineCodeSize, uint32_t& outHookId,
-        bool executeUserCodeFirst = false, bool allowAbsEntryFallback = true) {
+        bool executeUserCodeFirst = false, bool allowAbsEntryFallback = true,
+        bool appendRelocatedOriginalCode = true) {
 
         std::lock_guard<std::mutex> lock(s_Mutex);
         outHookId = UINT32_MAX;
@@ -1847,9 +1848,15 @@ public:
             return true;
         };
 
-        const bool appendOk = executeUserCodeFirst
-            ? (appendUserCode() && appendRelocatedOriginal())
-            : (appendRelocatedOriginal() && appendUserCode());
+        bool appendOk = false;
+        if (appendRelocatedOriginalCode) {
+            appendOk = executeUserCodeFirst
+                ? (appendUserCode() && appendRelocatedOriginal())
+                : (appendRelocatedOriginal() && appendUserCode());
+        }
+        else {
+            appendOk = appendUserCode();
+        }
         if (!appendOk) {
             VirtualFree(reinterpret_cast<void*>(entry.Trampoline), 0, MEM_RELEASE);
             return false;

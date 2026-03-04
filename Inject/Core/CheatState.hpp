@@ -160,6 +160,10 @@ void SetCraftExtraEffectHookValue(float Value);
 void EnableCraftEffectMultiplierHook();
 void DisableCraftEffectMultiplierHook();
 
+// 最大额外词条数 Inline Hook（双 Hook）
+void EnableMaxExtraAffixesHooks();
+void DisableMaxExtraAffixesHooks();
+
 // 所有物品可出售
 void EnableAllItemsSellable();
 void DisableAllItemsSellable();

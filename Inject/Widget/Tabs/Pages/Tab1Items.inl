@@ -553,9 +553,13 @@ namespace
     uint32_t GTab1CraftCaptureHookId = UINT32_MAX;
     uint32_t GTab1CraftEffectHookId = UINT32_MAX;
     uint32_t GTab1CraftRandEffectHookId = UINT32_MAX;
+    uint32_t GTab1RandActionMaxHookId = UINT32_MAX;
+    uint32_t GTab1QualityResultsHookId = UINT32_MAX;
     uintptr_t GInForgingOffset = 0;
     uintptr_t GForgeEffectOffset = 0;
     uintptr_t GForgeRandEffectOffset = 0;
+    uintptr_t GRandActionMaxOffset = 0;
+    uintptr_t GQualityResultsOffset = 0;
     volatile LONG GCraftEffectModeAsmValue = 0;
     volatile float GCraftItemIncrementAsmValue = 2.0f;
     volatile float GCraftExtraEffectAsmValue = 2.0f;
@@ -572,6 +576,8 @@ namespace
     const char* kInForgingPattern = "0F 10 00 0F 11 46 28 44 89";
     const char* kForgeEffectPattern = "E8 ? ? ? ? F2 0F 10 ? 44 8B 78 08 F2 0F 11 ? 24";
     const char* kForgeRandEffectPattern = "0F 29 ? 24 ? 0F 28 ? 0F 29 ? 24 ? F2 0F 10";
+    const char* kRandActionMaxPattern = "?? ?? 04 ?? ?? ?? ?? 8D ?? 01 F3 0F 10";
+    const char* kQualityResultsPattern = "48 03 F6 4D 8B 3F";
 
     // 所有物品可出售特征码
     const char* kAllItemsSellablePattern = "80 ?? ?? 3C 75 ?? 32 C0 C3 80 ?? 83 00 00 00 00 0F 94 C0 C3";
@@ -652,6 +658,19 @@ namespace
     constexpr size_t kCraftRandModeImm64Offset = 4;
     constexpr size_t kCraftRandExtraImm64Offset = 30;
 
+    const unsigned char kRandActionMaxTrampolineCode[] = {
+        0x48, 0xC7, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF,       // mov rdi,-1
+        0x41, 0xB8, 0x09, 0x00, 0x00, 0x00              // mov r8d,9
+    };
+
+    const unsigned char kQualityResultsTrampolineCode[] = {
+        0x41, 0x8B, 0x77, 0x08,                         // mov esi,[r15+8]
+        0xFF, 0xCE,                                     // dec esi
+        0x01, 0xF6,                                     // add esi,esi
+        0x48, 0x63, 0xF6,                               // movsxd rsi,esi
+        0x4D, 0x8B, 0x3F                                // mov r15,[r15]
+    };
+
     uintptr_t ScanModulePatternRobust(const char* moduleName, const char* pattern)
     {
         if (!moduleName || !pattern)
@@ -696,6 +715,8 @@ void SetCraftItemIncrementHookValue(float Value);
 void SetCraftExtraEffectHookValue(float Value);
 void EnableCraftEffectMultiplierHook();
 void DisableCraftEffectMultiplierHook();
+void EnableMaxExtraAffixesHooks();
+void DisableMaxExtraAffixesHooks();
 
 void EnableItemNoDecreaseHook()
 {
@@ -1165,5 +1186,107 @@ void DisableCraftEffectMultiplierHook()
 
     InterlockedExchange(&GCraftEffectModeAsmValue, 0);
     LOGI_STREAM("Tab1Items") << "[SDK] CraftEffect hooks disabled\n";
+}
+
+void EnableMaxExtraAffixesHooks()
+{
+    if (GTab1RandActionMaxHookId != UINT32_MAX &&
+        GTab1QualityResultsHookId != UINT32_MAX)
+    {
+        return;
+    }
+
+    HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+    if (!hModule)
+    {
+        LOGE_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes failed to get module handle\n";
+        return;
+    }
+    const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
+
+    if (GRandActionMaxOffset == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kRandActionMaxPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes RandActionMax AobScan failed\n";
+            return;
+        }
+        GRandActionMaxOffset = foundAddr - moduleBase;
+        LOGI_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes RandActionMax found at: 0x"
+            << std::hex << foundAddr << ", offset: 0x" << GRandActionMaxOffset << std::dec << "\n";
+    }
+
+    if (GQualityResultsOffset == 0)
+    {
+        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kQualityResultsPattern);
+        if (foundAddr == 0)
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes QualityResults AobScan failed\n";
+            return;
+        }
+        GQualityResultsOffset = foundAddr - moduleBase;
+        LOGI_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes QualityResults found at: 0x"
+            << std::hex << foundAddr << ", offset: 0x" << GQualityResultsOffset << std::dec << "\n";
+    }
+
+    if (GTab1RandActionMaxHookId == UINT32_MAX)
+    {
+        uint32_t hookId = UINT32_MAX;
+        if (!InlineHook::HookManager::InstallHook(
+            "JH-Win64-Shipping.exe",
+            static_cast<uint32_t>(GRandActionMaxOffset),
+            kRandActionMaxTrampolineCode,
+            sizeof(kRandActionMaxTrampolineCode),
+            hookId))
+        {
+            LOGE_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes RandActionMax hook install failed\n";
+            return;
+        }
+        GTab1RandActionMaxHookId = hookId;
+    }
+
+    if (GTab1QualityResultsHookId == UINT32_MAX)
+    {
+        uint32_t hookId = UINT32_MAX;
+        if (!InlineHook::HookManager::InstallHook(
+            "JH-Win64-Shipping.exe",
+            static_cast<uint32_t>(GQualityResultsOffset),
+            kQualityResultsTrampolineCode,
+            sizeof(kQualityResultsTrampolineCode),
+            hookId,
+            false,
+            true,
+            false))
+        {
+            if (GTab1RandActionMaxHookId != UINT32_MAX)
+            {
+                InlineHook::HookManager::UninstallHook(GTab1RandActionMaxHookId);
+                GTab1RandActionMaxHookId = UINT32_MAX;
+            }
+            LOGE_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes QualityResults hook install failed\n";
+            return;
+        }
+        GTab1QualityResultsHookId = hookId;
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes hooks enabled, IDs: "
+        << GTab1RandActionMaxHookId << ", " << GTab1QualityResultsHookId << "\n";
+}
+
+void DisableMaxExtraAffixesHooks()
+{
+    if (GTab1QualityResultsHookId != UINT32_MAX)
+    {
+        InlineHook::HookManager::UninstallHook(GTab1QualityResultsHookId);
+        GTab1QualityResultsHookId = UINT32_MAX;
+    }
+    if (GTab1RandActionMaxHookId != UINT32_MAX)
+    {
+        InlineHook::HookManager::UninstallHook(GTab1RandActionMaxHookId);
+        GTab1RandActionMaxHookId = UINT32_MAX;
+    }
+
+    LOGI_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes hooks disabled\n";
 }
 

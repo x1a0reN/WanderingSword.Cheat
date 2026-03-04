@@ -868,34 +868,8 @@ namespace
 				RestoreArrayFromVector(Row->Requirements, Original.Requirements);
 			}
 
-			if (Cfg.MaxExtraAffixes)
-			{
-				if (Row->RandRange.Num() >= 2)
-				{
-					int32 MaxAffix = Row->RandRange[1];
-					if (Original.RandRange.size() >= 2)
-					{
-						MaxAffix = (std::max)(Original.RandRange[0], Original.RandRange[1]);
-					}
-					Row->RandRange[0] = MaxAffix;
-					Row->RandRange[1] = MaxAffix;
-				}
-				if (Row->NormalRandRange.Num() >= 2)
-				{
-					int32 MaxAffix = Row->NormalRandRange[1];
-					if (Original.NormalRandRange.size() >= 2)
-					{
-						MaxAffix = (std::max)(Original.NormalRandRange[0], Original.NormalRandRange[1]);
-					}
-					Row->NormalRandRange[0] = MaxAffix;
-					Row->NormalRandRange[1] = MaxAffix;
-				}
-			}
-			else
-			{
-				RestoreArrayFromVector(Row->RandRange, Original.RandRange);
-				RestoreArrayFromVector(Row->NormalRandRange, Original.NormalRandRange);
-			}
+			RestoreArrayFromVector(Row->RandRange, Original.RandRange);
+			RestoreArrayFromVector(Row->NormalRandRange, Original.NormalRandRange);
 
 			if (Cfg.CraftEffectMultiplier)
 			{
@@ -1267,6 +1241,16 @@ namespace
 			else
 				DisableCraftEffectMultiplierHook();
 			LastCraftEffectHook = Config.CraftEffectMultiplier;
+		}
+
+		static bool LastMaxExtraAffixesHook = false;
+		if (Config.MaxExtraAffixes != LastMaxExtraAffixesHook)
+		{
+			if (Config.MaxExtraAffixes)
+				EnableMaxExtraAffixesHooks();
+			else
+				DisableMaxExtraAffixesHooks();
+			LastMaxExtraAffixesHook = Config.MaxExtraAffixes;
 		}
 
 		// 包括任务物品
