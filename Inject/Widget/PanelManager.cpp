@@ -107,7 +107,7 @@ void ClearRuntimeWidgetState()
 	GTab1CraftEffectMultiplierToggle = nullptr;
 	GTab1CraftItemIncrementSlider = nullptr;
 	GTab1CraftExtraEffectSlider = nullptr;
-	GTab1MaxExtraAffixesEdit = nullptr;
+	GTab1MaxExtraAffixesToggle = nullptr;
 	GTab1IgnoreItemUseCountToggle = nullptr;
 	GTab1IgnoreItemRequirementsToggle = nullptr;
 

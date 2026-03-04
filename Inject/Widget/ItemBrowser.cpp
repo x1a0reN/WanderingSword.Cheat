@@ -99,7 +99,7 @@ namespace
 	constexpr uintptr_t kNeoTileInitWeakOffsetA = 0x388;
 	constexpr uintptr_t kNeoTileInitWeakOffsetB = 0x8A0;
 	constexpr int32 kGridSearchAnchorIndex = 59720;
-	constexpr int32 kGridSearchWindow = 1000;
+	constexpr int32 kGridSearchWindow = 10;
 	constexpr bool kEnableEntryInitSearch = true;    // Enable anchor-window search path.
 	constexpr bool kEnableFullScanFallback = false;  // 澶囩敤鍏ㄩ噺鎵紝榛樿鍏抽棴
 
@@ -124,6 +124,12 @@ namespace
 	bool IsWeakPtrFilled(const FWeakObjectPtr& Weak)
 	{
 		return Weak.ObjectIndex >= 0 && Weak.ObjectSerialNumber > 0;
+	}
+
+	bool IsSameWeak(const FWeakObjectPtr& A, const FWeakObjectPtr& B)
+	{
+		return A.ObjectIndex == B.ObjectIndex &&
+			A.ObjectSerialNumber == B.ObjectSerialNumber;
 	}
 
 	UObject* ResolveWeakPtrLoose(const FWeakObjectPtr& Weak)
@@ -1832,6 +1838,65 @@ void CacheEntryInitContextWeakB(const FWeakObjectPtr& WeakB, const char* SourceT
 		<< " B=(" << WeakB.ObjectIndex << "," << WeakB.ObjectSerialNumber << ")"
 		<< " CtxObj=0x" << std::hex << reinterpret_cast<uintptr_t>(CtxObj) << std::dec
 		<< "\n";
+}
+
+bool RefreshEntryInitContextFromAnchorScan(bool* OutChanged)
+{
+	if (OutChanged)
+		*OutChanged = false;
+
+	auto* ObjArray = UObject::GObjects.GetTypedPtr();
+	if (!ObjArray)
+		return false;
+
+	const int32 Num = ObjArray->Num();
+	if (Num <= 0)
+		return false;
+
+	int32 Start = kGridSearchAnchorIndex - kGridSearchWindow;
+	int32 End = kGridSearchAnchorIndex + kGridSearchWindow;
+	if (Start < 0) Start = 0;
+	if (End >= Num) End = Num - 1;
+
+	for (int32 i = Start; i <= End; ++i)
+	{
+		UObject* Candidate = ObjArray->GetByIndex(i);
+		if (!Candidate || Candidate->IsDefaultObject())
+			continue;
+		if (!IsSupportedItemGridObject(Candidate))
+			continue;
+
+		const FWeakObjectPtr WeakB = ReadWeakPtrAt(Candidate, kNeoTileInitWeakOffsetB);
+		if (!IsWeakPtrFilled(WeakB))
+			continue;
+
+		UObject* CtxObj = ResolveWeakPtrLoose(WeakB);
+		if (!IsSafeLiveObjectOfClass(CtxObj, UNeoUIUniversalModuleVMBase::StaticClass()))
+			continue;
+
+		const bool HadCached = GHasCachedEntryInitWeakB && IsWeakPtrFilled(GCachedEntryInitWeakB);
+		const bool Changed = (!HadCached) || (!IsSameWeak(GCachedEntryInitWeakB, WeakB));
+
+		CacheEntryInitWeakB(WeakB);
+		if (GItemListView && IsSafeLiveObject(static_cast<UObject*>(GItemListView)))
+			WriteWeakPtrAt(static_cast<UObject*>(GItemListView), kNeoTileInitWeakOffsetB, WeakB);
+
+		if (OutChanged)
+			*OutChanged = Changed;
+
+		LOGI_STREAM("ItemBrowser")
+			<< "[SDK] ItemGrid entry-init anchor-scan hit: idx=" << i
+			<< " grid=0x" << std::hex << reinterpret_cast<uintptr_t>(Candidate)
+			<< " ctxWeak=(" << std::dec << WeakB.ObjectIndex << "," << WeakB.ObjectSerialNumber << ")"
+			<< " ctxObj=0x" << std::hex << reinterpret_cast<uintptr_t>(CtxObj) << std::dec
+			<< " changed=" << (Changed ? 1 : 0)
+			<< "\n";
+		return true;
+	}
+
+	LOGI_STREAM("ItemBrowser")
+		<< "[SDK] ItemGrid entry-init anchor-scan miss: range=[" << Start << "," << End << "]\n";
+	return false;
 }
 
 void SetItemSearchEditBox(UEditableTextBox* Edit)

@@ -139,7 +139,7 @@ namespace
 		bool CraftEffectMultiplier = false;
 		float CraftItemIncrementMultiplier = 2.0f;
 		float CraftExtraEffectMultiplier = 2.0f;
-		int32 MaxExtraAffixes = 0;
+		bool MaxExtraAffixes = false;
 		bool IgnoreItemUseCount = false;
 		bool IgnoreItemRequirements = false;
 	};
@@ -178,12 +178,13 @@ namespace
 	UObjectProcessEventFn GOriginalItemEntryProcessEvent = nullptr;
 	std::atomic<int32> GPendingItemEntryClickDefId = 0;
 	constexpr bool kVerboseItemEntryProcessEventLogs = false;
+	constexpr bool kEnableBackpackViewProcessEventHook = false;
 	VTableHook GBackpackViewProcessEventHook;
 	UObjectProcessEventFn GOriginalBackpackViewProcessEvent = nullptr;
 	constexpr bool kVerboseBackpackViewProcessEventLogs = false;
 	constexpr uintptr_t kBackpackGridCtxWeakOffset = 0x8A0;
 	constexpr int32 kBackpackCtxSourceAnchorIndex = 59720;
-	constexpr int32 kBackpackCtxSourceWindow = 1000;
+	constexpr int32 kBackpackCtxSourceWindow = 10;
 	std::unordered_map<std::string, int32> GBackpackPECallCounts;
 	std::unordered_set<std::string> GBackpackPESeenFuncs;
 	DWORD GBackpackPELastDumpTick = 0;
@@ -867,17 +868,27 @@ namespace
 				RestoreArrayFromVector(Row->Requirements, Original.Requirements);
 			}
 
-			if (Cfg.MaxExtraAffixes > 0)
+			if (Cfg.MaxExtraAffixes)
 			{
 				if (Row->RandRange.Num() >= 2)
 				{
-					Row->RandRange[0] = Cfg.MaxExtraAffixes;
-					Row->RandRange[1] = Cfg.MaxExtraAffixes;
+					int32 MaxAffix = Row->RandRange[1];
+					if (Original.RandRange.size() >= 2)
+					{
+						MaxAffix = (std::max)(Original.RandRange[0], Original.RandRange[1]);
+					}
+					Row->RandRange[0] = MaxAffix;
+					Row->RandRange[1] = MaxAffix;
 				}
 				if (Row->NormalRandRange.Num() >= 2)
 				{
-					Row->NormalRandRange[0] = Cfg.MaxExtraAffixes;
-					Row->NormalRandRange[1] = Cfg.MaxExtraAffixes;
+					int32 MaxAffix = Row->NormalRandRange[1];
+					if (Original.NormalRandRange.size() >= 2)
+					{
+						MaxAffix = (std::max)(Original.NormalRandRange[0], Original.NormalRandRange[1]);
+					}
+					Row->NormalRandRange[0] = MaxAffix;
+					Row->NormalRandRange[1] = MaxAffix;
 				}
 			}
 			else
@@ -1168,11 +1179,11 @@ namespace
 			Cfg.CraftExtraEffectMultiplier = NewExtraValue;
 		}
 
-		// Integer input
-		const int32 NewMaxExtraAffixes = ReadIntegerEditValue(GTab1MaxExtraAffixesEdit, Cfg.MaxExtraAffixes, 0, 32);
+		// Toggle
+		const bool NewMaxExtraAffixes = ReadToggleValue(GTab1MaxExtraAffixesToggle, Cfg.MaxExtraAffixes);
 		if (NewMaxExtraAffixes != Cfg.MaxExtraAffixes)
 		{
-			LOGI_STREAM("FrameHook") << "[SDK] MaxExtraAffixes: " << NewMaxExtraAffixes << "\n";
+			LOGI_STREAM("FrameHook") << "[SDK] MaxExtraAffixes: " << (NewMaxExtraAffixes ? "ON" : "OFF") << "\n";
 			Cfg.MaxExtraAffixes = NewMaxExtraAffixes;
 		}
 	}
@@ -1313,7 +1324,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		if (!GUnloadCleanupDone.exchange(true, std::memory_order_acq_rel))
 		{
 			RemoveItemEntryProcessEventHook();
-			RemoveBackpackViewProcessEventHook();
+			if (kEnableBackpackViewProcessEventHook)
+				RemoveBackpackViewProcessEventHook();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
 			LOGI_STREAM("FrameHook") << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
@@ -1358,9 +1370,18 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	// Edge-trigger HOME so one press toggles once
 	static bool HomeWasDown = false;
+	static bool HomeNeedAnchorCtxRefresh = false;
 	const bool HomeDown = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
 	if (!InTransitionGuard && HomeDown && !HomeWasDown)
+	{
+		const bool WasVisible = InternalWidgetVisible;
 		ToggleInternalWidget();
+		const bool IsNowVisible = InternalWidgetVisible &&
+			InternalWidget &&
+			IsSafeLiveObject(static_cast<UObject*>(InternalWidget)) &&
+			InternalWidget->IsInViewport();
+		HomeNeedAnchorCtxRefresh = (!WasVisible && IsNowVisible);
+	}
 	HomeWasDown = HomeDown;
 
 	// PGUP: 输出当前世界状态
@@ -1434,6 +1455,36 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	const bool IsItemsTabActive = (ActiveNativeTabIndex == 1);
 	const bool IsCharacterTabActive = (ActiveNativeTabIndex == 0);
 
+	// On each HOME show: run anchor scan; rebuild item manager only when ctx changes.
+	if (HomeNeedAnchorCtxRefresh &&
+		InternalWidgetVisible &&
+		LiveConfigView &&
+		IsSafeLiveObject(static_cast<UObject*>(LiveConfigView)))
+	{
+		HomeNeedAnchorCtxRefresh = false;
+		bool CtxChanged = false;
+		const bool FoundCtx = RefreshEntryInitContextFromAnchorScan(&CtxChanged);
+		if (!FoundCtx)
+		{
+			LOGE_STREAM("FrameHook") << "[SDK] HomeAnchorCtxRefresh: anchor scan miss, keep current item manager\n";
+		}
+		else if (CtxChanged)
+		{
+			APlayerController* PC = GetFirstLocalPlayerController();
+			if (PC)
+			{
+				PopulateTab_Items(LiveConfigView, PC);
+				if (IsItemsTabActive)
+					OnItemBrowserTabShown();
+				LOGI_STREAM("FrameHook") << "[SDK] HomeAnchorCtxRefresh: ctx changed, item manager rebuilt\n";
+			}
+		}
+		else
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] HomeAnchorCtxRefresh: ctx unchanged, skip rebuild\n";
+		}
+	}
+
 	// Tab0（角色）编辑框：按 Enter 提交写回并回填。
 	PollTab0CharacterInput(IsCharacterTabActive);
 
@@ -1475,15 +1526,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	ExitWasPressed = ExitPressed;
 
-	// Backpack view ProcessEvent hook: low-frequency global install retry
-	static DWORD sLastBackpackPEInstallTryTick = 0;
-	const DWORD HookTryNow = GetTickCount();
-	if (!GOriginalBackpackViewProcessEvent &&
-		(sLastBackpackPEInstallTryTick == 0 || (HookTryNow - sLastBackpackPEInstallTryTick) >= 500))
-	{
-		sLastBackpackPEInstallTryTick = HookTryNow;
-		EnsureBackpackViewProcessEventHookInstalled();
-	}
+	// BackpackView ProcessEvent hook path is intentionally disabled.
 
 	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;
@@ -1631,7 +1674,16 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			{
 				const bool CtrlDown = ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
 				const int32 Quantity = CtrlDown ? 10 : ((GItemAddQuantity > 0) ? GItemAddQuantity : 1);
-				UItemFuncLib::AddItem(ClickDefId, Quantity);
+				if (Quantity <= 1)
+				{
+					UItemFuncLib::AddItem(ClickDefId, 1);
+				}
+				else
+				{
+					// Use single-item adds to avoid unstable behavior with Num > 1 in this UI context.
+					for (int32 i = 0; i < Quantity; ++i)
+						UItemFuncLib::AddItem(ClickDefId, 1);
+				}
 				LOGI_STREAM("FrameHook") << "[SDK] AddItem(list-left-click): defId=" << ClickDefId
 					<< " x" << Quantity
 					<< " ctrl=" << (CtrlDown ? 1 : 0)

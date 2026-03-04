@@ -13,7 +13,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab1CraftEffectMultiplierToggle = nullptr;
 	GTab1CraftItemIncrementSlider = nullptr;
 	GTab1CraftExtraEffectSlider = nullptr;
-	GTab1MaxExtraAffixesEdit = nullptr;
+	GTab1MaxExtraAffixesToggle = nullptr;
 	GTab1IgnoreItemUseCountToggle = nullptr;
 	GTab1IgnoreItemRequirementsToggle = nullptr;
 	int Count = 0;
@@ -24,7 +24,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		CreateRawWidget(UVerticalBox::StaticClass(), Outer));
 	UPanelWidget* OptionsBox = OptionsPanelRoot;
 
-	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
+	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) -> UBPVE_JHConfigVideoItem2_C* {
 		auto* Item = CreateToggleItem(PC, Title);
 		if (Item)
 		{
@@ -40,7 +40,9 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			else if (OptionsBox) OptionsBox->AddChild(Item);
 			else Container->AddChild(Item);
 			Count++;
+			return Item;
 		}
+		return nullptr;
 	};
 	auto AddSlider = [&](UPanelWidget* Box, const wchar_t* Title) {
 		auto* Item = CreateVolumeItem(PC, Title);
@@ -69,9 +71,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : (OptionsBox ? OptionsBox : Container), Title, L"输入数字", DefaultValue);
 		if (Item)
 		{
-			if (wcscmp(Title, L"最大额外词条数") == 0)
-				GTab1MaxExtraAffixesEdit = FindFirstEditableTextBox(Item);
-
 			if (Box) Box->AddChild(Item);
 			else if (OptionsBox) OptionsBox->AddChild(Item);
 			else Container->AddChild(Item);
@@ -104,7 +103,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		AddSlider(RatioBox, L"额外效果倍率");
 
 		auto* LimitBox = AddSubPanel(L"限制与词条");
-		AddNumeric(LimitBox, L"最大额外词条数", L"3");
+		GTab1MaxExtraAffixesToggle = AddToggle(LimitBox, L"最大额外词条数");
 		AddToggle(LimitBox, L"无视物品使用次数");
 		AddToggle(LimitBox, L"无视物品使用要求");
 	}
@@ -118,7 +117,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		AddToggle(nullptr, L"锻造制衣效果加倍");
 		AddSlider(nullptr, L"道具增量效果倍率");
 		AddSlider(nullptr, L"额外效果倍率");
-		AddNumeric(nullptr, L"最大额外词条数", L"3");
+		GTab1MaxExtraAffixesToggle = AddToggle(nullptr, L"最大额外词条数");
 		AddToggle(nullptr, L"无视物品使用次数");
 		AddToggle(nullptr, L"无视物品使用要求");
 	}

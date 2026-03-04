@@ -66,7 +66,7 @@ UBPVE_JHConfigVideoItem2_C* GTab1DropRate100Toggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1CraftEffectMultiplierToggle = nullptr;
 UBPVE_JHConfigVolumeItem2_C* GTab1CraftItemIncrementSlider = nullptr;
 UBPVE_JHConfigVolumeItem2_C* GTab1CraftExtraEffectSlider = nullptr;
-UEditableTextBox* GTab1MaxExtraAffixesEdit = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab1MaxExtraAffixesToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemUseCountToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemRequirementsToggle = nullptr;
 

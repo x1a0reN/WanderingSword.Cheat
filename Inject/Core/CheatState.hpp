@@ -111,7 +111,7 @@ extern UBPVE_JHConfigVideoItem2_C* GTab1DropRate100Toggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1CraftEffectMultiplierToggle;
 extern UBPVE_JHConfigVolumeItem2_C* GTab1CraftItemIncrementSlider;
 extern UBPVE_JHConfigVolumeItem2_C* GTab1CraftExtraEffectSlider;
-extern UEditableTextBox* GTab1MaxExtraAffixesEdit;
+extern UBPVE_JHConfigVideoItem2_C* GTab1MaxExtraAffixesToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemUseCountToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemRequirementsToggle;
 // 鈹€鈹€ 鍔ㄦ€?Tab (6/7/8) 鈹€鈹€

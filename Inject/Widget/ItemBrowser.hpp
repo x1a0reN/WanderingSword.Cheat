@@ -27,6 +27,10 @@ void OnItemBrowserTabShown();
 /// 由外部（如 Backpack ProcessEvent）注入可用的 entry-init context（grid+0x8A0）。
 void CacheEntryInitContextWeakB(const FWeakObjectPtr& WeakB, const char* SourceTag = nullptr);
 
+/// 使用锚点窗口（anchor±window）扫描现存 ItemGrid 的 entry-init ctx（+0x8A0）并缓存。
+/// OutChanged=true 表示与上次缓存相比发生变化，调用方可据此重建物品管理器。
+bool RefreshEntryInitContextFromAnchorScan(bool* OutChanged = nullptr);
+
 /// 绑定物品浏览器搜索输入框。
 void SetItemSearchEditBox(UEditableTextBox* Edit);
 

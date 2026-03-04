@@ -14,6 +14,13 @@
 namespace
 {
 	constexpr bool kEnableUICreateLog = false;
+	constexpr int32 kEditRowTitleFontSize = 20;
+	constexpr float kEditRowTitleScale = 0.92f;
+	constexpr float kEditRowTitleOffsetX = -33.5f;
+	constexpr float kEditRowTitleOffsetY = 0.0f;
+	constexpr int32 kSliderTitleFontSize = 18;
+	constexpr float kSliderTitleOffsetX = -33.5f;
+	constexpr float kSliderTitleOffsetY = 0.0f;
 
 	std::vector<UVE_JHVideoPanel2_C*> GCollapsiblePanels;
 	std::unordered_map<UVE_JHVideoPanel2_C*, bool> GCollapsibleStates;
@@ -364,7 +371,11 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 		ClearButtonBindings(static_cast<UWidget*>(Item->BTN_Plus));
 
 	if (Item->TXT_Title)
+	{
 		Item->TXT_Title->SetText(MakeText(Title));
+		Item->TXT_Title->Font.Size = kSliderTitleFontSize;
+		Item->TXT_Title->SetRenderTranslation(FVector2D{ kSliderTitleOffsetX, kSliderTitleOffsetY });
+	}
 	if (Item->IMG_Icon)
 		Item->IMG_Icon->SetVisibility(ESlateVisibility::Collapsed);
 
@@ -444,6 +455,13 @@ namespace
 		auto* Item = CreateVolumeItem(PC, Title);
 		if (!Item)
 			return nullptr;
+
+		if (Item->TXT_Title)
+		{
+			Item->TXT_Title->Font.Size = kEditRowTitleFontSize;
+			Item->TXT_Title->SetRenderScale(FVector2D{ kEditRowTitleScale, kEditRowTitleScale });
+			Item->TXT_Title->SetRenderTranslation(FVector2D{ kEditRowTitleOffsetX, kEditRowTitleOffsetY });
+		}
 
 		// 该行只用于编辑框展示，不参与滑块轮询接管
 		auto It = std::find(GVolumeItems.begin(), GVolumeItems.end(), Item);
