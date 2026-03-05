@@ -212,12 +212,12 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 
 	auto* CV = static_cast<UBPMV_ConfigView2_C*>(Widget);
 
-	SetupTab(CV->BTN_Sound,   0, L"\u89D2\u8272");   // 瑙掕壊
-	SetupTab(CV->BTN_Video,   1, L"\u7269\u54C1");   // 鐗╁搧
-	SetupTab(CV->BTN_Keys,    2, L"\u6218\u6597");   // 鎴樻枟
-	SetupTab(CV->BTN_Lan,     3, L"\u751F\u6D3B");   // 鐢熸椿
-	SetupTab(CV->BTN_Others,  4, L"\u793E\u4EA4");   // 绀句氦
-	SetupTab(CV->BTN_Gamepad, 5, L"\u7CFB\u7EDF");   // 绯荤粺
+	SetupTab(CV->BTN_Sound,   0, L"角色");   // 角色
+	SetupTab(CV->BTN_Video,   1, L"物品");   // 物品
+	SetupTab(CV->BTN_Keys,    2, L"战斗");   // 战斗
+	SetupTab(CV->BTN_Lan,     3, L"生活");   // 生活
+	SetupTab(CV->BTN_Others,  4, L"社交");   // 社交
+	SetupTab(CV->BTN_Gamepad, 5, L"系统");   // 系统
 
 	// NOTE: Do NOT call EstablishTabBtns here 鈥?it resets internal click bindings
 	// that EVT_VisualConstructOnce() already established, breaking tab switching.
