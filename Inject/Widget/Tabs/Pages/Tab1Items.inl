@@ -48,6 +48,17 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		auto* Item = CreateVolumeItem(PC, Title);
 		if (Item)
 		{
+			bool hasRememberedValue = false;
+			float rememberedValue = 2.0f;
+			if (Title && Title[0] != L'\0')
+			{
+				const std::wstring titleKey(Title);
+				const auto it = GUIRememberState.SliderValueByTitle.find(titleKey);
+				hasRememberedValue = (it != GUIRememberState.SliderValueByTitle.end());
+				if (hasRememberedValue)
+					rememberedValue = it->second;
+			}
+
 			if (wcscmp(Title, L"加倍倍数") == 0) GTab1ItemGainMultiplierSlider = Item;
 			else if (wcscmp(Title, L"道具增量效果倍率") == 0) GTab1CraftItemIncrementSlider = Item;
 			else if (wcscmp(Title, L"额外效果倍率") == 0) GTab1CraftExtraEffectSlider = Item;
@@ -58,7 +69,21 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 				Item->VolumeSlider->MinValue = 1.0f;
 				Item->VolumeSlider->MaxValue = 10.0f;
 				Item->VolumeSlider->StepSize = 1.0f;
-				Item->VolumeSlider->SetValue(2.0f);
+				if (hasRememberedValue)
+				{
+					if (rememberedValue < 1.0f) rememberedValue = 1.0f;
+					if (rememberedValue > 10.0f) rememberedValue = 10.0f;
+					Item->VolumeSlider->SetValue(rememberedValue);
+				}
+				else
+					Item->VolumeSlider->SetValue(2.0f);
+			}
+			if (Item->TXT_CurrentValue && Item->VolumeSlider)
+			{
+				const float value = Item->VolumeSlider->GetValue();
+				wchar_t buf[16] = {};
+				swprintf_s(buf, 16, L"%.3g", static_cast<double>(value));
+				Item->TXT_CurrentValue->SetText(MakeText(buf));
 			}
 
 			if (Box) Box->AddChild(Item);

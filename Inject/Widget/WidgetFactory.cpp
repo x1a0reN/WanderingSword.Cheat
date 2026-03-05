@@ -1,4 +1,4 @@
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <algorithm>
 #include <cwctype>
 #include <string>
@@ -496,6 +496,14 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 		ClearButtonBindings(static_cast<UWidget*>(Item->BTN_Minus));
 	if (Item->BTN_Plus)
 		ClearButtonBindings(static_cast<UWidget*>(Item->BTN_Plus));
+	if (Item->VolumeSlider)
+	{
+		// 统一滑块基准范围，避免记忆值在默认 0~1 上被错误夹断。
+		Item->VolumeSlider->MinValue = 1.0f;
+		Item->VolumeSlider->MaxValue = 10.0f;
+		if (Item->VolumeSlider->StepSize <= 0.0001f)
+			Item->VolumeSlider->StepSize = 1.0f;
+	}
 
 	if (Item->TXT_Title)
 	{
@@ -516,22 +524,8 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 	GVolumePlusWasPressed.push_back(false);
 	if (Item->TXT_CurrentValue)
 	{
-		// 滑块值范围0-1，显示百分比
-		float MinValue = 0.0f;
-		float MaxValue = 1.0f;
-		if (Item->VolumeSlider)
-		{
-			MinValue = Item->VolumeSlider->MinValue;
-			MaxValue = Item->VolumeSlider->MaxValue;
-		}
-		float Norm = InitValue;
-		if (MaxValue > MinValue)
-			Norm = (InitValue - MinValue) / (MaxValue - MinValue);
-		if (Norm < 0.0f) Norm = 0.0f;
-		if (Norm > 1.0f) Norm = 1.0f;
-		const int32 DisplayValue = static_cast<int32>(Norm * 100.0f + 0.5f);
 		wchar_t Buf[16] = {};
-		swprintf_s(Buf, 16, L"%d", DisplayValue);
+		swprintf_s(Buf, 16, L"%.3g", static_cast<double>(InitValue));
 		Item->TXT_CurrentValue->SetText(MakeText(Buf));
 	}
 

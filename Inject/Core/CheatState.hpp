@@ -136,6 +136,8 @@ extern UBPVE_JHConfigVideoItem2_C* GTab1IgnoreItemRequirementsToggle;
 // Tab2（战斗）功能控件引用
 extern UBPVE_JHConfigVideoItem2_C* GTab2DamageBoostToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2SkillNoCooldownToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab2NoEncounterToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab2AllTeammatesInFightToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2DamageFriendlyOnlyToggle;
 extern UBPVE_JHConfigVolumeItem2_C* GTab2DamageMultiplierSlider;
 // 鈹€鈹€ 鍔ㄦ€?Tab (6/7/8) 鈹€鈹€
@@ -201,3 +203,16 @@ void DisableIgnoreItemRequirementsPatch();
 // Tab2: 招式无视冷却（双 Hook）
 void EnableSkillNoCooldownHooks();
 void DisableSkillNoCooldownHooks();
+
+// Tab2: 不遇敌（硬编码补丁）
+void EnableNoEncounterPatch();
+void DisableNoEncounterPatch();
+
+// Tab2: 全队友参战（完整复刻 CT: allInFight1~5）
+void EnableAllTeammatesInFightHooks();
+void DisableAllTeammatesInFightHooks();
+
+// Tab2: 战斗加速（双 Hook）
+void EnableBattleSpeedHooks();
+void DisableBattleSpeedHooks();
+void SetBattleSpeedHookMultiplier(float Value);

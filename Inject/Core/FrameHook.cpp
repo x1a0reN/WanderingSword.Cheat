@@ -147,6 +147,8 @@ namespace
 	struct FTab2RuntimeConfig final
 	{
 		bool SkillNoCooldown = false;
+		bool NoEncounter = false;
+		bool AllTeammatesInFight = false;
 		bool BattleSpeedEnabled = false;
 		float BattleSpeedMultiplier = 2.0f;
 	};
@@ -200,8 +202,6 @@ namespace
 	int32 GBackpackCtxSourceGridIndex = -1;
 	int32 GBackpackCtxSourceGridDistance = (std::numeric_limits<int32>::max)();
 	bool GBackpackCtxSourceGridExact = false;
-	float GTab2AppliedFightDilation = 1.0f;
-	bool GTab2FightDilationApplied = false;
 
 	bool IsInterestingBackpackPEName(const std::string& Name)
 	{
@@ -237,29 +237,6 @@ namespace
 		GBackpackCtxSourceGridIndex = -1;
 		GBackpackCtxSourceGridDistance = (std::numeric_limits<int32>::max)();
 		GBackpackCtxSourceGridExact = false;
-	}
-
-	void ApplyFightTimeDilationIfNeeded(float NewValue, bool ForceApply = false)
-	{
-		if (NewValue < 1.0f)
-			NewValue = 1.0f;
-		if (NewValue > 10.0f)
-			NewValue = 10.0f;
-
-		if (!ForceApply &&
-			GTab2FightDilationApplied &&
-			std::fabs(GTab2AppliedFightDilation - NewValue) <= 0.001f)
-		{
-			return;
-		}
-
-		UGameTimeManager* TimeMgr = UManagerFuncLib::GetGameTimeManager();
-		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(TimeMgr), UGameTimeManager::StaticClass()))
-			return;
-
-		TimeMgr->SetGameTimeDilationInFight(NewValue, true);
-		GTab2AppliedFightDilation = NewValue;
-		GTab2FightDilationApplied = true;
 	}
 
 	bool ShouldCaptureBackpackCtxFromGrid(UObject* GridObj, int32& OutGridIndex, int32& OutDistance, bool& OutExact)
@@ -1364,6 +1341,20 @@ namespace
 			Cfg.BattleSpeedEnabled = NewBattleSpeedEnabled;
 		}
 
+		const bool NewNoEncounter = ReadToggleValue(GTab2NoEncounterToggle, Cfg.NoEncounter);
+		if (NewNoEncounter != Cfg.NoEncounter)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 NoEncounter: " << (NewNoEncounter ? "ON" : "OFF") << "\n";
+			Cfg.NoEncounter = NewNoEncounter;
+		}
+
+		const bool NewAllTeammatesInFight = ReadToggleValue(GTab2AllTeammatesInFightToggle, Cfg.AllTeammatesInFight);
+		if (NewAllTeammatesInFight != Cfg.AllTeammatesInFight)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 AllTeammatesInFight: " << (NewAllTeammatesInFight ? "ON" : "OFF") << "\n";
+			Cfg.AllTeammatesInFight = NewAllTeammatesInFight;
+		}
+
 		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
 			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
 				return DefaultValue;
@@ -1399,24 +1390,36 @@ namespace
 			LastSkillNoCooldownHook = Config.SkillNoCooldown;
 		}
 
-		// 鎴樻枟鍔犻€燂細绂佺敤鏃朵笉鍋氫笘鐣屾€佹煡璇紱鍚敤鏃惰妭娴佹煡璇紝閬垮厤姣忓抚鍙嶅皠璋冪敤瀵艰嚧鍗￠】銆?		if (!Config.BattleSpeedEnabled)
+		static bool LastNoEncounterPatch = false;
+		if (Config.NoEncounter != LastNoEncounterPatch)
 		{
-			if (GTab2FightDilationApplied)
-				ApplyFightTimeDilationIfNeeded(1.0f, false);
-			return;
+			if (Config.NoEncounter)
+				EnableNoEncounterPatch();
+			else
+				DisableNoEncounterPatch();
+			LastNoEncounterPatch = Config.NoEncounter;
 		}
 
-		static DWORD LastBattleSpeedEvalTick = 0;
-		const DWORD NowTick = GetTickCount();
-		if (LastBattleSpeedEvalTick != 0 && (NowTick - LastBattleSpeedEvalTick) < 1000)
-			return;
-		LastBattleSpeedEvalTick = NowTick;
+		static bool LastAllTeammatesInFightHook = false;
+		if (Config.AllTeammatesInFight != LastAllTeammatesInFightHook)
+		{
+			if (Config.AllTeammatesInFight)
+				EnableAllTeammatesInFightHooks();
+			else
+				DisableAllTeammatesInFightHooks();
+			LastAllTeammatesInFightHook = Config.AllTeammatesInFight;
+		}
 
-		const EWorldStateType WorldState = UManagerFuncLib::GetWorldType();
-		const bool IsInFight = (WorldState == EWorldStateType::Fighting);
-		const float DesiredFightDilation = IsInFight ? Config.BattleSpeedMultiplier : 1.0f;
-		ApplyFightTimeDilationIfNeeded(DesiredFightDilation, false);
-
+		SetBattleSpeedHookMultiplier(Config.BattleSpeedMultiplier);
+		static bool LastBattleSpeedHookEnabled = false;
+		if (Config.BattleSpeedEnabled != LastBattleSpeedHookEnabled)
+		{
+			if (Config.BattleSpeedEnabled)
+				EnableBattleSpeedHooks();
+			else
+				DisableBattleSpeedHooks();
+			LastBattleSpeedHookEnabled = Config.BattleSpeedEnabled;
+		}
 	}
 
 	void PollVolumeItemsButtonsAndText()
@@ -1483,12 +1486,8 @@ namespace
 				CurValue = Slider->GetValue();
 				if (Item->TXT_CurrentValue)
 				{
-					// 滑块值 1-10，直接显示
-					int32 DisplayValue = static_cast<int32>(CurValue + 0.5f);
-					if (DisplayValue < 1) DisplayValue = 1;
-					if (DisplayValue > 10) DisplayValue = 10;
 					wchar_t Buf[16] = {};
-					swprintf_s(Buf, 16, L"%d", DisplayValue);
+					swprintf_s(Buf, 16, L"%.3g", static_cast<double>(CurValue));
 					Item->TXT_CurrentValue->SetText(MakeText(Buf));
 				}
 			}
@@ -1518,9 +1517,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			if (kEnableBackpackViewProcessEventHook)
 				RemoveBackpackViewProcessEventHook();
 			DisableSkillNoCooldownHooks();
-			ApplyFightTimeDilationIfNeeded(1.0f, true);
-			GTab2AppliedFightDilation = 1.0f;
-			GTab2FightDilationApplied = false;
+			DisableNoEncounterPatch();
+			DisableAllTeammatesInFightHooks();
+			DisableBattleSpeedHooks();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
 			LOGI_STREAM("FrameHook") << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
