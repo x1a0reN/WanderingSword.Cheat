@@ -150,8 +150,13 @@ namespace
 		bool NoEncounter = false;
 		bool AllTeammatesInFight = false;
 		bool DefeatAsVictory = false;
+		bool NeiGongFillLastSlot = false;
+		bool AutoRecoverHpMp = false;
+		bool TotalMoveSpeedEnabled = false;
+		bool TotalMoveSpeedFriendlyOnly = false;
 		bool BattleSpeedEnabled = false;
 		float BattleSpeedMultiplier = 2.0f;
+		float TotalMoveSpeedMultiplier = 2.0f;
 	};
 
 	struct FItemRowOriginalState final
@@ -1363,6 +1368,34 @@ namespace
 			Cfg.DefeatAsVictory = NewDefeatAsVictory;
 		}
 
+		const bool NewNeiGongFillLastSlot = ReadToggleValue(GTab2NeiGongFillLastSlotToggle, Cfg.NeiGongFillLastSlot);
+		if (NewNeiGongFillLastSlot != Cfg.NeiGongFillLastSlot)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 NeiGongFillLastSlot: " << (NewNeiGongFillLastSlot ? "ON" : "OFF") << "\n";
+			Cfg.NeiGongFillLastSlot = NewNeiGongFillLastSlot;
+		}
+
+		const bool NewAutoRecoverHpMp = ReadToggleValue(GTab2AutoRecoverHpMpToggle, Cfg.AutoRecoverHpMp);
+		if (NewAutoRecoverHpMp != Cfg.AutoRecoverHpMp)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 AutoRecoverHpMp: " << (NewAutoRecoverHpMp ? "ON" : "OFF") << "\n";
+			Cfg.AutoRecoverHpMp = NewAutoRecoverHpMp;
+		}
+
+		const bool NewTotalMoveSpeedEnabled = ReadToggleValue(GTab2TotalMoveSpeedToggle, Cfg.TotalMoveSpeedEnabled);
+		if (NewTotalMoveSpeedEnabled != Cfg.TotalMoveSpeedEnabled)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 TotalMoveSpeed: " << (NewTotalMoveSpeedEnabled ? "ON" : "OFF") << "\n";
+			Cfg.TotalMoveSpeedEnabled = NewTotalMoveSpeedEnabled;
+		}
+
+		const bool NewTotalMoveSpeedFriendlyOnly = ReadToggleValue(GTab2DamageFriendlyOnlyToggle, Cfg.TotalMoveSpeedFriendlyOnly);
+		if (NewTotalMoveSpeedFriendlyOnly != Cfg.TotalMoveSpeedFriendlyOnly)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 TotalMoveSpeedFriendlyOnly: " << (NewTotalMoveSpeedFriendlyOnly ? "ON" : "OFF") << "\n";
+			Cfg.TotalMoveSpeedFriendlyOnly = NewTotalMoveSpeedFriendlyOnly;
+		}
+
 		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
 			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
 				return DefaultValue;
@@ -1373,12 +1406,21 @@ namespace
 		};
 
 		float NewBattleSpeedMultiplier = ReadSliderValue(GTab2DamageMultiplierSlider, Cfg.BattleSpeedMultiplier);
-		if (NewBattleSpeedMultiplier < 1.0f) NewBattleSpeedMultiplier = 1.0f;
+		if (NewBattleSpeedMultiplier < 0.0f) NewBattleSpeedMultiplier = 0.0f;
 		if (NewBattleSpeedMultiplier > 10.0f) NewBattleSpeedMultiplier = 10.0f;
 		if (std::fabs(NewBattleSpeedMultiplier - Cfg.BattleSpeedMultiplier) > 0.001f)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 BattleSpeedMultiplier: " << NewBattleSpeedMultiplier << "x\n";
 			Cfg.BattleSpeedMultiplier = NewBattleSpeedMultiplier;
+		}
+
+		float NewTotalMoveSpeedMultiplier = ReadSliderValue(GTab2MoveSpeedMultiplierSlider, Cfg.TotalMoveSpeedMultiplier);
+		if (NewTotalMoveSpeedMultiplier < 0.0f) NewTotalMoveSpeedMultiplier = 0.0f;
+		if (NewTotalMoveSpeedMultiplier > 10.0f) NewTotalMoveSpeedMultiplier = 10.0f;
+		if (std::fabs(NewTotalMoveSpeedMultiplier - Cfg.TotalMoveSpeedMultiplier) > 0.001f)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 TotalMoveSpeedMultiplier: " << NewTotalMoveSpeedMultiplier << "x\n";
+			Cfg.TotalMoveSpeedMultiplier = NewTotalMoveSpeedMultiplier;
 		}
 	}
 
@@ -1426,6 +1468,38 @@ namespace
 			else
 				DisableDefeatAsVictoryHook();
 			LastDefeatAsVictoryHook = Config.DefeatAsVictory;
+		}
+
+		static bool LastNeiGongFillLastSlot = false;
+		if (Config.NeiGongFillLastSlot != LastNeiGongFillLastSlot)
+		{
+			if (Config.NeiGongFillLastSlot)
+				EnableNeiGongFillLastSlotFeature();
+			else
+				DisableNeiGongFillLastSlotFeature();
+			LastNeiGongFillLastSlot = Config.NeiGongFillLastSlot;
+		}
+
+		static bool LastAutoRecoverHpMp = false;
+		if (Config.AutoRecoverHpMp != LastAutoRecoverHpMp)
+		{
+			if (Config.AutoRecoverHpMp)
+				EnableAutoRecoverHpMpHook();
+			else
+				DisableAutoRecoverHpMpHook();
+			LastAutoRecoverHpMp = Config.AutoRecoverHpMp;
+		}
+
+		SetTotalMoveSpeedMultiplier(Config.TotalMoveSpeedMultiplier);
+		SetTotalMoveSpeedFriendlyOnly(Config.TotalMoveSpeedFriendlyOnly);
+		static bool LastTotalMoveSpeedEnabled = false;
+		if (Config.TotalMoveSpeedEnabled != LastTotalMoveSpeedEnabled)
+		{
+			if (Config.TotalMoveSpeedEnabled)
+				EnableTotalMoveSpeedHook();
+			else
+				DisableTotalMoveSpeedHook();
+			LastTotalMoveSpeedEnabled = Config.TotalMoveSpeedEnabled;
 		}
 
 		SetBattleSpeedHookMultiplier(Config.BattleSpeedMultiplier);
@@ -1508,6 +1582,7 @@ namespace
 					swprintf_s(Buf, 16, L"%.3g", static_cast<double>(CurValue));
 					Item->TXT_CurrentValue->SetText(MakeText(Buf));
 				}
+				RememberSingleSliderState(Item);
 			}
 
 			GVolumeLastValues[i] = CurValue;
@@ -1538,6 +1613,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			DisableNoEncounterPatch();
 			DisableAllTeammatesInFightHooks();
 			DisableDefeatAsVictoryHook();
+			DisableNeiGongFillLastSlotFeature();
+			DisableAutoRecoverHpMpHook();
+			DisableTotalMoveSpeedHook();
 			DisableBattleSpeedHooks();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
@@ -1585,6 +1663,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	static bool HomeWasDown = false;
 	static bool HomeNeedAnchorCtxRefresh = false;
 	static bool HomeNeedDynTabRestore = false;
+	static bool HomeNeedSliderRememberRestore = false;
 	const bool HomeDown = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
 	if (!InTransitionGuard && HomeDown && !HomeWasDown)
 	{
@@ -1596,6 +1675,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			InternalWidget->IsInViewport();
 		HomeNeedAnchorCtxRefresh = (!WasVisible && IsNowVisible);
 		HomeNeedDynTabRestore = (!WasVisible && IsNowVisible);
+		HomeNeedSliderRememberRestore = (!WasVisible && IsNowVisible);
 	}
 	HomeWasDown = HomeDown;
 
@@ -1699,6 +1779,17 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] HomeAnchorCtxRefresh: ctx unchanged, skip rebuild\n";
 		}
+	}
+
+	// 面板刚显示时：先回灌记忆值，再短时禁止 realtime 覆写，避免默认值(如 1.0)覆盖缓存。
+	if (HomeNeedSliderRememberRestore &&
+		InternalWidgetVisible &&
+		LiveInternalWidget &&
+		IsSafeLiveObject(static_cast<UObject*>(LiveInternalWidget)))
+	{
+		HomeNeedSliderRememberRestore = false;
+		SuppressSliderRealtimeRememberForMs(800);
+		RestoreRememberedSliderStatesToLiveWidgets();
 	}
 
 	// Tab0锛堣鑹诧級缂栬緫妗嗭細鎸?Enter 鎻愪氦鍐欏洖骞跺洖濉€?

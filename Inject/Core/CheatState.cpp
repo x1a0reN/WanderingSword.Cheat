@@ -75,8 +75,12 @@ UBPVE_JHConfigVideoItem2_C* GTab2SkillNoCooldownToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2NoEncounterToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2AllTeammatesInFightToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2DefeatAsVictoryToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab2NeiGongFillLastSlotToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab2AutoRecoverHpMpToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab2TotalMoveSpeedToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2DamageFriendlyOnlyToggle = nullptr;
 UBPVE_JHConfigVolumeItem2_C* GTab2DamageMultiplierSlider = nullptr;
+UBPVE_JHConfigVolumeItem2_C* GTab2MoveSpeedMultiplierSlider = nullptr;
 
 UBP_JHConfigTabBtn_C* GDynTabBtn6 = nullptr;
 UBP_JHConfigTabBtn_C* GDynTabBtn7 = nullptr;

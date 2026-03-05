@@ -67,5 +67,14 @@ void PollCollapsiblePanelsInput();
 /// 读取当前已创建控件的实时状态，写入 GUIRememberState。
 void RememberUIControlStatesFromLiveWidgets();
 
+/// 针对单个滑块控件即时记忆（用于拖拽/滚轮/按钮等实时变化路径）。
+void RememberSingleSliderState(UBPVE_JHConfigVolumeItem2_C* Item);
+
+/// 在当前已创建的 live 控件上，按 GUIRememberState 回灌滑块值。
+void RestoreRememberedSliderStatesToLiveWidgets();
+
+/// 在指定毫秒内禁止滑块实时记忆覆写（用于面板刚显示时防止默认值回写）。
+void SuppressSliderRealtimeRememberForMs(DWORD DurationMs);
+
 /// 重建/销毁时清空“当前运行时控件绑定”，保留 GUIRememberState 中的记忆值。
 void ResetRuntimeControlStateBindings();

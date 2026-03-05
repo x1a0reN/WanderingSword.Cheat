@@ -1,6 +1,7 @@
 ﻿#include <Windows.h>
 #include <algorithm>
 #include <cwctype>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -49,6 +50,12 @@ namespace
 	std::vector<VideoItemBinding> GRememberVideoItems;
 	std::vector<VolumeItemBinding> GRememberVolumeItems;
 	std::vector<EditBoxBinding> GRememberEditBoxes;
+	DWORD GSliderRealtimeRememberSuppressUntilTick = 0;
+
+	bool IsTickBefore(DWORD A, DWORD B)
+	{
+		return static_cast<int32_t>(A - B) < 0;
+	}
 
 	std::wstring NormalizeTitleKey(const wchar_t* Title)
 	{
@@ -70,6 +77,14 @@ namespace
 		const std::wstring Key = NormalizeTitleKey(Title);
 		if (Key.empty())
 			return;
+		for (auto& B : GRememberVideoItems)
+		{
+			if (B.TitleKey == Key)
+			{
+				B.Item = Item;
+				return;
+			}
+		}
 		GRememberVideoItems.push_back({ Item, Key });
 	}
 
@@ -80,6 +95,14 @@ namespace
 		const std::wstring Key = NormalizeTitleKey(Title);
 		if (Key.empty())
 			return;
+		for (auto& B : GRememberVolumeItems)
+		{
+			if (B.TitleKey == Key)
+			{
+				B.Item = Item;
+				return;
+			}
+		}
 		GRememberVolumeItems.push_back({ Item, Key });
 	}
 
@@ -90,6 +113,14 @@ namespace
 		const std::wstring Key = NormalizeTitleKey(Title);
 		if (Key.empty())
 			return;
+		for (auto& B : GRememberEditBoxes)
+		{
+			if (B.TitleKey == Key)
+			{
+				B.Edit = Edit;
+				return;
+			}
+		}
 		GRememberEditBoxes.push_back({ Edit, Key });
 	}
 
@@ -131,6 +162,15 @@ namespace
 		if (Value < Low) Value = Low;
 		if (Value > High) Value = High;
 		Slider->SetValue(Value);
+
+		if (TitleKey == L"战斗加速倍数" || TitleKey == L"移动倍数")
+		{
+			LOGI_STREAM("WidgetFactory") << "[SDK] SliderRemember apply: key="
+				<< TitleKey
+				<< " value=" << Value
+				<< " slider=" << (void*)Slider
+				<< "\n";
+		}
 	}
 
 	void ApplyRememberedEditState(const std::wstring& TitleKey, UEditableTextBox* Edit)
@@ -498,11 +538,11 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 		ClearButtonBindings(static_cast<UWidget*>(Item->BTN_Plus));
 	if (Item->VolumeSlider)
 	{
-		// 统一滑块基准范围，避免记忆值在默认 0~1 上被错误夹断。
-		Item->VolumeSlider->MinValue = 1.0f;
+		// 统一滑块基准范围：0~10，所有倍率类控件按原值显示，不做百分比换算。
+		Item->VolumeSlider->MinValue = 0.0f;
 		Item->VolumeSlider->MaxValue = 10.0f;
 		if (Item->VolumeSlider->StepSize <= 0.0001f)
-			Item->VolumeSlider->StepSize = 1.0f;
+			Item->VolumeSlider->StepSize = 0.1f;
 	}
 
 	if (Item->TXT_Title)
@@ -946,7 +986,16 @@ void RememberUIControlStatesFromLiveWidgets()
 				auto* Slider = B.Item->VolumeSlider;
 				if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
 					return false;
-				GUIRememberState.SliderValueByTitle[B.TitleKey] = Slider->GetValue();
+				const float SavedValue = Slider->GetValue();
+				GUIRememberState.SliderValueByTitle[B.TitleKey] = SavedValue;
+				if (B.TitleKey == L"战斗加速倍数" || B.TitleKey == L"移动倍数")
+				{
+					LOGI_STREAM("WidgetFactory") << "[SDK] SliderRemember save: key="
+						<< B.TitleKey
+						<< " value=" << SavedValue
+						<< " slider=" << (void*)Slider
+						<< "\n";
+				}
 				return false;
 			}),
 		GRememberVolumeItems.end());
@@ -967,6 +1016,107 @@ void RememberUIControlStatesFromLiveWidgets()
 				return false;
 			}),
 		GRememberEditBoxes.end());
+}
+
+void RememberSingleSliderState(UBPVE_JHConfigVolumeItem2_C* Item)
+{
+	if (!Item || !IsSafeLiveObject(static_cast<UObject*>(Item)))
+		return;
+	USlider* Slider = Item->VolumeSlider;
+	if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+		return;
+	const DWORD NowTick = GetTickCount();
+	if (GSliderRealtimeRememberSuppressUntilTick != 0 &&
+		IsTickBefore(NowTick, GSliderRealtimeRememberSuppressUntilTick))
+	{
+		return;
+	}
+	if (GSliderRealtimeRememberSuppressUntilTick != 0)
+		GSliderRealtimeRememberSuppressUntilTick = 0;
+
+	for (const VolumeItemBinding& B : GRememberVolumeItems)
+	{
+		if (B.Item != Item)
+			continue;
+		if (B.TitleKey.empty())
+			return;
+		const float SavedValue = Slider->GetValue();
+		GUIRememberState.SliderValueByTitle[B.TitleKey] = SavedValue;
+		if (B.TitleKey == L"战斗加速倍数" || B.TitleKey == L"移动倍数")
+		{
+			LOGI_STREAM("WidgetFactory") << "[SDK] SliderRemember realtime: key="
+				<< B.TitleKey
+				<< " value=" << SavedValue
+				<< " slider=" << (void*)Slider
+				<< "\n";
+		}
+		return;
+	}
+}
+
+void RestoreRememberedSliderStatesToLiveWidgets()
+{
+	for (const VolumeItemBinding& B : GRememberVolumeItems)
+	{
+		if (!B.Item || !IsSafeLiveObject(static_cast<UObject*>(B.Item)))
+			continue;
+		USlider* Slider = B.Item->VolumeSlider;
+		if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+			continue;
+		if (B.TitleKey.empty())
+			continue;
+
+		const auto ItRemember = GUIRememberState.SliderValueByTitle.find(B.TitleKey);
+		if (ItRemember == GUIRememberState.SliderValueByTitle.end())
+			continue;
+
+		const float MinV = Slider->MinValue;
+		const float MaxV = Slider->MaxValue;
+		float Value = ItRemember->second;
+		const float Low = (MinV <= MaxV) ? MinV : MaxV;
+		const float High = (MinV <= MaxV) ? MaxV : MinV;
+		if (Value < Low) Value = Low;
+		if (Value > High) Value = High;
+
+		Slider->SetValue(Value);
+
+		if (B.Item->TXT_CurrentValue)
+		{
+			wchar_t Buf[16] = {};
+			swprintf_s(Buf, 16, L"%.3g", static_cast<double>(Value));
+			B.Item->TXT_CurrentValue->SetText(MakeText(Buf));
+		}
+
+		auto ItLive = std::find(GVolumeItems.begin(), GVolumeItems.end(), B.Item);
+		if (ItLive != GVolumeItems.end())
+		{
+			const size_t Idx = static_cast<size_t>(std::distance(GVolumeItems.begin(), ItLive));
+			if (Idx < GVolumeLastValues.size())
+				GVolumeLastValues[Idx] = Value;
+		}
+
+		if (B.TitleKey == L"战斗加速倍数" || B.TitleKey == L"移动倍数")
+		{
+			LOGI_STREAM("WidgetFactory") << "[SDK] SliderRemember restore-live: key="
+				<< B.TitleKey
+				<< " value=" << Value
+				<< " slider=" << (void*)Slider
+				<< "\n";
+		}
+	}
+}
+
+void SuppressSliderRealtimeRememberForMs(DWORD DurationMs)
+{
+	const DWORD NowTick = GetTickCount();
+	DWORD TargetTick = NowTick + DurationMs;
+	if (DurationMs == 0)
+		TargetTick = NowTick;
+	if (GSliderRealtimeRememberSuppressUntilTick == 0 ||
+		IsTickBefore(GSliderRealtimeRememberSuppressUntilTick, TargetTick))
+	{
+		GSliderRealtimeRememberSuppressUntilTick = TargetTick;
+	}
 }
 
 void ResetRuntimeControlStateBindings()

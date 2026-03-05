@@ -52,7 +52,11 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			float rememberedValue = 2.0f;
 			if (Title && Title[0] != L'\0')
 			{
-				const std::wstring titleKey(Title);
+				std::wstring titleKey(Title);
+				while (!titleKey.empty() && (titleKey.front() == L' ' || titleKey.front() == L'\t' || titleKey.front() == L'\r' || titleKey.front() == L'\n'))
+					titleKey.erase(titleKey.begin());
+				while (!titleKey.empty() && (titleKey.back() == L' ' || titleKey.back() == L'\t' || titleKey.back() == L'\r' || titleKey.back() == L'\n'))
+					titleKey.pop_back();
 				const auto it = GUIRememberState.SliderValueByTitle.find(titleKey);
 				hasRememberedValue = (it != GUIRememberState.SliderValueByTitle.end());
 				if (hasRememberedValue)
@@ -63,20 +67,18 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			else if (wcscmp(Title, L"道具增量效果倍率") == 0) GTab1CraftItemIncrementSlider = Item;
 			else if (wcscmp(Title, L"额外效果倍率") == 0) GTab1CraftExtraEffectSlider = Item;
 
-			// 滑块范围1-10，默认值2
+			// 统一倍率滑块范围：0-10
 			if (Item->VolumeSlider)
 			{
-				Item->VolumeSlider->MinValue = 1.0f;
+				Item->VolumeSlider->MinValue = 0.0f;
 				Item->VolumeSlider->MaxValue = 10.0f;
-				Item->VolumeSlider->StepSize = 1.0f;
+				Item->VolumeSlider->StepSize = 0.1f;
 				if (hasRememberedValue)
 				{
-					if (rememberedValue < 1.0f) rememberedValue = 1.0f;
+					if (rememberedValue < 0.0f) rememberedValue = 0.0f;
 					if (rememberedValue > 10.0f) rememberedValue = 10.0f;
 					Item->VolumeSlider->SetValue(rememberedValue);
 				}
-				else
-					Item->VolumeSlider->SetValue(2.0f);
 			}
 			if (Item->TXT_CurrentValue && Item->VolumeSlider)
 			{
@@ -848,8 +850,8 @@ void DisableItemNoDecreaseHook()
 
 void SetItemGainMultiplierHookValue(int32 Value)
 {
-    if (Value < 1)
-        Value = 1;
+    if (Value < 0)
+        Value = 0;
     if (Value > 10)
         Value = 10;
     const LONG oldValue = InterlockedExchange(&GItemGainMultiplierAsmValue, static_cast<LONG>(Value));
@@ -861,8 +863,8 @@ void SetItemGainMultiplierHookValue(int32 Value)
 
 void SetCraftItemIncrementHookValue(float Value)
 {
-    if (Value < 1.0f)
-        Value = 1.0f;
+    if (Value < 0.0f)
+        Value = 0.0f;
     if (Value > 10.0f)
         Value = 10.0f;
 
@@ -876,8 +878,8 @@ void SetCraftItemIncrementHookValue(float Value)
 
 void SetCraftExtraEffectHookValue(float Value)
 {
-    if (Value < 1.0f)
-        Value = 1.0f;
+    if (Value < 0.0f)
+        Value = 0.0f;
     if (Value > 10.0f)
         Value = 10.0f;
 

@@ -139,8 +139,12 @@ extern UBPVE_JHConfigVideoItem2_C* GTab2SkillNoCooldownToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2NoEncounterToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2AllTeammatesInFightToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2DefeatAsVictoryToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab2NeiGongFillLastSlotToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab2AutoRecoverHpMpToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab2TotalMoveSpeedToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2DamageFriendlyOnlyToggle;
 extern UBPVE_JHConfigVolumeItem2_C* GTab2DamageMultiplierSlider;
+extern UBPVE_JHConfigVolumeItem2_C* GTab2MoveSpeedMultiplierSlider;
 // 鈹€鈹€ 鍔ㄦ€?Tab (6/7/8) 鈹€鈹€
 
 extern UBP_JHConfigTabBtn_C* GDynTabBtn6;         // Tab 6 (闃熷弸) 鎸夐挳
@@ -217,7 +221,21 @@ void DisableDefeatAsVictoryHook();
 void EnableAllTeammatesInFightHooks();
 void DisableAllTeammatesInFightHooks();
 
+// Tab2: 所有心法可填装最后一格（1 inline hook + 2 硬编码补丁）
+void EnableNeiGongFillLastSlotFeature();
+void DisableNeiGongFillLastSlotFeature();
+
 // Tab2: 战斗加速（双 Hook）
 void EnableBattleSpeedHooks();
 void DisableBattleSpeedHooks();
 void SetBattleSpeedHookMultiplier(float Value);
+
+// Tab2: 战斗前自动恢复气血和真气（inline hook）
+void EnableAutoRecoverHpMpHook();
+void DisableAutoRecoverHpMpHook();
+
+// Tab2: 总移动速度加倍（inline hook）
+void EnableTotalMoveSpeedHook();
+void DisableTotalMoveSpeedHook();
+void SetTotalMoveSpeedMultiplier(float Value);
+void SetTotalMoveSpeedFriendlyOnly(bool Enabled);

@@ -94,6 +94,7 @@ namespace
 	UBPVE_JHConfigVolumeItem2_C* GTab0MoneyMultiplierItem = nullptr;
 	UBPVE_JHConfigVolumeItem2_C* GTab0SkillExpMultiplierItem = nullptr;
 	UBPVE_JHConfigVolumeItem2_C* GTab0ManaCostMultiplierItem = nullptr;
+	UBPVE_JHConfigVolumeItem2_C* GTab0EscapeSuccrateItem = nullptr;
 	UBPVE_JHConfigVideoItem2_C* GTab0ExtraNeiGongLimitDD = nullptr;
 	UBPVE_JHConfigVideoItem2_C* GTab0GuildDD = nullptr;
 	int32 GTab0ExtraNeiGongLimitLastIdx = -1;
@@ -105,12 +106,15 @@ namespace
 	float GTab0MoneyMultiplierLastPercent = -1.0f;
 	float GTab0SkillExpMultiplierLastPercent = -1.0f;
 	float GTab0ManaCostMultiplierLastPercent = -1.0f;
+	float GTab0EscapeSuccrateLastPercent = -1.0f;
 	bool GTab0MoneyMinusWasPressed = false;
 	bool GTab0MoneyPlusWasPressed = false;
 	bool GTab0SkillExpMinusWasPressed = false;
 	bool GTab0SkillExpPlusWasPressed = false;
 	bool GTab0ManaCostMinusWasPressed = false;
 	bool GTab0ManaCostPlusWasPressed = false;
+	bool GTab0EscapeSuccrateMinusWasPressed = false;
+	bool GTab0EscapeSuccratePlusWasPressed = false;
 
 
 	const char* Tab0FieldToString(ETab0Field Field)
@@ -1111,7 +1115,7 @@ namespace
 
 		USlider* Slider = Item->VolumeSlider;
 		float CurValue = Slider->GetValue();
-		if (CurValue < 1.0f) CurValue = 1.0f;
+		if (CurValue < 0.0f) CurValue = 0.0f;
 		if (CurValue > 10.0f) CurValue = 10.0f;
 		return CurValue;
 	}
@@ -1122,7 +1126,7 @@ namespace
 			return;
 
 		float Clamped = Percent;
-		if (Clamped < 1.0f) Clamped = 1.0f;
+		if (Clamped < 0.0f) Clamped = 0.0f;
 		if (Clamped > 10.0f) Clamped = 10.0f;
 
 		wchar_t Buf[32] = {};
@@ -1136,7 +1140,7 @@ namespace
 			return;
 		USlider* Slider = Item->VolumeSlider;
 		float ClampedPercent = Percent;
-		if (ClampedPercent < 1.0f) ClampedPercent = 1.0f;
+		if (ClampedPercent < 0.0f) ClampedPercent = 0.0f;
 		if (ClampedPercent > 10.0f) ClampedPercent = 10.0f;
 		Slider->SetValue(ClampedPercent);
 		UpdateVolumeItemPercentText(Item, ClampedPercent);
@@ -1159,10 +1163,10 @@ namespace
 		if (!Item || !Item->VolumeSlider || !IsSafeLiveObject(static_cast<UObject*>(Item->VolumeSlider)))
 			return;
 		USlider* Slider = Item->VolumeSlider;
-		Slider->MinValue = 1.0f;
+		Slider->MinValue = 0.0f;
 		Slider->MaxValue = 10.0f;
 		Slider->StepSize = 0.1f;  // 小数步进
-		SetVolumeItemPercent(Item, 1.0f);
+		SetVolumeItemPercent(Item, Slider->GetValue());
 	}
 
 	bool TryReadMultiplierFallbackFromAttrSet(const FTab0HeroContext& Ctx, const wchar_t* AttrName, float* OutValue)
@@ -1186,6 +1190,11 @@ namespace
 			*OutValue = Ctx.AttrSet->ManaCostMultiplier.CurrentValue;
 			return true;
 		}
+		if (wcscmp(AttrName, L"EscapeSuccrate") == 0)
+		{
+			*OutValue = Ctx.AttrSet->EscapeSuccrate.CurrentValue;
+			return true;
+		}
 		return false;
 	}
 
@@ -1203,6 +1212,8 @@ namespace
 			Data = &Ctx.AttrSet->SExpMultiplier;
 		else if (wcscmp(AttrName, L"ManaCostMultiplier") == 0)
 			Data = &Ctx.AttrSet->ManaCostMultiplier;
+		else if (wcscmp(AttrName, L"EscapeSuccrate") == 0)
+			Data = &Ctx.AttrSet->EscapeSuccrate;
 		else
 			return false;
 
@@ -1337,6 +1348,7 @@ namespace
 		PollOne(GTab0MoneyMultiplierItem, GTab0MoneyMultiplierLastPercent, L"MoneyMultiplier", GTab0MoneyMinusWasPressed, GTab0MoneyPlusWasPressed);
 		PollOne(GTab0SkillExpMultiplierItem, GTab0SkillExpMultiplierLastPercent, L"SExpMultiplier", GTab0SkillExpMinusWasPressed, GTab0SkillExpPlusWasPressed);
 		PollOne(GTab0ManaCostMultiplierItem, GTab0ManaCostMultiplierLastPercent, L"ManaCostMultiplier", GTab0ManaCostMinusWasPressed, GTab0ManaCostPlusWasPressed);
+		PollOne(GTab0EscapeSuccrateItem, GTab0EscapeSuccrateLastPercent, L"EscapeSuccrate", GTab0EscapeSuccrateMinusWasPressed, GTab0EscapeSuccratePlusWasPressed);
 	}
 
 	bool TryGetTab0FieldValue(const FTab0HeroContext& Ctx, ETab0Field Field, double* OutValue)
@@ -1893,6 +1905,7 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0MoneyMultiplierItem = nullptr;
 	GTab0SkillExpMultiplierItem = nullptr;
 	GTab0ManaCostMultiplierItem = nullptr;
+	GTab0EscapeSuccrateItem = nullptr;
 	GTab0ExtraNeiGongLimitDD = nullptr;
 	GTab0GuildDD = nullptr;
 	GTab0ExtraNeiGongLimitLastIdx = -1;
@@ -1902,12 +1915,15 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0MoneyMultiplierLastPercent = -1.0f;
 	GTab0SkillExpMultiplierLastPercent = -1.0f;
 	GTab0ManaCostMultiplierLastPercent = -1.0f;
+	GTab0EscapeSuccrateLastPercent = -1.0f;
 	GTab0MoneyMinusWasPressed = false;
 	GTab0MoneyPlusWasPressed = false;
 	GTab0SkillExpMinusWasPressed = false;
 	GTab0SkillExpPlusWasPressed = false;
 	GTab0ManaCostMinusWasPressed = false;
 	GTab0ManaCostPlusWasPressed = false;
+	GTab0EscapeSuccrateMinusWasPressed = false;
+	GTab0EscapeSuccratePlusWasPressed = false;
 	int Count = 0;
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
@@ -2072,12 +2088,15 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0MoneyMultiplierItem = AddSlider(RatioBox, L"金钱倍率");
 	GTab0SkillExpMultiplierItem = AddSlider(RatioBox, L"武学点倍率");
 	GTab0ManaCostMultiplierItem = AddSlider(RatioBox, L"真气消耗倍率");
+	GTab0EscapeSuccrateItem = AddSlider(RatioBox, L"逃跑成功率");
 	ConfigureTab0RatioSlider(GTab0MoneyMultiplierItem);
 	ConfigureTab0RatioSlider(GTab0SkillExpMultiplierItem);
 	ConfigureTab0RatioSlider(GTab0ManaCostMultiplierItem);
+	ConfigureTab0RatioSlider(GTab0EscapeSuccrateItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0MoneyMultiplierItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0SkillExpMultiplierItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0ManaCostMultiplierItem);
+	RemoveVolumeItemFromGlobalPoll(GTab0EscapeSuccrateItem);
 	{
 		FTab0HeroContext RatioCtx = BuildTab0HeroContext(PC);
 			float Pct = 1.0f;
@@ -2101,6 +2120,13 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		else
 				SetVolumeItemPercent(GTab0ManaCostMultiplierItem, 1.0f);
 		GTab0ManaCostMultiplierLastPercent = GetVolumeItemPercent(GTab0ManaCostMultiplierItem);
+
+			Pct = 1.0f;
+		if (TryGetTab0MultiplierPercent(RatioCtx, L"EscapeSuccrate", &Pct))
+			SetVolumeItemPercent(GTab0EscapeSuccrateItem, Pct);
+		else
+				SetVolumeItemPercent(GTab0EscapeSuccrateItem, 1.0f);
+		GTab0EscapeSuccrateLastPercent = GetVolumeItemPercent(GTab0EscapeSuccrateItem);
 	}
 	AddPanelWithFixedGap(RatioPanel, 0.0f, 10.0f);
 

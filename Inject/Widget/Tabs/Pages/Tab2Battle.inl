@@ -10,7 +10,11 @@
 	GTab2NoEncounterToggle = nullptr;
 	GTab2AllTeammatesInFightToggle = nullptr;
 	GTab2DefeatAsVictoryToggle = nullptr;
+	GTab2NeiGongFillLastSlotToggle = nullptr;
+	GTab2AutoRecoverHpMpToggle = nullptr;
+	GTab2TotalMoveSpeedToggle = nullptr;
 	GTab2DamageMultiplierSlider = nullptr;
+	GTab2MoveSpeedMultiplierSlider = nullptr;
 
 	int Count = 0;
 
@@ -48,7 +52,11 @@
 			float rememberedValue = 2.0f;
 			if (Title && Title[0] != L'\0')
 			{
-				const std::wstring titleKey(Title);
+				std::wstring titleKey(Title);
+				while (!titleKey.empty() && (titleKey.front() == L' ' || titleKey.front() == L'\t' || titleKey.front() == L'\r' || titleKey.front() == L'\n'))
+					titleKey.erase(titleKey.begin());
+				while (!titleKey.empty() && (titleKey.back() == L' ' || titleKey.back() == L'\t' || titleKey.back() == L'\r' || titleKey.back() == L'\n'))
+					titleKey.pop_back();
 				const auto it = GUIRememberState.SliderValueByTitle.find(titleKey);
 				hasRememberedValue = (it != GUIRememberState.SliderValueByTitle.end());
 				if (hasRememberedValue)
@@ -57,26 +65,23 @@
 
 			if (Item->VolumeSlider)
 			{
-				Item->VolumeSlider->MinValue = 1.0f;
+				Item->VolumeSlider->MinValue = 0.0f;
 				Item->VolumeSlider->MaxValue = 10.0f;
-				Item->VolumeSlider->StepSize = 1.0f;
+				Item->VolumeSlider->StepSize = 0.1f;
 				if (hasRememberedValue)
 				{
-					if (rememberedValue < 1.0f) rememberedValue = 1.0f;
+					if (rememberedValue < 0.0f) rememberedValue = 0.0f;
 					if (rememberedValue > 10.0f) rememberedValue = 10.0f;
 					Item->VolumeSlider->SetValue(rememberedValue);
 				}
-				else
-					Item->VolumeSlider->SetValue(2.0f);
 			}
 			if (Item->TXT_CurrentValue && Item->VolumeSlider)
 			{
 				float value = Item->VolumeSlider->GetValue();
-				if (value < 1.0f) value = 1.0f;
+				if (value < 0.0f) value = 0.0f;
 				if (value > 10.0f) value = 10.0f;
-				const int32 displayValue = static_cast<int32>(value + 0.5f);
 				wchar_t buf[16] = {};
-				swprintf_s(buf, 16, L"%d", displayValue);
+				swprintf_s(buf, 16, L"%.1f", static_cast<double>(value));
 				Item->TXT_CurrentValue->SetText(MakeText(buf));
 			}
 
@@ -91,21 +96,16 @@
 	auto* SwitchBox = SwitchPanel ? SwitchPanel->CT_Contents : nullptr;
 	GTab2SkillNoCooldownToggle = AddToggle(SwitchBox, L"招式无视冷却");
 	GTab2DamageBoostToggle = AddToggle(SwitchBox, L"战斗加速");
+	GTab2DamageMultiplierSlider = AddSlider(SwitchBox, L"战斗加速倍数");
 	GTab2NoEncounterToggle = AddToggle(SwitchBox, L"不遇敌");
 	GTab2AllTeammatesInFightToggle = AddToggle(SwitchBox, L"全队友参战");
 	GTab2DefeatAsVictoryToggle = AddToggle(SwitchBox, L"战败视为胜利");
-	AddToggle(SwitchBox, L"心法填装最后一格");
-	AddToggle(SwitchBox, L"战斗前自动恢复");
-	AddToggle(SwitchBox, L"移动速度加倍");
+	GTab2NeiGongFillLastSlotToggle = AddToggle(SwitchBox, L"心法填装最后一格");
+	GTab2AutoRecoverHpMpToggle = AddToggle(SwitchBox, L"战斗前自动恢复气血和真气");
+	GTab2TotalMoveSpeedToggle = AddToggle(SwitchBox, L"总移动速度加倍");
+	GTab2MoveSpeedMultiplierSlider = AddSlider(SwitchBox, L"移动倍数");
 	GTab2DamageFriendlyOnlyToggle = AddToggle(SwitchBox, L"只对本方生效");
 	AddPanelWithFixedGap(SwitchPanel, 0.0f, 10.0f);
-
-	auto* RatioPanel = CreateCollapsiblePanel(PC, L"倍数与速度");
-	auto* RatioBox = RatioPanel ? RatioPanel->CT_Contents : nullptr;
-	GTab2DamageMultiplierSlider = AddSlider(RatioBox, L"战斗加速倍数");
-	AddSlider(RatioBox, L"移动倍数");
-	AddSlider(RatioBox, L"逃跑成功率");
-	AddPanelWithFixedGap(RatioPanel, 0.0f, 10.0f);
 }
 
 namespace
@@ -120,6 +120,9 @@ namespace
 	uint32_t GTab2AllInFightHook4Id = UINT32_MAX;
 	uint32_t GTab2AllInFightHook5Id = UINT32_MAX;
 	uint32_t GTab2DefeatAsVictoryHookId = UINT32_MAX;
+	uint32_t GTab2NeiGongFillLastSlotHookId = UINT32_MAX;
+	uint32_t GTab2AutoRecoverHpMpHookId = UINT32_MAX;
+	uint32_t GTab2TotalMoveSpeedHookId = UINT32_MAX;
 	uintptr_t GTab2UseSkillOffset = 0;
 	uintptr_t GTab2SkillNoCDOffset = 0;
 	uintptr_t GTab2AllInFightOffset1 = 0;
@@ -128,9 +131,14 @@ namespace
 	uintptr_t GTab2AllInFightOffset4 = 0;
 	uintptr_t GTab2AllInFightOffset5 = 0;
 	uintptr_t GTab2DefeatAsVictoryOffset = 0;
+	uintptr_t GTab2NeiGongFillLastSlotOffset = 0;
+	uintptr_t GTab2AutoRecoverHpMpOffset = 0;
+	uintptr_t GTab2TotalMoveSpeedOffset = 0;
 	volatile LONG GTab2SkillNoCooldownFlag = 0;
 	volatile LONG GTab2BattleSpeedHookEnabled = 0;
+	volatile LONG GTab2TotalMoveSpeedFriendlyOnly = 1;
 	float GTab2BattleSpeedHookMultiplier = 2.0f;
+	float GTab2TotalMoveSpeedHookMultiplier = 2.0f;
 	bool GTab2BattleSpeedAutoAppliedInFight = false;
 	float GTab2BattleSpeedLastAppliedMultiplier = 0.0f;
 	DWORD GTab2BattleSpeedLastAutoApplyTick = 0;
@@ -138,6 +146,14 @@ namespace
 	uintptr_t GTab2NoEncounterPatchAddr = 0;
 	unsigned char GTab2NoEncounterOriginalBytes[2] = { 0x0F, 0x84 };
 	bool GTab2NoEncounterOriginalCaptured = false;
+	bool GTab2AutoRecoverHpMpEnabled = false;
+	bool GTab2AutoRecoverHpMpAppliedInFight = false;
+	uintptr_t GTab2AddNeiGongNoLimitPatchAddr = 0;
+	uint8_t GTab2AddNeiGongNoLimitOriginalByte = 0x02;
+	bool GTab2AddNeiGongNoLimitOriginalCaptured = false;
+	uintptr_t GTab2NeiGongLimitAddr = 0;
+	int32 GTab2NeiGongLimitOriginalValue = 6;
+	bool GTab2NeiGongLimitOriginalCaptured = false;
 
 	constexpr uint32_t kTab2BattleSpeedHookOffset1 = 0x100D67B; // sub_14100D620 + 0x5B
 	constexpr uint32_t kTab2BattleSpeedHookOffset2 = 0x100D73B; // sub_14100D6E0 + 0x5B
@@ -149,11 +165,16 @@ namespace
 	const char* kTab2JHASCFieldPattern = "48 8B B9 ? ? 00 00 0F B6 F2 48 8B";
 	const char* kTab2NoEncounterPattern = "? 8B EA 4C 8B F1 48 85 D2 0F 84 ? ? 00 00 E8";
 	const char* kTab2DefeatAsVictoryPattern = "41 55 41 56 41 57 48 83 EC 50 44 0F B6 ? 48 8B";
+	const char* kTab2NeiGongFillLastSlotPattern = "49 FF C0 48 83 C0 18";
+	const char* kTab2AddNeiGongNoLimitPattern = "41 83 F8 02 7E ? 41 B8 02 00 00 00";
+	const char* kTab2NeiGongLimitRefPattern = "41 8B CD 44 39 2D";
 	const char* kTab2AllInFightPattern1 = "49 63 85 08 01 00 00 48 8D";
 	const char* kTab2AllInFightPattern2 = "49 8D B7 00 01 00 00 48 89 75";
 	const char* kTab2AllInFightPattern3 = "83 E8 01 49 8B 3A";
 	const char* kTab2AllInFightPattern4 = "49 8B 0C 04 83 79 38 00";
 	const char* kTab2AllInFightPattern5 = "80 BD ? ? 00 00 05";
+	const char* kTab2AutoRecoverHpMpPattern = "48 8B ? 80 ? ? ? 00 00 03 75";
+	const char* kTab2TotalMoveSpeedPattern = "74 ? F3 0F 10 ? ? ? ? ? 48 83 C4 ? ? C3 F3 0F 10 ? ? ? ? ? 48 83 C4 ? ? C3 F3 0F 10";
 
 	const unsigned char kTab2UseSkillHookTemplate[] = {
 		0x49, 0x89, 0xCA,                                     // mov r10,rcx
@@ -213,6 +234,64 @@ namespace
 	constexpr size_t kTab2BattleSpeedFlagImm64Offset = 2;
 	constexpr size_t kTab2BattleSpeedValueImm64Offset = 18;
 
+	const unsigned char kTab2AutoRecoverHpMpHookTemplate[] = {
+		0x50,                                                 // push rax
+		0x51,                                                 // push rcx
+		0x52,                                                 // push rdx
+		0x41, 0x50,                                           // push r8
+		0x41, 0x51,                                           // push r9
+		0x41, 0x52,                                           // push r10
+		0x41, 0x53,                                           // push r11
+		0x48, 0x83, 0xEC, 0x20,                               // sub rsp,20h
+		0x49, 0xBB,                                           // mov r11, imm64(helper)
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
+		0x00, 0x00,                                           // imm64 high
+		0x41, 0xFF, 0xD3,                                     // call r11
+		0x48, 0x83, 0xC4, 0x20,                               // add rsp,20h
+		0x41, 0x5B,                                           // pop r11
+		0x41, 0x5A,                                           // pop r10
+		0x41, 0x59,                                           // pop r9
+		0x41, 0x58,                                           // pop r8
+		0x5A,                                                 // pop rdx
+		0x59,                                                 // pop rcx
+		0x58                                                  // pop rax
+	};
+	constexpr size_t kTab2AutoRecoverHpMpHelperImm64Offset = 17;
+
+	// CT 对齐:
+	// MaxWalkSpeed+0x10 注入点，先执行被覆盖 8 字节（由 InstallHook 自动拼接），
+	// 再执行:
+	// push r8
+	// cmp [friendlyOnlyFlag],1
+	// jne mul
+	// mov r8,[rbx+130]
+	// cmp r8,rsp
+	// jna exit
+	// cmp [r8+4C0],0
+	// jne exit
+	// mul: mulss xmm0,[multiplier]
+	// exit: pop r8
+	const unsigned char kTab2TotalMoveSpeedHookTemplate[] = {
+		0x41, 0x50,                                           // push r8
+		0x49, 0xBB,                                           // mov r11, imm64(friendlyOnlyFlag)
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
+		0x00, 0x00,                                           // imm64 high
+		0x41, 0x83, 0x3B, 0x01,                               // cmp dword ptr [r11],1
+		0x75, 0x16,                                           // jne +0x16 -> mul
+		0x4C, 0x8B, 0x83, 0x30, 0x01, 0x00, 0x00,             // mov r8,[rbx+130]
+		0x4C, 0x3B, 0xC4,                                     // cmp r8,rsp
+		0x76, 0x19,                                           // jbe +0x19 -> exit(pop r8)
+		0x41, 0x83, 0xB8, 0xC0, 0x04, 0x00, 0x00, 0x00,       // cmp dword ptr [r8+4C0],0
+		0x75, 0x0F,                                           // jne +0x0F -> exit(pop r8)
+		0x49, 0xBB,                                           // mov r11, imm64(multiplier)
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
+		0x00, 0x00,                                           // imm64 high
+		0xF3, 0x41, 0x0F, 0x59, 0x03,                         // mulss xmm0,dword ptr [r11]
+		0x41, 0x58                                            // pop r8
+	};
+	constexpr size_t kTab2TotalMoveSpeedFlagImm64Offset = 4;
+	constexpr size_t kTab2TotalMoveSpeedMultiplierImm64Offset = 42;
+
 	// CT 语义:
 	// [ENABLE] aobscanmodule(..., 41 55 41 56 41 57 48 83 EC 50 44 0F B6 ? 48 8B)
 	// 注入后先 mov dl,0，再执行被覆盖的 push r13/push r14/push r15。
@@ -222,6 +301,22 @@ namespace
 		0x41, 0x55,       // push r13
 		0x41, 0x56,       // push r14
 		0x41, 0x57        // push r15
+	};
+
+	// CT: xinfazhuangtian
+	const unsigned char kTab2NeiGongFillLastSlotHookTemplate[] = {
+		0x49, 0xFF, 0xC0,                         // inc r8
+		0x48, 0x83, 0xC0, 0x18,                   // add rax,18h
+		0x52,                                     // push rdx
+		0x44, 0x89, 0xC2,                         // mov edx,r8d
+		0xFF, 0xC2,                               // inc edx
+		0x39, 0xCA,                               // cmp edx,ecx
+		0x5A,                                     // pop rdx
+		0x75, 0x12,                               // jne +0x12
+		0xC7, 0x00, 0x01, 0x00, 0x00, 0x00,       // mov dword ptr [rax],1
+		0xC7, 0x40, 0x18, 0x01, 0x00, 0x00, 0x00, // mov dword ptr [rax+18],1
+		0x89, 0x48, 0x1C,                         // mov [rax+1C],ecx
+		0xFF, 0xC1                                // inc ecx
 	};
 
 	const unsigned char kTab2AllInFightHookTemplate1[] = {
@@ -336,6 +431,82 @@ namespace
 			return 0;
 
 		return InlineHook::HookManager::AobScanFirst(pattern, start, end, false);
+	}
+
+	void RecoverHpMpForTeamInfo(UTeamInfo* teamInfo)
+	{
+		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(teamInfo), UTeamInfo::StaticClass()))
+			return;
+
+		UJHAttributeSet* attrSet = teamInfo->GetAttributeSet();
+		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(attrSet), UJHAttributeSet::StaticClass()))
+			return;
+
+		auto RecoverAttrToMax = [](FGameplayAttributeData& Cur, const FGameplayAttributeData& Max)
+		{
+			float maxValue = Max.CurrentValue;
+			if (maxValue <= 0.0001f)
+				maxValue = Max.BaseValue;
+			if (maxValue < 0.0f)
+				maxValue = 0.0f;
+			Cur.BaseValue = maxValue;
+			Cur.CurrentValue = maxValue;
+		};
+
+		RecoverAttrToMax(attrSet->Health, attrSet->MaxHealth);
+		RecoverAttrToMax(attrSet->Mana, attrSet->MaxMana);
+	}
+
+	void RecoverFriendlyTeamHpMpNow()
+	{
+		UTeamManager* teamMgr = UManagerFuncLib::GetTeamManager();
+		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(teamMgr), UTeamManager::StaticClass()))
+			return;
+
+		auto RecoverArray = [](const TArray<UTeamInfo*>& arr)
+		{
+			for (int32 i = 0; i < arr.Num(); ++i)
+			{
+				UTeamInfo* teamInfo = arr[i];
+				if (!teamInfo)
+					continue;
+				RecoverHpMpForTeamInfo(teamInfo);
+			}
+		};
+
+		if (teamMgr->TeamInfos.IsValid())
+			RecoverArray(teamMgr->TeamInfos);
+		if (teamMgr->FightTeamInfos.IsValid())
+			RecoverArray(teamMgr->FightTeamInfos);
+	}
+
+	bool IsFightWorldState(EWorldStateType state)
+	{
+		return state == EWorldStateType::IntoFight || state == EWorldStateType::Fighting;
+	}
+
+	void TickAutoRecoverHpMpBySDK()
+	{
+		const EWorldStateType worldState = UManagerFuncLib::GetWorldType();
+		const bool inFight = IsFightWorldState(worldState);
+		if (!inFight)
+		{
+			GTab2AutoRecoverHpMpAppliedInFight = false;
+			return;
+		}
+		if (!GTab2AutoRecoverHpMpEnabled)
+			return;
+		if (GTab2AutoRecoverHpMpAppliedInFight)
+			return;
+
+		RecoverFriendlyTeamHpMpNow();
+		GTab2AutoRecoverHpMpAppliedInFight = true;
+		LOGI_STREAM("Tab2Battle") << "[SDK] AutoRecoverHpMp applied by SDK at fight-enter\n";
+	}
+
+	void __fastcall AutoRecoverHpMpHookCallback()
+	{
+		RecoverFriendlyTeamHpMpNow();
 	}
 
 	bool IsReadablePointerAddress(uintptr_t address, size_t size = sizeof(uintptr_t))
@@ -764,6 +935,108 @@ void DisableNoEncounterPatch()
 	}
 }
 
+void EnableAutoRecoverHpMpHook()
+{
+	// 改为纯 SDK 实现：不再安装 recoverHPMP inline hook。
+	GTab2AutoRecoverHpMpEnabled = true;
+	GTab2AutoRecoverHpMpAppliedInFight = false;
+
+	// 若用户在战斗内临时开启，允许立刻生效一次。
+	TickAutoRecoverHpMpBySDK();
+	LOGI_STREAM("Tab2Battle") << "[SDK] AutoRecoverHpMp enabled (SDK mode)\n";
+}
+
+void DisableAutoRecoverHpMpHook()
+{
+	GTab2AutoRecoverHpMpEnabled = false;
+	GTab2AutoRecoverHpMpAppliedInFight = false;
+
+	// 兼容旧版本残留：若曾装过 hook，顺手卸掉，避免状态污染。
+	if (GTab2AutoRecoverHpMpHookId != UINT32_MAX)
+	{
+		InlineHook::HookManager::UninstallHook(GTab2AutoRecoverHpMpHookId);
+		GTab2AutoRecoverHpMpHookId = UINT32_MAX;
+	}
+	LOGI_STREAM("Tab2Battle") << "[SDK] AutoRecoverHpMp disabled (SDK mode)\n";
+}
+
+void SetTotalMoveSpeedMultiplier(float Value)
+{
+	// Tab2 特性轮询每帧都会调到这里，顺带驱动“战斗前自动恢复”SDK事件触发。
+	TickAutoRecoverHpMpBySDK();
+
+	if (Value < 0.0f)
+		Value = 0.0f;
+	if (Value > 10.0f)
+		Value = 10.0f;
+	GTab2TotalMoveSpeedHookMultiplier = Value;
+}
+
+void SetTotalMoveSpeedFriendlyOnly(bool Enabled)
+{
+	InterlockedExchange(&GTab2TotalMoveSpeedFriendlyOnly, Enabled ? 1 : 0);
+}
+
+void EnableTotalMoveSpeedHook()
+{
+	if (GTab2TotalMoveSpeedHookId != UINT32_MAX)
+		return;
+
+	HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+	if (!hModule)
+	{
+		LOGE_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed failed to get module handle\n";
+		return;
+	}
+	const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
+
+	if (GTab2TotalMoveSpeedOffset == 0)
+	{
+		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2TotalMoveSpeedPattern);
+		if (foundAddr == 0)
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed AobScan failed\n";
+			return;
+		}
+		GTab2TotalMoveSpeedOffset = (foundAddr + 0x10) - moduleBase; // CT: MaxWalkSpeed+0x10 (hex)
+		LOGI_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed found: base=0x"
+			<< std::hex << foundAddr << ", hook=0x" << (moduleBase + GTab2TotalMoveSpeedOffset)
+			<< " (+0x10)" << std::dec << "\n";
+	}
+
+	unsigned char hookCode[sizeof(kTab2TotalMoveSpeedHookTemplate)] = {};
+	std::memcpy(hookCode, kTab2TotalMoveSpeedHookTemplate, sizeof(hookCode));
+	const uintptr_t flagAddr = reinterpret_cast<uintptr_t>(&GTab2TotalMoveSpeedFriendlyOnly);
+	const uintptr_t multiplierAddr = reinterpret_cast<uintptr_t>(&GTab2TotalMoveSpeedHookMultiplier);
+	std::memcpy(hookCode + kTab2TotalMoveSpeedFlagImm64Offset, &flagAddr, sizeof(flagAddr));
+	std::memcpy(hookCode + kTab2TotalMoveSpeedMultiplierImm64Offset, &multiplierAddr, sizeof(multiplierAddr));
+
+	uint32_t hookId = UINT32_MAX;
+	if (!InlineHook::HookManager::InstallHook(
+		"JH-Win64-Shipping.exe",
+		static_cast<uint32_t>(GTab2TotalMoveSpeedOffset),
+		hookCode,
+		sizeof(hookCode),
+		hookId))
+	{
+		LOGE_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed hook install failed\n";
+		return;
+	}
+
+	GTab2TotalMoveSpeedHookId = hookId;
+	LOGI_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed hook enabled, id=" << GTab2TotalMoveSpeedHookId << "\n";
+}
+
+void DisableTotalMoveSpeedHook()
+{
+	if (GTab2TotalMoveSpeedHookId == UINT32_MAX)
+		return;
+
+	InlineHook::HookManager::UninstallHook(GTab2TotalMoveSpeedHookId);
+	GTab2TotalMoveSpeedHookId = UINT32_MAX;
+	LOGI_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed hook disabled\n";
+}
+
 void EnableDefeatAsVictoryHook()
 {
 	if (GTab2DefeatAsVictoryHookId != UINT32_MAX)
@@ -817,6 +1090,145 @@ void DisableDefeatAsVictoryHook()
 	InlineHook::HookManager::UninstallHook(GTab2DefeatAsVictoryHookId);
 	GTab2DefeatAsVictoryHookId = UINT32_MAX;
 	LOGI_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory hook disabled\n";
+}
+
+void EnableNeiGongFillLastSlotFeature()
+{
+	// 1) inline hook: xinfazhuangtian
+	if (GTab2NeiGongFillLastSlotHookId == UINT32_MAX)
+	{
+		if (GTab2NeiGongFillLastSlotOffset == 0)
+		{
+			HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+			if (!hModule)
+			{
+				LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot failed to get module handle\n";
+				return;
+			}
+			const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
+			const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2NeiGongFillLastSlotPattern);
+			if (foundAddr == 0)
+			{
+				LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot AobScan failed\n";
+				return;
+			}
+			GTab2NeiGongFillLastSlotOffset = foundAddr - moduleBase;
+			LOGI_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot found: 0x"
+				<< std::hex << foundAddr << ", offset: 0x" << GTab2NeiGongFillLastSlotOffset << std::dec << "\n";
+		}
+
+		uint32_t hookId = UINT32_MAX;
+		if (!InlineHook::HookManager::InstallHook(
+			"JH-Win64-Shipping.exe",
+			static_cast<uint32_t>(GTab2NeiGongFillLastSlotOffset),
+			kTab2NeiGongFillLastSlotHookTemplate,
+			sizeof(kTab2NeiGongFillLastSlotHookTemplate),
+			hookId,
+			false,
+			true,
+			false))
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot hook install failed\n";
+			return;
+		}
+		GTab2NeiGongFillLastSlotHookId = hookId;
+		LOGI_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot hook enabled, id=" << GTab2NeiGongFillLastSlotHookId << "\n";
+	}
+
+	// 2) 硬编码补丁: AddNeiGongNoLimit+8: db 03
+	if (GTab2AddNeiGongNoLimitPatchAddr == 0)
+	{
+		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2AddNeiGongNoLimitPattern);
+		if (foundAddr == 0)
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] AddNeiGongNoLimit AobScan failed\n";
+			return;
+		}
+		GTab2AddNeiGongNoLimitPatchAddr = foundAddr + 8;
+		LOGI_STREAM("Tab2Battle") << "[SDK] AddNeiGongNoLimit patch addr=0x"
+			<< std::hex << GTab2AddNeiGongNoLimitPatchAddr << std::dec << "\n";
+	}
+	if (!GTab2AddNeiGongNoLimitOriginalCaptured)
+	{
+		uint8_t originalByte = 0x02;
+		if (InlineHook::HookManager::ReadMemory(GTab2AddNeiGongNoLimitPatchAddr, &originalByte, sizeof(originalByte)))
+		{
+			GTab2AddNeiGongNoLimitOriginalByte = originalByte;
+			GTab2AddNeiGongNoLimitOriginalCaptured = true;
+		}
+	}
+	const uint8_t patchValue = 0x03;
+	if (!InlineHook::HookManager::WriteMemory(GTab2AddNeiGongNoLimitPatchAddr, &patchValue, sizeof(patchValue)))
+	{
+		LOGE_STREAM("Tab2Battle") << "[SDK] AddNeiGongNoLimit patch write failed at 0x"
+			<< std::hex << GTab2AddNeiGongNoLimitPatchAddr << std::dec << "\n";
+	}
+
+	// 3) Lua 解码逻辑等价: 解析 RIP 相对地址，写 NeiGongLimit=7
+	if (GTab2NeiGongLimitAddr == 0)
+	{
+		const uintptr_t refAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2NeiGongLimitRefPattern);
+		if (refAddr == 0)
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongLimitRef AobScan failed\n";
+			return;
+		}
+		int32 disp = 0;
+		if (!InlineHook::HookManager::ReadValue(refAddr + 6, disp))
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongLimitRef read disp failed\n";
+			return;
+		}
+		GTab2NeiGongLimitAddr = (refAddr + 10) + static_cast<int64>(disp);
+		LOGI_STREAM("Tab2Battle") << "[SDK] NeiGongLimit addr=0x"
+			<< std::hex << GTab2NeiGongLimitAddr << std::dec << "\n";
+	}
+	if (!GTab2NeiGongLimitOriginalCaptured)
+	{
+		int32 originalLimit = 6;
+		if (InlineHook::HookManager::ReadValue(GTab2NeiGongLimitAddr, originalLimit))
+		{
+			GTab2NeiGongLimitOriginalValue = originalLimit;
+			GTab2NeiGongLimitOriginalCaptured = true;
+		}
+	}
+	const int32 newLimit = 7;
+	if (!InlineHook::HookManager::WriteValue(GTab2NeiGongLimitAddr, newLimit))
+	{
+		LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongLimit write failed at 0x"
+			<< std::hex << GTab2NeiGongLimitAddr << std::dec << "\n";
+	}
+}
+
+void DisableNeiGongFillLastSlotFeature()
+{
+	if (GTab2NeiGongFillLastSlotHookId != UINT32_MAX)
+	{
+		InlineHook::HookManager::UninstallHook(GTab2NeiGongFillLastSlotHookId);
+		GTab2NeiGongFillLastSlotHookId = UINT32_MAX;
+	}
+
+	if (GTab2AddNeiGongNoLimitPatchAddr != 0)
+	{
+		const uint8_t restoreValue = GTab2AddNeiGongNoLimitOriginalCaptured ? GTab2AddNeiGongNoLimitOriginalByte : 0x02;
+		if (!InlineHook::HookManager::WriteMemory(GTab2AddNeiGongNoLimitPatchAddr, &restoreValue, sizeof(restoreValue)))
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] AddNeiGongNoLimit restore failed at 0x"
+				<< std::hex << GTab2AddNeiGongNoLimitPatchAddr << std::dec << "\n";
+		}
+	}
+
+	if (GTab2NeiGongLimitAddr != 0)
+	{
+		const int32 restoreLimit = GTab2NeiGongLimitOriginalCaptured ? GTab2NeiGongLimitOriginalValue : 6;
+		if (!InlineHook::HookManager::WriteValue(GTab2NeiGongLimitAddr, restoreLimit))
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongLimit restore failed at 0x"
+				<< std::hex << GTab2NeiGongLimitAddr << std::dec << "\n";
+		}
+	}
+
+	LOGI_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot feature disabled\n";
 }
 
 void EnableAllTeammatesInFightHooks()
@@ -1054,8 +1466,8 @@ void DisableAllTeammatesInFightHooks()
 
 void SetBattleSpeedHookMultiplier(float Value)
 {
-	if (Value < 1.0f)
-		Value = 1.0f;
+	if (Value < 0.0f)
+		Value = 0.0f;
 	if (Value > 10.0f)
 		Value = 10.0f;
 	GTab2BattleSpeedHookMultiplier = Value;
