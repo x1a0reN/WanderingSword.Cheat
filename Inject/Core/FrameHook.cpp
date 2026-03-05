@@ -149,6 +149,7 @@ namespace
 		bool SkillNoCooldown = false;
 		bool NoEncounter = false;
 		bool AllTeammatesInFight = false;
+		bool DefeatAsVictory = false;
 		bool BattleSpeedEnabled = false;
 		float BattleSpeedMultiplier = 2.0f;
 	};
@@ -1355,6 +1356,13 @@ namespace
 			Cfg.AllTeammatesInFight = NewAllTeammatesInFight;
 		}
 
+		const bool NewDefeatAsVictory = ReadToggleValue(GTab2DefeatAsVictoryToggle, Cfg.DefeatAsVictory);
+		if (NewDefeatAsVictory != Cfg.DefeatAsVictory)
+		{
+			LOGI_STREAM("FrameHook") << "[SDK] Tab2 DefeatAsVictory: " << (NewDefeatAsVictory ? "ON" : "OFF") << "\n";
+			Cfg.DefeatAsVictory = NewDefeatAsVictory;
+		}
+
 		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
 			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
 				return DefaultValue;
@@ -1408,6 +1416,16 @@ namespace
 			else
 				DisableAllTeammatesInFightHooks();
 			LastAllTeammatesInFightHook = Config.AllTeammatesInFight;
+		}
+
+		static bool LastDefeatAsVictoryHook = false;
+		if (Config.DefeatAsVictory != LastDefeatAsVictoryHook)
+		{
+			if (Config.DefeatAsVictory)
+				EnableDefeatAsVictoryHook();
+			else
+				DisableDefeatAsVictoryHook();
+			LastDefeatAsVictoryHook = Config.DefeatAsVictory;
 		}
 
 		SetBattleSpeedHookMultiplier(Config.BattleSpeedMultiplier);
@@ -1519,6 +1537,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			DisableSkillNoCooldownHooks();
 			DisableNoEncounterPatch();
 			DisableAllTeammatesInFightHooks();
+			DisableDefeatAsVictoryHook();
 			DisableBattleSpeedHooks();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);

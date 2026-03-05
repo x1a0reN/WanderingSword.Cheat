@@ -74,6 +74,7 @@ UBPVE_JHConfigVideoItem2_C* GTab2DamageBoostToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2SkillNoCooldownToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2NoEncounterToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2AllTeammatesInFightToggle = nullptr;
+UBPVE_JHConfigVideoItem2_C* GTab2DefeatAsVictoryToggle = nullptr;
 UBPVE_JHConfigVideoItem2_C* GTab2DamageFriendlyOnlyToggle = nullptr;
 UBPVE_JHConfigVolumeItem2_C* GTab2DamageMultiplierSlider = nullptr;
 

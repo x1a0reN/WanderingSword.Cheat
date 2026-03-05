@@ -138,6 +138,7 @@ extern UBPVE_JHConfigVideoItem2_C* GTab2DamageBoostToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2SkillNoCooldownToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2NoEncounterToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2AllTeammatesInFightToggle;
+extern UBPVE_JHConfigVideoItem2_C* GTab2DefeatAsVictoryToggle;
 extern UBPVE_JHConfigVideoItem2_C* GTab2DamageFriendlyOnlyToggle;
 extern UBPVE_JHConfigVolumeItem2_C* GTab2DamageMultiplierSlider;
 // 鈹€鈹€ 鍔ㄦ€?Tab (6/7/8) 鈹€鈹€
@@ -207,6 +208,10 @@ void DisableSkillNoCooldownHooks();
 // Tab2: 不遇敌（硬编码补丁）
 void EnableNoEncounterPatch();
 void DisableNoEncounterPatch();
+
+// Tab2: 战败视为胜利（inline hook，复刻 CT）
+void EnableDefeatAsVictoryHook();
+void DisableDefeatAsVictoryHook();
 
 // Tab2: 全队友参战（完整复刻 CT: allInFight1~5）
 void EnableAllTeammatesInFightHooks();

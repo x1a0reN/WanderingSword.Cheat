@@ -9,6 +9,7 @@
 	GTab2SkillNoCooldownToggle = nullptr;
 	GTab2NoEncounterToggle = nullptr;
 	GTab2AllTeammatesInFightToggle = nullptr;
+	GTab2DefeatAsVictoryToggle = nullptr;
 	GTab2DamageMultiplierSlider = nullptr;
 
 	int Count = 0;
@@ -92,7 +93,7 @@
 	GTab2DamageBoostToggle = AddToggle(SwitchBox, L"战斗加速");
 	GTab2NoEncounterToggle = AddToggle(SwitchBox, L"不遇敌");
 	GTab2AllTeammatesInFightToggle = AddToggle(SwitchBox, L"全队友参战");
-	AddToggle(SwitchBox, L"战败视为胜利");
+	GTab2DefeatAsVictoryToggle = AddToggle(SwitchBox, L"战败视为胜利");
 	AddToggle(SwitchBox, L"心法填装最后一格");
 	AddToggle(SwitchBox, L"战斗前自动恢复");
 	AddToggle(SwitchBox, L"移动速度加倍");
@@ -118,6 +119,7 @@ namespace
 	uint32_t GTab2AllInFightHook3Id = UINT32_MAX;
 	uint32_t GTab2AllInFightHook4Id = UINT32_MAX;
 	uint32_t GTab2AllInFightHook5Id = UINT32_MAX;
+	uint32_t GTab2DefeatAsVictoryHookId = UINT32_MAX;
 	uintptr_t GTab2UseSkillOffset = 0;
 	uintptr_t GTab2SkillNoCDOffset = 0;
 	uintptr_t GTab2AllInFightOffset1 = 0;
@@ -125,6 +127,7 @@ namespace
 	uintptr_t GTab2AllInFightOffset3 = 0;
 	uintptr_t GTab2AllInFightOffset4 = 0;
 	uintptr_t GTab2AllInFightOffset5 = 0;
+	uintptr_t GTab2DefeatAsVictoryOffset = 0;
 	volatile LONG GTab2SkillNoCooldownFlag = 0;
 	volatile LONG GTab2BattleSpeedHookEnabled = 0;
 	float GTab2BattleSpeedHookMultiplier = 2.0f;
@@ -145,6 +148,7 @@ namespace
 	const char* kTab2SkillNoCDPattern = "8B 80 DC 01 00 00 FF C8 83 F8 05 77 ? 48 8D 15";
 	const char* kTab2JHASCFieldPattern = "48 8B B9 ? ? 00 00 0F B6 F2 48 8B";
 	const char* kTab2NoEncounterPattern = "? 8B EA 4C 8B F1 48 85 D2 0F 84 ? ? 00 00 E8";
+	const char* kTab2DefeatAsVictoryPattern = "41 55 41 56 41 57 48 83 EC 50 44 0F B6 ? 48 8B";
 	const char* kTab2AllInFightPattern1 = "49 63 85 08 01 00 00 48 8D";
 	const char* kTab2AllInFightPattern2 = "49 8D B7 00 01 00 00 48 89 75";
 	const char* kTab2AllInFightPattern3 = "83 E8 01 49 8B 3A";
@@ -208,6 +212,17 @@ namespace
 	};
 	constexpr size_t kTab2BattleSpeedFlagImm64Offset = 2;
 	constexpr size_t kTab2BattleSpeedValueImm64Offset = 18;
+
+	// CT 语义:
+	// [ENABLE] aobscanmodule(..., 41 55 41 56 41 57 48 83 EC 50 44 0F B6 ? 48 8B)
+	// 注入后先 mov dl,0，再执行被覆盖的 push r13/push r14/push r15。
+	// 这里通过 appendRelocatedOriginalCode=false，确保不拼接原地 stolen bytes。
+	const unsigned char kTab2DefeatAsVictoryHookTemplate[] = {
+		0xB2, 0x00,       // mov dl,0
+		0x41, 0x55,       // push r13
+		0x41, 0x56,       // push r14
+		0x41, 0x57        // push r15
+	};
 
 	const unsigned char kTab2AllInFightHookTemplate1[] = {
 		0x49, 0x8B, 0x8D, 0xF0, 0x00, 0x00, 0x00,             // mov rcx,[r13+F0]
@@ -747,6 +762,61 @@ void DisableNoEncounterPatch()
 		LOGE_STREAM("Tab2Battle") << "[SDK] NoEncounter patch disable write failed at: 0x"
 			<< std::hex << GTab2NoEncounterPatchAddr << std::dec << "\n";
 	}
+}
+
+void EnableDefeatAsVictoryHook()
+{
+	if (GTab2DefeatAsVictoryHookId != UINT32_MAX)
+		return;
+
+	HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+	if (!hModule)
+	{
+		LOGE_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory failed to get module handle\n";
+		return;
+	}
+	const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
+
+	if (GTab2DefeatAsVictoryOffset == 0)
+	{
+		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2DefeatAsVictoryPattern);
+		if (foundAddr == 0)
+		{
+			LOGE_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory AobScan failed\n";
+			return;
+		}
+		GTab2DefeatAsVictoryOffset = foundAddr - moduleBase;
+		LOGI_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory found: 0x"
+			<< std::hex << foundAddr << ", offset: 0x" << GTab2DefeatAsVictoryOffset << std::dec << "\n";
+	}
+
+	uint32_t hookId = UINT32_MAX;
+	if (!InlineHook::HookManager::InstallHook(
+		"JH-Win64-Shipping.exe",
+		static_cast<uint32_t>(GTab2DefeatAsVictoryOffset),
+		kTab2DefeatAsVictoryHookTemplate,
+		sizeof(kTab2DefeatAsVictoryHookTemplate),
+		hookId,
+		false,
+		true,
+		false))
+	{
+		LOGE_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory hook install failed\n";
+		return;
+	}
+
+	GTab2DefeatAsVictoryHookId = hookId;
+	LOGI_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory hook enabled, id=" << GTab2DefeatAsVictoryHookId << "\n";
+}
+
+void DisableDefeatAsVictoryHook()
+{
+	if (GTab2DefeatAsVictoryHookId == UINT32_MAX)
+		return;
+
+	InlineHook::HookManager::UninstallHook(GTab2DefeatAsVictoryHookId);
+	GTab2DefeatAsVictoryHookId = UINT32_MAX;
+	LOGI_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory hook disabled\n";
 }
 
 void EnableAllTeammatesInFightHooks()
