@@ -1689,10 +1689,12 @@ struct PostRenderInFlightScope final
 	void ReadTab5ConfigFromUI(FTab5RuntimeConfig& Cfg)
 	{
 		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
-			if (!SliderItem || !SliderItem->VolumeSlider ||
-				!IsSafeLiveObject(static_cast<UObject*>(SliderItem->VolumeSlider)))
+			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
 				return DefaultValue;
-			return SliderItem->VolumeSlider->GetValue();
+			USlider* Slider = SliderItem->VolumeSlider;
+			if (!Slider || !IsSafeLiveObject(static_cast<UObject*>(Slider)))
+				return DefaultValue;
+			return Slider->GetValue();
 		};
 
 		Cfg.InfiniteJump = ReadToggleValue(GTab5.InfiniteJumpToggle, Cfg.InfiniteJump);

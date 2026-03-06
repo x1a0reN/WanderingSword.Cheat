@@ -95,7 +95,7 @@ const unsigned char kFollowerCountTrampolineTemplate[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&GFollowerCountValue)
 	0x41, 0x8B, 0x03,                                 // mov eax, dword [r11]
 	0xFF, 0xC0,                                       // inc eax
-	0x44, 0x39, 0xF8,                                 // cmp eax, r15d
+	0x44, 0x3B, 0xF8,                                 // cmp r15d, eax (flags = r15d - eax)
 	0x41, 0x5B,                                       // pop r11
 	0x58,                                             // pop rax
 };

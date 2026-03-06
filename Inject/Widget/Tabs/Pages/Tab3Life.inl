@@ -465,11 +465,11 @@ const char* kFishRareOnlyPattern = "F3 0F 59 0D ?? ?? ?? ?? F3 0F 2C ?? 3B ?? 0F
 // mov eax, 0x7FFFFFFF; mov ecx, 0x7FFFFFFF; skip:
 const unsigned char kFishRareOnlyTrampolineCode[] = {
 	0x48, 0x39, 0xE5,                               // cmp rbp, rsp
-	0x76, 0x1B,                                       // jna +27 (skip)
+	0x76, 0x17,                                       // jna +23 -> end of trampoline (offset 28)
 	0x48, 0x39, 0x65, 0x28,                           // cmp [rbp+28], rsp
-	0x76, 0x15,                                       // jna +21 (skip)
+	0x76, 0x11,                                       // jna +17 -> end of trampoline (offset 28)
 	0x48, 0x83, 0x7D, 0x30, 0x00,                     // cmp qword [rbp+30], 0
-	0x76, 0x0E,                                       // jna +14 (skip)
+	0x76, 0x0A,                                       // jna +10 -> end of trampoline (offset 28)
 	0xB8, 0xFF, 0xFF, 0xFF, 0x7F,                     // mov eax, 0x7FFFFFFF
 	0xB9, 0xFF, 0xFF, 0xFF, 0x7F,                     // mov ecx, 0x7FFFFFFF
 };

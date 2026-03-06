@@ -173,14 +173,23 @@ uintptr_t GRunMountSpeedOffset2 = 0;
 volatile float GRunMountSpeedMultiplier = 2.0f;
 const char* kRunMountSpeedPattern = "F3 0F 58 ?? F3 0F 58 ?? ?? ?? 00 00 EB";
 
+// CT pattern: hook replaces `addss xmm6, [rsi+offset]` with:
+//   movss xmm0, [rsi+offset]  (load speed value)
+//   mulss xmm0, [multiplier]   (multiply)
+//   addss xmm6, xmm0           (add multiplied value)
+// The offset in [rsi+xx] is read from the original instruction at runtime.
 const unsigned char kRunMountSpeedTrampolineTemplate[] = {
+	0xF3, 0x0F, 0x10, 0x86,                           // movss xmm0, [rsi+imm32] (4 bytes opcode, imm32 filled at runtime)
+	0x00, 0x00, 0x00, 0x00,                            // imm32 placeholder for [rsi+offset]
 	0x41, 0x53,                                       // push r11
 	0x49, 0xBB,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&multiplier)
 	0xF3, 0x41, 0x0F, 0x59, 0x03,                     // mulss xmm0, dword [r11]
 	0x41, 0x5B,                                       // pop r11
+	0xF3, 0x0F, 0x58, 0xF0,                           // addss xmm6, xmm0
 };
-constexpr size_t kRunMountSpeedMulImm64Offset = 4;
+constexpr size_t kRunMountSpeedSrcOffImm32Offset = 4;
+constexpr size_t kRunMountSpeedMulImm64Offset = 12;
 
 // ── 坐骑替换 ──
 uint32_t GMountReplaceHookId = UINT32_MAX;
@@ -282,31 +291,36 @@ void EnableRunMountSpeedHook()
 
 	const uintptr_t mulAddr = reinterpret_cast<uintptr_t>(&GRunMountSpeedMultiplier);
 
-	auto InstallOne = [&](uintptr_t offset, uint32_t& outId) -> bool
+	auto InstallOne = [&](uintptr_t offset, uintptr_t patternAddr, uint32_t& outId) -> bool
 	{
 		unsigned char code[sizeof(kRunMountSpeedTrampolineTemplate)];
 		std::memcpy(code, kRunMountSpeedTrampolineTemplate, sizeof(code));
+
+		int32 srcOffset = 0;
+		InlineHook::HookManager::ReadValue(patternAddr + 4 + 4, srcOffset);
+		std::memcpy(code + kRunMountSpeedSrcOffImm32Offset, &srcOffset, sizeof(srcOffset));
 		std::memcpy(code + kRunMountSpeedMulImm64Offset, &mulAddr, sizeof(mulAddr));
 
 		uint32_t hookId = UINT32_MAX;
 		if (!InlineHook::HookManager::InstallHook(
 			"JH-Win64-Shipping.exe",
 			static_cast<uint32_t>(offset),
-			code, sizeof(code), hookId))
+			code, sizeof(code), hookId,
+			false, true, false))
 			return false;
 		outId = hookId;
 		return true;
 	};
 
-	if (!InstallOne(GRunMountSpeedOffset1, GRunMountSpeedHookId1))
+	if (!InstallOne(GRunMountSpeedOffset1, results[0], GRunMountSpeedHookId1))
 	{
 		LOGE_STREAM("Tab5System") << "[SDK] RunMountSpeed hook1 install failed\n";
 		return;
 	}
 
-	if (GRunMountSpeedOffset2 != 0)
+	if (GRunMountSpeedOffset2 != 0 && results.size() >= 2)
 	{
-		if (!InstallOne(GRunMountSpeedOffset2, GRunMountSpeedHookId2))
+		if (!InstallOne(GRunMountSpeedOffset2, results[1], GRunMountSpeedHookId2))
 			LOGE_STREAM("Tab5System") << "[SDK] RunMountSpeed hook2 install failed (non-fatal)\n";
 	}
 
