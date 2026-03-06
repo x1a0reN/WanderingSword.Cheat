@@ -157,6 +157,53 @@ struct Tab2Controls
     UBPVE_JHConfigVolumeItem2_C* MoveSpeedMultiplierSlider   = nullptr;  // 移速倍率
 };
 
+/// Tab3「生活」页功能开关与滑块
+struct Tab3Controls
+{
+    UBPVE_JHConfigVideoItem2_C*  CraftIgnoreRequirementsToggle = nullptr;  // 锻造/制衣/炼丹/烹饪无视要求
+    UBPVE_JHConfigVideoItem2_C*  CraftOutputQuantityToggle     = nullptr;  // 设置产出数量
+    UBPVE_JHConfigVolumeItem2_C* CraftOutputQuantityEdit       = nullptr;  // 产出数量 (Numeric EditBox)
+    UBPVE_JHConfigVideoItem2_C*  GatherCooldownToggle          = nullptr;  // 采集一秒冷却
+    UBPVE_JHConfigVideoItem2_C*  FishRareOnlyToggle            = nullptr;  // 钓鱼只钓稀有物
+    UBPVE_JHConfigVideoItem2_C*  FishAlwaysCatchToggle         = nullptr;  // 钓鱼收杆必有收获
+    UBPVE_JHConfigVideoItem2_C*  HomelandHarvestToggle         = nullptr;  // 家园随时收获
+};
+
+/// Tab4「社交」页功能开关
+struct Tab4Controls
+{
+    UBPVE_JHConfigVideoItem2_C*  GiftAlwaysLikedToggle         = nullptr;  // 送礼必定喜欢
+    UBPVE_JHConfigVideoItem2_C*  InviteIgnoreToggle            = nullptr;  // 邀请无视条件
+    UBPVE_JHConfigVideoItem2_C*  SparIgnoreFavorToggle         = nullptr;  // 切磋无视好感
+    UBPVE_JHConfigVideoItem2_C*  ConsultIgnoreToggle           = nullptr;  // 请教无视要求
+    UBPVE_JHConfigVideoItem2_C*  SparGetLootToggle             = nullptr;  // 切磋获得对手背包
+    UBPVE_JHConfigVideoItem2_C*  NpcEquipRemovableToggle       = nullptr;  // NPC装备可脱
+    UBPVE_JHConfigVideoItem2_C*  NpcIgnoreWeaponLimitToggle    = nullptr;  // NPC无视武器功法限制
+    UBPVE_JHConfigVideoItem2_C*  ForceNpcInteractionToggle     = nullptr;  // 强制显示NPC互动
+    UBPVE_JHConfigVideoItem2_C*  GiftQualityDD                 = nullptr;  // 物品质量(送礼)
+};
+
+/// Tab5「系统」页功能开关与滑块
+struct Tab5Controls
+{
+    UBPVE_JHConfigVideoItem2_C*  SpaceJumpToggle               = nullptr;  // 空格跳跃
+    UBPVE_JHConfigVolumeItem2_C* JumpSpeedSlider               = nullptr;  // 跳跃速度
+    UBPVE_JHConfigVideoItem2_C*  InfiniteJumpToggle            = nullptr;  // 无限跳跃
+    UBPVE_JHConfigVideoItem2_C*  RunMountSpeedToggle           = nullptr;  // 奔跑/骑马加速
+    UBPVE_JHConfigVolumeItem2_C* RunMountSpeedSlider           = nullptr;  // 加速倍率
+    UBPVE_JHConfigVolumeItem2_C* WorldMoveSpeedSlider          = nullptr;  // 世界移动速度
+    UBPVE_JHConfigVolumeItem2_C* SceneMoveSpeedSlider          = nullptr;  // 场景移动速度
+    UBPVE_JHConfigVideoItem2_C*  MountReplaceToggle            = nullptr;  // 坐骑替换
+    UBPVE_JHConfigVideoItem2_C*  MountSelectDD                 = nullptr;  // 指定坐骑
+    UBPVE_JHConfigVideoItem2_C*  FirstPlayHardToggle           = nullptr;  // 一周目可选极难
+    UBPVE_JHConfigVideoItem2_C*  FirstPlayInheritToggle        = nullptr;  // 一周目可选传承
+    UBPVE_JHConfigVideoItem2_C*  AllInheritToggle              = nullptr;  // 承君传承包括所有
+    UBPVE_JHConfigVideoItem2_C*  PostStationToggle             = nullptr;  // 未交互驿站可用
+    UBPVE_JHConfigVideoItem2_C*  GmCommandToggle               = nullptr;  // 激活GM命令行
+    UBPVE_JHConfigVideoItem2_C*  UnlockCodexToggle             = nullptr;  // 解锁全图鉴
+    UBPVE_JHConfigVideoItem2_C*  UnlockAchievementToggle       = nullptr;  // 解锁全成就
+};
+
 /// 动态扩展 Tab (6/7/8) 的按钮与内容容器
 struct DynTabState
 {
@@ -220,6 +267,9 @@ extern std::vector<bool>        GVolumePlusWasPressed;
 // ── Tab 页面控件实例 ──
 extern Tab1Controls             GTab1;
 extern Tab2Controls             GTab2;
+extern Tab3Controls             GTab3;
+extern Tab4Controls             GTab4;
+extern Tab5Controls             GTab5;
 extern DynTabState              GDynTab;
 extern TeammateTabControls      GTeammate;
 extern QuestTabControls         GQuest;
@@ -290,3 +340,78 @@ void EnableTotalMoveSpeedHook();                // 总移速倍率
 void DisableTotalMoveSpeedHook();
 void SetTotalMoveSpeedMultiplier(float Value);
 void SetTotalMoveSpeedFriendlyOnly(bool Enabled);
+
+// ── Tab3: 生活系统 (生活/Life) ──
+void EnableCraftIgnoreRequirements();           // 无视锻造/制衣/炼丹/烹饪要求
+void DisableCraftIgnoreRequirements();
+
+void SetCraftOutputQuantity(int32 Value);       // 设置产出数量
+void EnableCraftOutputQuantityHook();
+void DisableCraftOutputQuantityHook();
+
+void EnableGatherCooldownPatch();               // 采集一秒冷却
+void DisableGatherCooldownPatch();
+
+void EnableFishRareOnlyHook();                  // 钓鱼只钓稀有物
+void DisableFishRareOnlyHook();
+
+void EnableFishAlwaysCatchHook();               // 钓鱼收杆必有收获
+void DisableFishAlwaysCatchHook();
+
+void EnableHomelandHarvestPatch();              // 家园随时收获
+void DisableHomelandHarvestPatch();
+
+// ── Tab4: 社交系统 ──
+void EnableGiftAlwaysLiked();                   // 送礼必定喜欢
+void DisableGiftAlwaysLiked();
+
+void EnableInviteIgnoreConditions();            // 邀请无视条件
+void DisableInviteIgnoreConditions();
+
+void EnableSparIgnoreFavor();                   // 切磋无视好感
+void DisableSparIgnoreFavor();
+
+void EnableConsultIgnoreRequirements();         // 请教无视要求
+void DisableConsultIgnoreRequirements();
+
+void EnableSparGetAllLoot();                    // 切磋获得对手背包
+void DisableSparGetAllLoot();
+
+void EnableNpcEquipRemovable();                 // NPC装备可脱
+void DisableNpcEquipRemovable();
+
+void EnableNpcIgnoreWeaponLimit();              // NPC无视武器功法限制
+void DisableNpcIgnoreWeaponLimit();
+
+void EnableForceNpcInteraction();               // 强制显示NPC互动
+void DisableForceNpcInteraction();
+
+// ── Tab5: 系统 ──
+void EnableInfiniteJumpPatch();                 // 无限跳跃
+void DisableInfiniteJumpPatch();
+
+void EnableRunMountSpeedHook();                 // 奔跑/骑马加速
+void DisableRunMountSpeedHook();
+void SetRunMountSpeedMultiplier(float Value);
+
+void EnableMountReplacePatch();                 // 坐骑替换
+void DisableMountReplacePatch();
+void SetMountReplaceId(int32 Value);
+
+void EnableFirstPlayHardPatch();                // 一周目可选极难
+void DisableFirstPlayHardPatch();
+
+void EnableFirstPlayInheritPatch();             // 一周目可选传承
+void DisableFirstPlayInheritPatch();
+
+void EnablePostStationPatch();                  // 未交互驿站可用
+void DisablePostStationPatch();
+
+// ── Tab6: 队友系统 ──
+void EnableFollowerCountHook();                 // 设置队友跟随数量
+void DisableFollowerCountHook();
+void SetFollowerCountValue(int32 Value);
+
+void EnableReplaceTeammateHook();               // 替换指定队友
+void DisableReplaceTeammateHook();
+void SetReplaceTeammateId(int32 Value);

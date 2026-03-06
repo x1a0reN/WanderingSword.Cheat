@@ -35,7 +35,7 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		else GDynTab.Content7->AddChild(GQuest.Toggle);
 		Count++;
 	}
-	GQuest.TypeDD = CreateVideoItemWithOptions(PC, L"执行类型", { L"接到", L"完成" });
+	GQuest.TypeDD = CreateVideoItemWithOptions(PC, L"执行类型", { L"接取", L"完成" });
 	if (GQuest.TypeDD)
 	{
 		if (MainBox) MainBox->AddChild(GQuest.TypeDD);

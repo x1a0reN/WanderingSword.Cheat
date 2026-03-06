@@ -858,6 +858,20 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeNumericEditBoxItem(
 		PC, Outer, FallbackContainer, Title, Hint, DefaultValue, true);
 }
 
+UEditableTextBox* GetRuntimeEditBoxByTitle(const wchar_t* Title)
+{
+	if (!Title)
+		return nullptr;
+	const std::wstring Key = NormalizeTitleKey(Title);
+	for (const auto& B : GRememberEditBoxes)
+	{
+		if (B.TitleKey == Key && IsSafeLiveObject(static_cast<UObject*>(B.Edit)))
+			return B.Edit;
+	}
+	return nullptr;
+}
+
+
 UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t* Title, bool bStartCollapsed)
 {
 	static UClass* Cls = UVE_JHVideoPanel2_C::StaticClass();

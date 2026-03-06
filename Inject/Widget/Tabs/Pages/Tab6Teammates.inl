@@ -49,8 +49,8 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	auto* OperatePanel = CreateCollapsiblePanel(PC, L"队友操作");
 	auto* OperateBox = OperatePanel ? OperatePanel->CT_Contents : nullptr;
-		GTeammate.AddDD = CreateVideoItemWithOptions(PC, L"添加队友",
-			{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
+	GTeammate.AddDD = CreateVideoItemWithOptions(PC, L"添加队友",
+		{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
 	if (GTeammate.AddDD)
 	{
 		if (OperateBox) OperateBox->AddChild(GTeammate.AddDD);
@@ -64,8 +64,8 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		else GDynTab.Content6->AddChild(GTeammate.ReplaceToggle);
 		Count++;
 	}
-		GTeammate.ReplaceDD = CreateVideoItemWithOptions(PC, L"指定队友",
-			{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
+	GTeammate.ReplaceDD = CreateVideoItemWithOptions(PC, L"指定队友",
+		{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
 	if (GTeammate.ReplaceDD)
 	{
 		if (OperateBox) OperateBox->AddChild(GTeammate.ReplaceDD);
@@ -73,4 +73,158 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	}
 	AddPanelWithFixedGap(OperatePanel, 0.0f, 8.0f);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Tab6 Enable/Disable implementations
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+namespace
+{
+
+// ── 设置队友跟随数量 ──
+uint32_t GFollowerCountHookId = UINT32_MAX;
+uintptr_t GFollowerCountOffset = 0;
+volatile LONG GFollowerCountValue = 99;
+const char* kFollowerCountPattern = "44 3B BE ?? 05 00 00 0F 8C";
+
+const unsigned char kFollowerCountTrampolineTemplate[] = {
+	0x50,                                             // push rax
+	0x41, 0x53,                                       // push r11
+	0x49, 0xBB,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&GFollowerCountValue)
+	0x41, 0x8B, 0x03,                                 // mov eax, dword [r11]
+	0xFF, 0xC0,                                       // inc eax
+	0x44, 0x39, 0xF8,                                 // cmp eax, r15d
+	0x41, 0x5B,                                       // pop r11
+	0x58,                                             // pop rax
+};
+constexpr size_t kFollowerCountImm64Offset = 5;
+
+// ── 替换指定队友 ──
+uint32_t GReplaceTeammateHookId = UINT32_MAX;
+uintptr_t GReplaceTeammateOffset = 0;
+volatile LONG GReplaceTeammateId = 30;
+const char* kReplaceTeammatePattern = "48 33 C4 48 89 45 ?? 44 88 44 24 ??";
+
+const unsigned char kReplaceTeammateTrampolineTemplate[] = {
+	0x41, 0x53,                                       // push r11
+	0x49, 0xBB,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&GReplaceTeammateId)
+	0x41, 0x8B, 0x13,                                 // mov edx, dword [r11]
+	0x41, 0x5B,                                       // pop r11
+};
+constexpr size_t kReplaceTeammateImm64Offset = 4;
+
+constexpr int32 kRoleIds[] = { 0, 30, 31, 32, 33, 34, 35, 36 };
+
+} // end anonymous namespace
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  设置队友跟随数量
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+void SetFollowerCountValue(int32 Value)
+{
+	if (Value < 1) Value = 1;
+	if (Value > 99) Value = 99;
+	InterlockedExchange(&GFollowerCountValue, static_cast<LONG>(Value));
+}
+
+void EnableFollowerCountHook()
+{
+	if (GFollowerCountHookId != UINT32_MAX) return;
+
+	if (GFollowerCountOffset == 0)
+	{
+		const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
+			"JH-Win64-Shipping.exe", kFollowerCountPattern);
+		if (found == 0)
+		{
+			LOGE_STREAM("Tab6Teammates") << "[SDK] FollowerCount AobScan failed\n";
+			return;
+		}
+		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+		if (!hModule) return;
+		GFollowerCountOffset = found - reinterpret_cast<uintptr_t>(hModule);
+	}
+
+	unsigned char code[sizeof(kFollowerCountTrampolineTemplate)];
+	std::memcpy(code, kFollowerCountTrampolineTemplate, sizeof(code));
+	const uintptr_t valAddr = reinterpret_cast<uintptr_t>(&GFollowerCountValue);
+	std::memcpy(code + kFollowerCountImm64Offset, &valAddr, sizeof(valAddr));
+
+	uint32_t hookId = UINT32_MAX;
+	if (!InlineHook::HookManager::InstallHook(
+		"JH-Win64-Shipping.exe",
+		static_cast<uint32_t>(GFollowerCountOffset),
+		code, sizeof(code), hookId,
+		false, true, false))
+	{
+		LOGE_STREAM("Tab6Teammates") << "[SDK] FollowerCount hook install failed\n";
+		return;
+	}
+	GFollowerCountHookId = hookId;
+	LOGI_STREAM("Tab6Teammates") << "[SDK] FollowerCount hook enabled, ID: " << hookId << "\n";
+}
+
+void DisableFollowerCountHook()
+{
+	if (GFollowerCountHookId == UINT32_MAX) return;
+	InlineHook::HookManager::UninstallHook(GFollowerCountHookId);
+	GFollowerCountHookId = UINT32_MAX;
+	LOGI_STREAM("Tab6Teammates") << "[SDK] FollowerCount hook disabled\n";
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  替换指定队友
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+void SetReplaceTeammateId(int32 Value)
+{
+	InterlockedExchange(&GReplaceTeammateId, static_cast<LONG>(Value));
+}
+
+void EnableReplaceTeammateHook()
+{
+	if (GReplaceTeammateHookId != UINT32_MAX) return;
+
+	if (GReplaceTeammateOffset == 0)
+	{
+		const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
+			"JH-Win64-Shipping.exe", kReplaceTeammatePattern);
+		if (found == 0)
+		{
+			LOGE_STREAM("Tab6Teammates") << "[SDK] ReplaceTeammate AobScan failed\n";
+			return;
+		}
+		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+		if (!hModule) return;
+		GReplaceTeammateOffset = found - reinterpret_cast<uintptr_t>(hModule);
+	}
+
+	unsigned char code[sizeof(kReplaceTeammateTrampolineTemplate)];
+	std::memcpy(code, kReplaceTeammateTrampolineTemplate, sizeof(code));
+	const uintptr_t idAddr = reinterpret_cast<uintptr_t>(&GReplaceTeammateId);
+	std::memcpy(code + kReplaceTeammateImm64Offset, &idAddr, sizeof(idAddr));
+
+	uint32_t hookId = UINT32_MAX;
+	if (!InlineHook::HookManager::InstallHook(
+		"JH-Win64-Shipping.exe",
+		static_cast<uint32_t>(GReplaceTeammateOffset),
+		code, sizeof(code), hookId))
+	{
+		LOGE_STREAM("Tab6Teammates") << "[SDK] ReplaceTeammate hook install failed\n";
+		return;
+	}
+	GReplaceTeammateHookId = hookId;
+	LOGI_STREAM("Tab6Teammates") << "[SDK] ReplaceTeammate hook enabled, ID: " << hookId << "\n";
+}
+
+void DisableReplaceTeammateHook()
+{
+	if (GReplaceTeammateHookId == UINT32_MAX) return;
+	InlineHook::HookManager::UninstallHook(GReplaceTeammateHookId);
+	GReplaceTeammateHookId = UINT32_MAX;
+	LOGI_STREAM("Tab6Teammates") << "[SDK] ReplaceTeammate hook disabled\n";
 }

@@ -152,6 +152,17 @@ void ClearRuntimeWidgetState()
 	GTab1.IgnoreItemUseCountToggle = nullptr;
 	GTab1.IgnoreItemRequirementsToggle = nullptr;
 
+	GTab3.CraftIgnoreRequirementsToggle = nullptr;
+	GTab3.CraftOutputQuantityToggle = nullptr;
+	GTab3.CraftOutputQuantityEdit = nullptr;
+	GTab3.GatherCooldownToggle = nullptr;
+	GTab3.FishRareOnlyToggle = nullptr;
+	GTab3.FishAlwaysCatchToggle = nullptr;
+	GTab3.HomelandHarvestToggle = nullptr;
+
+	GTab4 = {};
+	GTab5 = {};
+
 	GCachedBtnExit = nullptr;
 }
 

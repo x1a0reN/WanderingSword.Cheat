@@ -1543,6 +1543,271 @@ struct PostRenderInFlightScope final
 		}
 	}
 
+	struct FTab3RuntimeConfig
+	{
+		bool CraftIgnoreRequirements = false;
+		bool CraftOutputQuantityEnabled = false;
+		int32 CraftOutputQuantityValue = 1;
+		bool GatherCooldown = false;
+		bool FishRareOnly = false;
+		bool FishAlwaysCatch = false;
+		bool HomelandHarvest = false;
+	};
+
+	void ReadTab3ConfigFromUI(FTab3RuntimeConfig& Cfg)
+	{
+		Cfg.CraftIgnoreRequirements = ReadToggleValue(GTab3.CraftIgnoreRequirementsToggle, Cfg.CraftIgnoreRequirements);
+		Cfg.CraftOutputQuantityEnabled = ReadToggleValue(GTab3.CraftOutputQuantityToggle, Cfg.CraftOutputQuantityEnabled);
+
+		const int32 NewCraftOutputQtyVal = ReadIntegerEditValue(GetRuntimeEditBoxByTitle(L"产出数量"), Cfg.CraftOutputQuantityValue, 1, 9999);
+		Cfg.CraftOutputQuantityValue = NewCraftOutputQtyVal;
+
+		Cfg.GatherCooldown = ReadToggleValue(GTab3.GatherCooldownToggle, Cfg.GatherCooldown);
+		Cfg.FishRareOnly = ReadToggleValue(GTab3.FishRareOnlyToggle, Cfg.FishRareOnly);
+		Cfg.FishAlwaysCatch = ReadToggleValue(GTab3.FishAlwaysCatchToggle, Cfg.FishAlwaysCatch);
+		Cfg.HomelandHarvest = ReadToggleValue(GTab3.HomelandHarvestToggle, Cfg.HomelandHarvest);
+	}
+
+	void PollAndApplyTab3Features(bool CanReadFromUI)
+	{
+		static FTab3RuntimeConfig Config{};
+		if (CanReadFromUI)
+			ReadTab3ConfigFromUI(Config);
+
+		static bool LastCraftIgnoreReq = false;
+		if (Config.CraftIgnoreRequirements != LastCraftIgnoreReq)
+		{
+			Config.CraftIgnoreRequirements ? EnableCraftIgnoreRequirements() : DisableCraftIgnoreRequirements();
+			LastCraftIgnoreReq = Config.CraftIgnoreRequirements;
+		}
+
+		SetCraftOutputQuantity(Config.CraftOutputQuantityValue);
+		static bool LastCraftOutputQtyEnabled = false;
+		if (Config.CraftOutputQuantityEnabled != LastCraftOutputQtyEnabled)
+		{
+			Config.CraftOutputQuantityEnabled ? EnableCraftOutputQuantityHook() : DisableCraftOutputQuantityHook();
+			LastCraftOutputQtyEnabled = Config.CraftOutputQuantityEnabled;
+		}
+
+		static bool LastGatherCooldown = false;
+		if (Config.GatherCooldown != LastGatherCooldown)
+		{
+			Config.GatherCooldown ? EnableGatherCooldownPatch() : DisableGatherCooldownPatch();
+			LastGatherCooldown = Config.GatherCooldown;
+		}
+
+		static bool LastFishRareOnly = false;
+		if (Config.FishRareOnly != LastFishRareOnly)
+		{
+			Config.FishRareOnly ? EnableFishRareOnlyHook() : DisableFishRareOnlyHook();
+			LastFishRareOnly = Config.FishRareOnly;
+		}
+
+		static bool LastFishAlwaysCatch = false;
+		if (Config.FishAlwaysCatch != LastFishAlwaysCatch)
+		{
+			Config.FishAlwaysCatch ? EnableFishAlwaysCatchHook() : DisableFishAlwaysCatchHook();
+			LastFishAlwaysCatch = Config.FishAlwaysCatch;
+		}
+
+		static bool LastHomelandHarvest = false;
+		if (Config.HomelandHarvest != LastHomelandHarvest)
+		{
+			Config.HomelandHarvest ? EnableHomelandHarvestPatch() : DisableHomelandHarvestPatch();
+			LastHomelandHarvest = Config.HomelandHarvest;
+		}
+	}
+
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §8b  Tab4 社交系统轮询                                     │
+	// └─────────────────────────────────────────────────────────────┘
+
+	struct FTab4RuntimeConfig
+	{
+		bool GiftAlwaysLiked = false;
+		bool InviteIgnore = false;
+		bool SparIgnoreFavor = false;
+		bool ConsultIgnore = false;
+		bool SparGetLoot = false;
+		bool NpcEquipRemovable = false;
+		bool NpcIgnoreWeaponLimit = false;
+		bool ForceNpcInteraction = false;
+	};
+
+	void ReadTab4ConfigFromUI(FTab4RuntimeConfig& Cfg)
+	{
+		Cfg.GiftAlwaysLiked = ReadToggleValue(GTab4.GiftAlwaysLikedToggle, Cfg.GiftAlwaysLiked);
+		Cfg.InviteIgnore = ReadToggleValue(GTab4.InviteIgnoreToggle, Cfg.InviteIgnore);
+		Cfg.SparIgnoreFavor = ReadToggleValue(GTab4.SparIgnoreFavorToggle, Cfg.SparIgnoreFavor);
+		Cfg.ConsultIgnore = ReadToggleValue(GTab4.ConsultIgnoreToggle, Cfg.ConsultIgnore);
+		Cfg.SparGetLoot = ReadToggleValue(GTab4.SparGetLootToggle, Cfg.SparGetLoot);
+		Cfg.NpcEquipRemovable = ReadToggleValue(GTab4.NpcEquipRemovableToggle, Cfg.NpcEquipRemovable);
+		Cfg.NpcIgnoreWeaponLimit = ReadToggleValue(GTab4.NpcIgnoreWeaponLimitToggle, Cfg.NpcIgnoreWeaponLimit);
+		Cfg.ForceNpcInteraction = ReadToggleValue(GTab4.ForceNpcInteractionToggle, Cfg.ForceNpcInteraction);
+	}
+
+	void PollAndApplyTab4Features(bool CanReadFromUI)
+	{
+		static FTab4RuntimeConfig Config{};
+		if (CanReadFromUI)
+			ReadTab4ConfigFromUI(Config);
+
+		#define TAB4_TOGGLE(field, enableFn, disableFn) \
+			{ static bool Last_##field = false; \
+			  if (Config.field != Last_##field) { \
+				Config.field ? enableFn() : disableFn(); \
+				Last_##field = Config.field; } }
+
+		TAB4_TOGGLE(GiftAlwaysLiked, EnableGiftAlwaysLiked, DisableGiftAlwaysLiked)
+		TAB4_TOGGLE(InviteIgnore, EnableInviteIgnoreConditions, DisableInviteIgnoreConditions)
+		TAB4_TOGGLE(SparIgnoreFavor, EnableSparIgnoreFavor, DisableSparIgnoreFavor)
+		TAB4_TOGGLE(ConsultIgnore, EnableConsultIgnoreRequirements, DisableConsultIgnoreRequirements)
+		TAB4_TOGGLE(SparGetLoot, EnableSparGetAllLoot, DisableSparGetAllLoot)
+		TAB4_TOGGLE(NpcEquipRemovable, EnableNpcEquipRemovable, DisableNpcEquipRemovable)
+		TAB4_TOGGLE(NpcIgnoreWeaponLimit, EnableNpcIgnoreWeaponLimit, DisableNpcIgnoreWeaponLimit)
+		TAB4_TOGGLE(ForceNpcInteraction, EnableForceNpcInteraction, DisableForceNpcInteraction)
+
+		#undef TAB4_TOGGLE
+	}
+
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §8c  Tab5 系统轮询                                         │
+	// └─────────────────────────────────────────────────────────────┘
+
+	struct FTab5RuntimeConfig
+	{
+		bool InfiniteJump = false;
+		bool RunMountSpeed = false;
+		float RunMountSpeedMultiplier = 2.0f;
+		bool MountReplace = false;
+		int32 MountReplaceId = 9;
+		bool FirstPlayHard = false;
+		bool FirstPlayInherit = false;
+		bool PostStation = false;
+	};
+
+	void ReadTab5ConfigFromUI(FTab5RuntimeConfig& Cfg)
+	{
+		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
+			if (!SliderItem || !SliderItem->VolumeSlider ||
+				!IsSafeLiveObject(static_cast<UObject*>(SliderItem->VolumeSlider)))
+				return DefaultValue;
+			return SliderItem->VolumeSlider->GetValue();
+		};
+
+		Cfg.InfiniteJump = ReadToggleValue(GTab5.InfiniteJumpToggle, Cfg.InfiniteJump);
+		Cfg.RunMountSpeed = ReadToggleValue(GTab5.RunMountSpeedToggle, Cfg.RunMountSpeed);
+		Cfg.RunMountSpeedMultiplier = ReadSliderValue(GTab5.RunMountSpeedSlider, Cfg.RunMountSpeedMultiplier);
+		Cfg.MountReplace = ReadToggleValue(GTab5.MountReplaceToggle, Cfg.MountReplace);
+		Cfg.FirstPlayHard = ReadToggleValue(GTab5.FirstPlayHardToggle, Cfg.FirstPlayHard);
+		Cfg.FirstPlayInherit = ReadToggleValue(GTab5.FirstPlayInheritToggle, Cfg.FirstPlayInherit);
+		Cfg.PostStation = ReadToggleValue(GTab5.PostStationToggle, Cfg.PostStation);
+
+		if (GTab5.MountSelectDD && GTab5.MountSelectDD->CB_Main &&
+			IsSafeLiveObject(static_cast<UObject*>(GTab5.MountSelectDD->CB_Main)))
+		{
+			const int32 Idx = GTab5.MountSelectDD->CB_Main->GetSelectedIndex();
+			if (Idx >= 0)
+			{
+				constexpr int32 kMountIds[] = { 9, 10, 11, 12 };
+				Cfg.MountReplaceId = (Idx < 4) ? kMountIds[Idx] : 9;
+			}
+		}
+	}
+
+	void PollAndApplyTab5Features(bool CanReadFromUI)
+	{
+		static FTab5RuntimeConfig Config{};
+		if (CanReadFromUI)
+			ReadTab5ConfigFromUI(Config);
+
+		#define TAB5_TOGGLE(field, enableFn, disableFn) \
+			{ static bool Last_##field = false; \
+			  if (Config.field != Last_##field) { \
+				Config.field ? enableFn() : disableFn(); \
+				Last_##field = Config.field; } }
+
+		TAB5_TOGGLE(InfiniteJump, EnableInfiniteJumpPatch, DisableInfiniteJumpPatch)
+		TAB5_TOGGLE(FirstPlayHard, EnableFirstPlayHardPatch, DisableFirstPlayHardPatch)
+		TAB5_TOGGLE(FirstPlayInherit, EnableFirstPlayInheritPatch, DisableFirstPlayInheritPatch)
+		TAB5_TOGGLE(PostStation, EnablePostStationPatch, DisablePostStationPatch)
+
+		static bool LastRunMountSpeed = false;
+		if (Config.RunMountSpeed != LastRunMountSpeed)
+		{
+			Config.RunMountSpeed ? EnableRunMountSpeedHook() : DisableRunMountSpeedHook();
+			LastRunMountSpeed = Config.RunMountSpeed;
+		}
+		if (Config.RunMountSpeed)
+			SetRunMountSpeedMultiplier(Config.RunMountSpeedMultiplier);
+
+		static bool LastMountReplace = false;
+		if (Config.MountReplace != LastMountReplace)
+		{
+			Config.MountReplace ? EnableMountReplacePatch() : DisableMountReplacePatch();
+			LastMountReplace = Config.MountReplace;
+		}
+		if (Config.MountReplace)
+			SetMountReplaceId(Config.MountReplaceId);
+
+		#undef TAB5_TOGGLE
+	}
+
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §8d  Tab6 队友系统轮询                                     │
+	// └─────────────────────────────────────────────────────────────┘
+
+	struct FTab6RuntimeConfig
+	{
+		bool FollowerCountEnabled = false;
+		int32 FollowerCountValue = 99;
+		bool ReplaceTeammateEnabled = false;
+		int32 ReplaceTeammateId = 30;
+	};
+
+	void ReadTab6ConfigFromUI(FTab6RuntimeConfig& Cfg)
+	{
+		Cfg.FollowerCountEnabled = ReadToggleValue(GTeammate.FollowToggle, Cfg.FollowerCountEnabled);
+		Cfg.FollowerCountValue = ReadIntegerEditValue(GetRuntimeEditBoxByTitle(L"跟随数量"), Cfg.FollowerCountValue, 1, 99);
+		Cfg.ReplaceTeammateEnabled = ReadToggleValue(GTeammate.ReplaceToggle, Cfg.ReplaceTeammateEnabled);
+
+		if (GTeammate.ReplaceDD && GTeammate.ReplaceDD->CB_Main &&
+			IsSafeLiveObject(static_cast<UObject*>(GTeammate.ReplaceDD->CB_Main)))
+		{
+			const int32 Idx = GTeammate.ReplaceDD->CB_Main->GetSelectedIndex();
+			if (Idx > 0)
+			{
+				constexpr int32 kRoleIds[] = { 0, 30, 31, 32, 33, 34, 35, 36 };
+				Cfg.ReplaceTeammateId = (Idx < 8) ? kRoleIds[Idx] : 30;
+			}
+		}
+	}
+
+	void PollAndApplyTab6Features(bool CanReadFromUI)
+	{
+		static FTab6RuntimeConfig Config{};
+		if (CanReadFromUI)
+			ReadTab6ConfigFromUI(Config);
+
+		static bool LastFollowerCount = false;
+		if (Config.FollowerCountEnabled != LastFollowerCount)
+		{
+			Config.FollowerCountEnabled ? EnableFollowerCountHook() : DisableFollowerCountHook();
+			LastFollowerCount = Config.FollowerCountEnabled;
+		}
+		if (Config.FollowerCountEnabled)
+			SetFollowerCountValue(Config.FollowerCountValue);
+
+		static bool LastReplaceTeammate = false;
+		if (Config.ReplaceTeammateEnabled != LastReplaceTeammate)
+		{
+			Config.ReplaceTeammateEnabled ? EnableReplaceTeammateHook() : DisableReplaceTeammateHook();
+			LastReplaceTeammate = Config.ReplaceTeammateEnabled;
+		}
+		if (Config.ReplaceTeammateEnabled)
+			SetReplaceTeammateId(Config.ReplaceTeammateId);
+	}
+
 	// ┌─────────────────────────────────────────────────────────────┐
 	// │  §9  滑块通用轮询 — 按钮点击增减 · 文本标签同步             │
 	// └─────────────────────────────────────────────────────────────┘
@@ -1656,6 +1921,26 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			DisableAutoRecoverHpMpHook();
 			DisableTotalMoveSpeedHook();
 			DisableBattleSpeedHooks();
+			DisableGatherCooldownPatch();
+			DisableFishRareOnlyHook();
+			DisableFishAlwaysCatchHook();
+			DisableHomelandHarvestPatch();
+			DisableGiftAlwaysLiked();
+			DisableInviteIgnoreConditions();
+			DisableSparIgnoreFavor();
+			DisableConsultIgnoreRequirements();
+			DisableSparGetAllLoot();
+			DisableNpcEquipRemovable();
+			DisableNpcIgnoreWeaponLimit();
+			DisableForceNpcInteraction();
+			DisableInfiniteJumpPatch();
+			DisableRunMountSpeedHook();
+			DisableMountReplacePatch();
+			DisableFirstPlayHardPatch();
+			DisableFirstPlayInheritPatch();
+			DisablePostStationPatch();
+			DisableFollowerCountHook();
+			DisableReplaceTeammateHook();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
 			LOGI_STREAM("FrameHook") << "[SDK] UnloadCleanup: runtime UI cleanup done on game thread\n";
@@ -1783,6 +2068,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	const bool IsItemsTabActive = (ActiveNativeTabIndex == 1);
 	const bool IsCharacterTabActive = (ActiveNativeTabIndex == 0);
 	const bool IsBattleTabActive = (ActiveNativeTabIndex == 2);
+	const bool IsLifeTabActive = (ActiveNativeTabIndex == 3);
 
 	if (HomeNeedAnchorCtxRefresh &&
 		GInternalWidgetVisible &&
@@ -2014,6 +2300,36 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		LiveInternalWidget &&
 		IsBattleTabActive;
 	PollAndApplyTab2Features(CanReadTab2FromUI);
+
+	const bool CanReadTab3FromUI =
+		GInternalWidgetVisible &&
+		LiveInternalWidget &&
+		IsLifeTabActive;
+	PollAndApplyTab3Features(CanReadTab3FromUI);
+
+	const bool IsSocialTabActive = (ActiveNativeTabIndex == 4);
+	const bool CanReadTab4FromUI =
+		GInternalWidgetVisible &&
+		LiveInternalWidget &&
+		IsSocialTabActive;
+	PollAndApplyTab4Features(CanReadTab4FromUI);
+
+	const bool IsSystemTabActive = (ActiveNativeTabIndex == 5);
+	const bool CanReadTab5FromUI =
+		GInternalWidgetVisible &&
+		LiveInternalWidget &&
+		IsSystemTabActive;
+	PollAndApplyTab5Features(CanReadTab5FromUI);
+
+	const bool IsTeammateTabActive =
+		GDynTab.Content6 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content6)) &&
+		GDynTab.Content6->GetVisibility() != ESlateVisibility::Collapsed;
+	const bool CanReadTab6FromUI =
+		GInternalWidgetVisible &&
+		LiveInternalWidget &&
+		IsTeammateTabActive;
+	PollAndApplyTab6Features(CanReadTab6FromUI);
 
 	bool HoverGridValid = false;
 	if (GItemBrowser.GridPanel)

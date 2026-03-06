@@ -50,6 +50,9 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeNumericEditBoxItem(
 	const wchar_t* Hint,
 	const wchar_t* DefaultValue);
 
+class UEditableTextBox* GetRuntimeEditBoxByTitle(const wchar_t* Title);
+
+
 UVE_JHVideoPanel2_C* CreateCollapsiblePanel(
 	APlayerController* PC,
 	const wchar_t* Title,

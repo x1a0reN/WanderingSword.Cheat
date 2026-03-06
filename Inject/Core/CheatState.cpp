@@ -35,6 +35,9 @@ std::vector<bool>        GVolumePlusWasPressed;
 // ── Tab 页面控件实例 ──
 Tab1Controls             GTab1{};
 Tab2Controls             GTab2{};
+Tab3Controls             GTab3{};
+Tab4Controls             GTab4{};
+Tab5Controls             GTab5{};
 DynTabState              GDynTab{};
 TeammateTabControls      GTeammate{};
 QuestTabControls         GQuest{};
