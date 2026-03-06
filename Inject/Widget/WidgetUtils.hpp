@@ -6,6 +6,14 @@ bool IsPointerInLiveObjectArray(UObject* Obj);
 bool IsSafeLiveObject(UObject* Obj);
 bool IsSafeLiveObjectOfClass(UObject* Obj, UClass* ExpectedClass);
 
+// ── Weak Pointer 辅助函数 ──
+
+FWeakObjectPtr ReadWeakPtrAt(UObject* Obj, uintptr_t Offset);
+void WriteWeakPtrAt(UObject* Obj, uintptr_t Offset, const FWeakObjectPtr& Value);
+bool IsWeakPtrFilled(const FWeakObjectPtr& Weak);
+bool IsSameWeak(const FWeakObjectPtr& A, const FWeakObjectPtr& B);
+UObject* ResolveWeakPtrLoose(const FWeakObjectPtr& Weak);
+
 // ── 文本与诊断工具 ──
 
 /// 将 wchar_t* 字符串转换为 UE4 FText (通过 FTextStringHelper::CreateFromBuffer)。
@@ -14,7 +22,7 @@ FText MakeText(const wchar_t* W);
 /// 将 ESlateVisibility 枚举值转为可读字符串 (用于日志输出)。
 const char* ToVisName(ESlateVisibility V);
 
-/// 从全局物品数量输入框 (GItemQuantityEdit) 读取用户输入的整数值，
+/// 从全局物品数量输入框 (GItemBrowser.QuantityEdit) 读取用户输入的整数值，
 /// 转换失败或为空时返回默认值 1。
 int32 GetItemAddQuantityFromEdit();
 

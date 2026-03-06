@@ -1,23 +1,23 @@
 void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
-	if (!GDynTabContent6) return;
-	GDynTabContent6->ClearChildren();
+	if (!GDynTab.Content6) return;
+	GDynTab.Content6->ClearChildren();
 	int Count = 0;
 
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
 
-	GTeammateFollowToggle = nullptr;
-	GTeammateFollowCount = nullptr;
-	GTeammateAddDD = nullptr;
-	GTeammateReplaceToggle = nullptr;
-	GTeammateReplaceDD = nullptr;
+	GTeammate.FollowToggle = nullptr;
+	GTeammate.FollowCount = nullptr;
+	GTeammate.AddDD = nullptr;
+	GTeammate.ReplaceToggle = nullptr;
+	GTeammate.ReplaceDD = nullptr;
 
 	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
 	{
 		if (!Panel)
 			return;
-		UPanelSlot* Slot = GDynTabContent6->AddChild(Panel);
+		UPanelSlot* Slot = GDynTab.Content6->AddChild(Panel);
 		if (Slot && Slot->IsA(UVerticalBoxSlot::StaticClass()))
 		{
 			auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
@@ -31,45 +31,45 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	auto* TeamPanel = CreateCollapsiblePanel(PC, L"队伍设置");
 	auto* TeamBox = TeamPanel ? TeamPanel->CT_Contents : nullptr;
-	GTeammateFollowToggle = CreateToggleItem(PC, L"设置队友跟随数量");
-	if (GTeammateFollowToggle)
+	GTeammate.FollowToggle = CreateToggleItem(PC, L"设置队友跟随数量");
+	if (GTeammate.FollowToggle)
 	{
-		if (TeamBox) TeamBox->AddChild(GTeammateFollowToggle);
-		else GDynTabContent6->AddChild(GTeammateFollowToggle);
+		if (TeamBox) TeamBox->AddChild(GTeammate.FollowToggle);
+		else GDynTab.Content6->AddChild(GTeammate.FollowToggle);
 		Count++;
 	}
-	GTeammateFollowCount = CreateVolumeNumericEditBoxItem(PC, Outer, TeamBox ? TeamBox : GDynTabContent6, L"跟随数量", L"输入数字", L"3");
-	if (GTeammateFollowCount)
+	GTeammate.FollowCount = CreateVolumeNumericEditBoxItem(PC, Outer, TeamBox ? TeamBox : GDynTab.Content6, L"跟随数量", L"输入数字", L"3");
+	if (GTeammate.FollowCount)
 	{
-		if (TeamBox) TeamBox->AddChild(GTeammateFollowCount);
-		else GDynTabContent6->AddChild(GTeammateFollowCount);
+		if (TeamBox) TeamBox->AddChild(GTeammate.FollowCount);
+		else GDynTab.Content6->AddChild(GTeammate.FollowCount);
 		Count++;
 	}
 	AddPanelWithFixedGap(TeamPanel, 0.0f, 10.0f);
 
 	auto* OperatePanel = CreateCollapsiblePanel(PC, L"队友操作");
 	auto* OperateBox = OperatePanel ? OperatePanel->CT_Contents : nullptr;
-		GTeammateAddDD = CreateVideoItemWithOptions(PC, L"添加队友",
+		GTeammate.AddDD = CreateVideoItemWithOptions(PC, L"添加队友",
 			{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
-	if (GTeammateAddDD)
+	if (GTeammate.AddDD)
 	{
-		if (OperateBox) OperateBox->AddChild(GTeammateAddDD);
-		else GDynTabContent6->AddChild(GTeammateAddDD);
+		if (OperateBox) OperateBox->AddChild(GTeammate.AddDD);
+		else GDynTab.Content6->AddChild(GTeammate.AddDD);
 		Count++;
 	}
-	GTeammateReplaceToggle = CreateToggleItem(PC, L"替换指定队友");
-	if (GTeammateReplaceToggle)
+	GTeammate.ReplaceToggle = CreateToggleItem(PC, L"替换指定队友");
+	if (GTeammate.ReplaceToggle)
 	{
-		if (OperateBox) OperateBox->AddChild(GTeammateReplaceToggle);
-		else GDynTabContent6->AddChild(GTeammateReplaceToggle);
+		if (OperateBox) OperateBox->AddChild(GTeammate.ReplaceToggle);
+		else GDynTab.Content6->AddChild(GTeammate.ReplaceToggle);
 		Count++;
 	}
-		GTeammateReplaceDD = CreateVideoItemWithOptions(PC, L"指定队友",
+		GTeammate.ReplaceDD = CreateVideoItemWithOptions(PC, L"指定队友",
 			{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
-	if (GTeammateReplaceDD)
+	if (GTeammate.ReplaceDD)
 	{
-		if (OperateBox) OperateBox->AddChild(GTeammateReplaceDD);
-		else GDynTabContent6->AddChild(GTeammateReplaceDD);
+		if (OperateBox) OperateBox->AddChild(GTeammate.ReplaceDD);
+		else GDynTab.Content6->AddChild(GTeammate.ReplaceDD);
 		Count++;
 	}
 	AddPanelWithFixedGap(OperatePanel, 0.0f, 8.0f);

@@ -16,23 +16,18 @@ namespace
 	APlayerController* GInternalWidgetOwnerPC = nullptr;
 	UGameInstance* GInternalWidgetOwnerGI = nullptr;
 
-	bool IsValidUObject(UObject* Obj)
-	{
-		return IsSafeLiveObject(Obj);
-	}
-
 	bool IsValidPlayerController(APlayerController* PC)
 	{
-		return IsValidUObject(static_cast<UObject*>(PC));
+		return IsSafeLiveObject(static_cast<UObject*>(PC));
 	}
 
 	bool ShouldRecreateInternalWidget(APlayerController* CurrentPC)
 	{
-		if (!InternalWidget)
+		if (!GInternalWidget)
 			return false;
 
-		auto* WidgetObj = static_cast<UObject*>(InternalWidget);
-		if (!IsValidUObject(WidgetObj))
+		auto* WidgetObj = static_cast<UObject*>(GInternalWidget);
+		if (!IsSafeLiveObject(WidgetObj))
 			return true;
 
 		if (!IsValidPlayerController(CurrentPC))
@@ -50,27 +45,27 @@ namespace
 
 	void ReleaseInternalWidgetForRecreate(const char* Reason)
 	{
-		if (!InternalWidget)
+		if (!GInternalWidget)
 			return;
 
 		RememberUIControlStatesFromLiveWidgets();
 
 		LOGI_STREAM("PanelManager") << "[SDK] ShowInternalWidget: recreate old widget, reason=" << (Reason ? Reason : "unknown") << "\n";
 
-		if (IsValidUObject(static_cast<UObject*>(InternalWidget)))
+		if (IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)))
 		{
-			if (InternalWidget->IsInViewport())
-				InternalWidget->RemoveFromParent();
-			ClearGCRoot(InternalWidget);
+			if (GInternalWidget->IsInViewport())
+				GInternalWidget->RemoveFromParent();
+			ClearGCRoot(GInternalWidget);
 		}
 		else
 		{
 			GRootedObjects.erase(
-				std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(InternalWidget)),
+				std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(GInternalWidget)),
 				GRootedObjects.end());
 		}
-		InternalWidget = nullptr;
-		InternalWidgetVisible = false;
+		GInternalWidget = nullptr;
+		GInternalWidgetVisible = false;
 		GInternalWidgetOwnerPC = nullptr;
 		GInternalWidgetOwnerGI = nullptr;
 		ClearRuntimeWidgetState();
@@ -82,21 +77,21 @@ namespace
 			return -1;
 
 		// 动态Tab优先：6/7/8
-		if (GDynTabContent6 &&
-			IsSafeLiveObject(static_cast<UObject*>(GDynTabContent6)) &&
-			GDynTabContent6->GetVisibility() != ESlateVisibility::Collapsed)
+		if (GDynTab.Content6 &&
+			IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content6)) &&
+			GDynTab.Content6->GetVisibility() != ESlateVisibility::Collapsed)
 		{
 			return 6;
 		}
-		if (GDynTabContent7 &&
-			IsSafeLiveObject(static_cast<UObject*>(GDynTabContent7)) &&
-			GDynTabContent7->GetVisibility() != ESlateVisibility::Collapsed)
+		if (GDynTab.Content7 &&
+			IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content7)) &&
+			GDynTab.Content7->GetVisibility() != ESlateVisibility::Collapsed)
 		{
 			return 7;
 		}
-		if (GDynTabContent8 &&
-			IsSafeLiveObject(static_cast<UObject*>(GDynTabContent8)) &&
-			GDynTabContent8->GetVisibility() != ESlateVisibility::Collapsed)
+		if (GDynTab.Content8 &&
+			IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content8)) &&
+			GDynTab.Content8->GetVisibility() != ESlateVisibility::Collapsed)
 		{
 			return 8;
 		}
@@ -125,21 +120,21 @@ void ClearRuntimeWidgetState()
 	ResetRuntimeControlStateBindings();
 	ClearItemBrowserState();
 
-	GDynTabBtn6 = nullptr;
-	GDynTabBtn7 = nullptr;
-	GDynTabBtn8 = nullptr;
-	GDynTabContent6 = nullptr;
-	GDynTabContent7 = nullptr;
-	GDynTabContent8 = nullptr;
+	GDynTab.Btn6 = nullptr;
+	GDynTab.Btn7 = nullptr;
+	GDynTab.Btn8 = nullptr;
+	GDynTab.Content6 = nullptr;
+	GDynTab.Content7 = nullptr;
+	GDynTab.Content8 = nullptr;
 
-	GTeammateFollowToggle = nullptr;
-	GTeammateFollowCount = nullptr;
-	GTeammateAddDD = nullptr;
-	GTeammateReplaceToggle = nullptr;
-	GTeammateReplaceDD = nullptr;
+	GTeammate.FollowToggle = nullptr;
+	GTeammate.FollowCount = nullptr;
+	GTeammate.AddDD = nullptr;
+	GTeammate.ReplaceToggle = nullptr;
+	GTeammate.ReplaceDD = nullptr;
 
-	GQuestToggle = nullptr;
-	GQuestTypeDD = nullptr;
+	GQuest.Toggle = nullptr;
+	GQuest.TypeDD = nullptr;
 	GOriginalLanPanel = nullptr;
 	GOriginalInputMappingPanel = nullptr;
 	GOriginalResetButton = nullptr;
@@ -147,17 +142,17 @@ void ClearRuntimeWidgetState()
 	GVolumeLastValues.clear();
 	GVolumeMinusWasPressed.clear();
 	GVolumePlusWasPressed.clear();
-	GTab1ItemNoDecreaseToggle = nullptr;
-	GTab1ItemGainMultiplierToggle = nullptr;
-	GTab1ItemGainMultiplierSlider = nullptr;
-	GTab1AllItemsSellableToggle = nullptr;
-	GTab1DropRate100Toggle = nullptr;
-	GTab1CraftEffectMultiplierToggle = nullptr;
-	GTab1CraftItemIncrementSlider = nullptr;
-	GTab1CraftExtraEffectSlider = nullptr;
-	GTab1MaxExtraAffixesToggle = nullptr;
-	GTab1IgnoreItemUseCountToggle = nullptr;
-	GTab1IgnoreItemRequirementsToggle = nullptr;
+	GTab1.ItemNoDecreaseToggle = nullptr;
+	GTab1.ItemGainMultiplierToggle = nullptr;
+	GTab1.ItemGainMultiplierSlider = nullptr;
+	GTab1.AllItemsSellableToggle = nullptr;
+	GTab1.DropRate100Toggle = nullptr;
+	GTab1.CraftEffectMultiplierToggle = nullptr;
+	GTab1.CraftItemIncrementSlider = nullptr;
+	GTab1.CraftExtraEffectSlider = nullptr;
+	GTab1.MaxExtraAffixesToggle = nullptr;
+	GTab1.IgnoreItemUseCountToggle = nullptr;
+	GTab1.IgnoreItemRequirementsToggle = nullptr;
 
 	GCachedBtnExit = nullptr;
 }
@@ -261,9 +256,9 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 	if (CV->BTN_Lan)     CV->BTN_Lan->EVT_UpdateActiveStatus(false);
 	if (CV->BTN_Others)  CV->BTN_Others->EVT_UpdateActiveStatus(false);
 	if (CV->BTN_Gamepad) CV->BTN_Gamepad->EVT_UpdateActiveStatus(false);
-	if (GDynTabBtn6)     GDynTabBtn6->EVT_UpdateActiveStatus(false);
-	if (GDynTabBtn7)     GDynTabBtn7->EVT_UpdateActiveStatus(false);
-	if (GDynTabBtn8)     GDynTabBtn8->EVT_UpdateActiveStatus(false);
+	if (GDynTab.Btn6)     GDynTab.Btn6->EVT_UpdateActiveStatus(false);
+	if (GDynTab.Btn7)     GDynTab.Btn7->EVT_UpdateActiveStatus(false);
+	if (GDynTab.Btn8)     GDynTab.Btn8->EVT_UpdateActiveStatus(false);
 
 	if (kEnableUIInitLog)
 		LOGI_STREAM("PanelManager") << "[SDK] ConfigView2 patched: 9 tabs populated\n";
@@ -279,12 +274,12 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	if (!CV || !PC) return;
 
 	// Reset dynamic tab state
-	GDynTabBtn6 = nullptr;
-	GDynTabBtn7 = nullptr;
-	GDynTabBtn8 = nullptr;
-	GDynTabContent6 = nullptr;
-	GDynTabContent7 = nullptr;
-	GDynTabContent8 = nullptr;
+	GDynTab.Btn6 = nullptr;
+	GDynTab.Btn7 = nullptr;
+	GDynTab.Btn8 = nullptr;
+	GDynTab.Content6 = nullptr;
+	GDynTab.Content7 = nullptr;
+	GDynTab.Content8 = nullptr;
 
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(
 		reinterpret_cast<uintptr_t>(CV) + 0x01D8);
@@ -292,35 +287,35 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	                            : static_cast<UObject*>(CV);
 
 	// 鈹€鈹€ Create tab buttons 鈹€鈹€
-	GDynTabBtn6 = CreateTabButton(PC);
-	if (GDynTabBtn6)
+	GDynTab.Btn6 = CreateTabButton(PC);
+	if (GDynTab.Btn6)
 	{
-		SetupTab(GDynTabBtn6, 6, L"\u961F\u53CB"); // 闃熷弸
-		PatchTabBtnRuntimeContext(GDynTabBtn6, CV, "DynTab6");
+		SetupTab(GDynTab.Btn6, 6, L"\u961F\u53CB"); // 闃熷弸
+		PatchTabBtnRuntimeContext(GDynTab.Btn6, CV, "DynTab6");
 		if (CV->CT_TabBtns)
-			CV->CT_TabBtns->AddChild(GDynTabBtn6);
+			CV->CT_TabBtns->AddChild(GDynTab.Btn6);
 		if (kEnableUIInitLog)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab6 button created\n";
 	}
 
-	GDynTabBtn7 = CreateTabButton(PC);
-	if (GDynTabBtn7)
+	GDynTab.Btn7 = CreateTabButton(PC);
+	if (GDynTab.Btn7)
 	{
-		SetupTab(GDynTabBtn7, 7, L"\u4EFB\u52A1"); // 浠诲姟
-		PatchTabBtnRuntimeContext(GDynTabBtn7, CV, "DynTab7");
+		SetupTab(GDynTab.Btn7, 7, L"\u4EFB\u52A1"); // 浠诲姟
+		PatchTabBtnRuntimeContext(GDynTab.Btn7, CV, "DynTab7");
 		if (CV->CT_TabBtns)
-			CV->CT_TabBtns->AddChild(GDynTabBtn7);
+			CV->CT_TabBtns->AddChild(GDynTab.Btn7);
 		if (kEnableUIInitLog)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab7 button created\n";
 	}
 
-	GDynTabBtn8 = CreateTabButton(PC);
-	if (GDynTabBtn8)
+	GDynTab.Btn8 = CreateTabButton(PC);
+	if (GDynTab.Btn8)
 	{
-		SetupTab(GDynTabBtn8, 8, L"\u63A7\u4EF6"); // 鎺т欢
-		PatchTabBtnRuntimeContext(GDynTabBtn8, CV, "DynTab8");
+		SetupTab(GDynTab.Btn8, 8, L"\u63A7\u4EF6"); // 鎺т欢
+		PatchTabBtnRuntimeContext(GDynTab.Btn8, CV, "DynTab8");
 		if (CV->CT_TabBtns)
-			CV->CT_TabBtns->AddChild(GDynTabBtn8);
+			CV->CT_TabBtns->AddChild(GDynTab.Btn8);
 		if (kEnableUIInitLog)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab8 button created\n";
 	}
@@ -330,32 +325,32 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	if (kEnableUIInitLog)
 		LOGI_STREAM("PanelManager") << "[SDK] DynTab: SwitcherParent=" << (void*)SwitcherParent << "\n";
 
-	GDynTabContent6 = static_cast<UVerticalBox*>(
+	GDynTab.Content6 = static_cast<UVerticalBox*>(
 		CreateRawWidget(UVerticalBox::StaticClass(), Outer));
-	if (GDynTabContent6 && SwitcherParent)
+	if (GDynTab.Content6 && SwitcherParent)
 	{
-		SwitcherParent->AddChild(GDynTabContent6);
-		GDynTabContent6->SetVisibility(ESlateVisibility::Collapsed);
+		SwitcherParent->AddChild(GDynTab.Content6);
+		GDynTab.Content6->SetVisibility(ESlateVisibility::Collapsed);
 		if (kEnableUIInitLog)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab6 content added to SwitcherParent (Collapsed)\n";
 	}
 
-	GDynTabContent7 = static_cast<UVerticalBox*>(
+	GDynTab.Content7 = static_cast<UVerticalBox*>(
 		CreateRawWidget(UVerticalBox::StaticClass(), Outer));
-	if (GDynTabContent7 && SwitcherParent)
+	if (GDynTab.Content7 && SwitcherParent)
 	{
-		SwitcherParent->AddChild(GDynTabContent7);
-		GDynTabContent7->SetVisibility(ESlateVisibility::Collapsed);
+		SwitcherParent->AddChild(GDynTab.Content7);
+		GDynTab.Content7->SetVisibility(ESlateVisibility::Collapsed);
 		if (kEnableUIInitLog)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab7 content added to SwitcherParent (Collapsed)\n";
 	}
 
-	GDynTabContent8 = static_cast<UVerticalBox*>(
+	GDynTab.Content8 = static_cast<UVerticalBox*>(
 		CreateRawWidget(UVerticalBox::StaticClass(), Outer));
-	if (GDynTabContent8 && SwitcherParent)
+	if (GDynTab.Content8 && SwitcherParent)
 	{
-		SwitcherParent->AddChild(GDynTabContent8);
-		GDynTabContent8->SetVisibility(ESlateVisibility::Collapsed);
+		SwitcherParent->AddChild(GDynTab.Content8);
+		GDynTab.Content8->SetVisibility(ESlateVisibility::Collapsed);
 		if (kEnableUIInitLog)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab8 content added to SwitcherParent (Collapsed)\n";
 	}
@@ -462,25 +457,25 @@ void EnsureMouseCursorVisible()
 }
 void HideInternalWidget(APlayerController* PlayerController)
 {
-	if (InternalWidget && InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
+	if (GInternalWidget && GInternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
 	{
-		GLastClosedTabIndex = GetCurrentTabOnClose(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
+		GLastClosedTabIndex = GetCurrentTabOnClose(static_cast<UBPMV_ConfigView2_C*>(GInternalWidget));
 		LOGI_STREAM("PanelManager") << "[SDK] Remember tab on hide: idx=" << GLastClosedTabIndex << "\n";
 	}
 
 	RememberUIControlStatesFromLiveWidgets();
 
-	if (InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)))
+	if (GInternalWidget && IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)))
 	{
-		if (InternalWidget->IsInViewport())
-			InternalWidget->RemoveFromParent();
+		if (GInternalWidget->IsInViewport())
+			GInternalWidget->RemoveFromParent();
 	}
-	else if (InternalWidget)
+	else if (GInternalWidget)
 	{
 		GRootedObjects.erase(
-			std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(InternalWidget)),
+			std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(GInternalWidget)),
 			GRootedObjects.end());
-		InternalWidget = nullptr;
+		GInternalWidget = nullptr;
 		GInternalWidgetOwnerPC = nullptr;
 		GInternalWidgetOwnerGI = nullptr;
 	}
@@ -491,26 +486,26 @@ void HideInternalWidget(APlayerController* PlayerController)
 		UGameplayStatics::SetGamePaused(PlayerController, false);
 		PlayerController->bShowMouseCursor = true;
 	}
-	InternalWidgetVisible = false;
+	GInternalWidgetVisible = false;
 
 	LOGI_STREAM("PanelManager") << "[SDK] Home: internal widget hidden (cached), game resumed\n";
 }
 void DestroyInternalWidget(APlayerController* PlayerController)
 {
-	if (InternalWidget && InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
+	if (GInternalWidget && GInternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
 	{
-		GLastClosedTabIndex = GetCurrentTabOnClose(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
+		GLastClosedTabIndex = GetCurrentTabOnClose(static_cast<UBPMV_ConfigView2_C*>(GInternalWidget));
 		LOGI_STREAM("PanelManager") << "[SDK] Remember tab on destroy: idx=" << GLastClosedTabIndex << "\n";
 	}
 
 	RememberUIControlStatesFromLiveWidgets();
 
-	if (InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)) && InternalWidget->IsInViewport())
-		InternalWidget->RemoveFromParent();
+	if (GInternalWidget && IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) && GInternalWidget->IsInViewport())
+		GInternalWidget->RemoveFromParent();
 	GCachedBtnExit = nullptr;
 
 	ClearAllGCRoots();
-	InternalWidget = nullptr;
+	GInternalWidget = nullptr;
 	ClearRuntimeWidgetState();
 	GInternalWidgetOwnerPC = nullptr;
 	GInternalWidgetOwnerGI = nullptr;
@@ -520,7 +515,7 @@ void DestroyInternalWidget(APlayerController* PlayerController)
 		UGameplayStatics::SetGamePaused(PlayerController, false);
 		PlayerController->bShowMouseCursor = true;
 	}
-	InternalWidgetVisible = false;
+	GInternalWidgetVisible = false;
 
 	LOGI_STREAM("PanelManager") << "[SDK] Internal widget destroyed and fully cleaned\n";
 }
@@ -535,22 +530,22 @@ void ShowInternalWidget(APlayerController* PlayerController)
 	if (ShouldRecreateInternalWidget(PlayerController))
 	{
 		const char* reason = "owner/world mismatch or stale pointer";
-		if (InternalWidget && !IsValidUObject(static_cast<UObject*>(InternalWidget)))
+		if (GInternalWidget && !IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)))
 			reason = "internal widget invalid";
 		ReleaseInternalWidgetForRecreate(reason);
 	}
 
 	bool bCreatedNow = false;
-	if (!InternalWidget)
+	if (!GInternalWidget)
 	{
-		InternalWidget = CreateInternalWidgetInstance(PlayerController);
-		if (!InternalWidget)
+		GInternalWidget = CreateInternalWidgetInstance(PlayerController);
+		if (!GInternalWidget)
 			return;
-		MarkAsGCRoot(InternalWidget);
+		MarkAsGCRoot(GInternalWidget);
 		bCreatedNow = true;
 	}
 
-	if (!IsValidUObject(static_cast<UObject*>(InternalWidget)))
+	if (!IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)))
 	{
 		LOGI_STREAM("PanelManager") << "[SDK] ShowInternalWidget: internal widget invalid after create\n";
 		ReleaseInternalWidgetForRecreate("invalid after create");
@@ -559,33 +554,33 @@ void ShowInternalWidget(APlayerController* PlayerController)
 
 	GInternalWidgetOwnerPC = PlayerController;
 	GInternalWidgetOwnerGI = UGameplayStatics::GetGameInstance(PlayerController);
-	InternalWidget->SetOwningPlayer(PlayerController);
+	GInternalWidget->SetOwningPlayer(PlayerController);
 
-	if (!InternalWidget->IsInViewport())
-		InternalWidget->AddToViewport(10000);
+	if (!GInternalWidget->IsInViewport())
+		GInternalWidget->AddToViewport(10000);
 
 	if (bCreatedNow)
 	{
-		if (InternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
-			InitializeConfigView2BySDK(static_cast<UBPMV_ConfigView2_C*>(InternalWidget));
+		if (GInternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
+			InitializeConfigView2BySDK(static_cast<UBPMV_ConfigView2_C*>(GInternalWidget));
 
-		ApplyConfigView2TextPatch(InternalWidget, PlayerController);
-		InternalWidget->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
-		InternalWidget->SetRenderScale(FVector2D{ kInternalPanelScale, kInternalPanelScale });
+		ApplyConfigView2TextPatch(GInternalWidget, PlayerController);
+		GInternalWidget->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
+		GInternalWidget->SetRenderScale(FVector2D{ kInternalPanelScale, kInternalPanelScale });
 	}
 
 	if (!IsValidPlayerController(PlayerController) ||
-		!IsValidUObject(static_cast<UObject*>(InternalWidget)))
+		!IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)))
 	{
 		LOGI_STREAM("PanelManager") << "[SDK] ShowInternalWidget: aborted before SetInputMode, invalid runtime objects\n";
 		return;
 	}
 
-	InternalWidget->SetKeyboardFocus();
-	UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(PlayerController, InternalWidget, EMouseLockMode::DoNotLock, false);
+	GInternalWidget->SetKeyboardFocus();
+	UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(PlayerController, GInternalWidget, EMouseLockMode::DoNotLock, false);
 	PlayerController->bShowMouseCursor = true;
 	UGameplayStatics::SetGamePaused(PlayerController, true);
-	InternalWidgetVisible = true;
+	GInternalWidgetVisible = true;
 
 	LOGI_STREAM("PanelManager") << "[SDK] Home: internal widget shown, game paused\n";
 }
@@ -598,14 +593,14 @@ void ToggleInternalWidget()
 		return;
 	}
 
-	if (InternalWidget && !IsValidUObject(static_cast<UObject*>(InternalWidget)))
+	if (GInternalWidget && !IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)))
 	{
 		LOGI_STREAM("PanelManager") << "[SDK] ToggleInternalWidget: stale internal widget detected, force recreate\n";
 		GRootedObjects.erase(
-			std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(InternalWidget)),
+			std::remove(GRootedObjects.begin(), GRootedObjects.end(), static_cast<UObject*>(GInternalWidget)),
 			GRootedObjects.end());
-		InternalWidget = nullptr;
-		InternalWidgetVisible = false;
+		GInternalWidget = nullptr;
+		GInternalWidgetVisible = false;
 		GCachedBtnExit = nullptr;
 		GInternalWidgetOwnerPC = nullptr;
 		GInternalWidgetOwnerGI = nullptr;
@@ -613,7 +608,7 @@ void ToggleInternalWidget()
 	}
 
 	// Use real widget state instead of our boolean flag
-	bool isShowing = InternalWidget && IsValidUObject(static_cast<UObject*>(InternalWidget)) && InternalWidget->IsInViewport();
+	bool isShowing = GInternalWidget && IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) && GInternalWidget->IsInViewport();
 	if (isShowing)
 		HideInternalWidget(PlayerController);
 	else
@@ -625,20 +620,20 @@ void ShowDynamicTab(UBPMV_ConfigView2_C* CV, int32 DynIdx)
 {
 	if (CV->CT_Contents)
 		CV->CT_Contents->SetVisibility(ESlateVisibility::Collapsed);
-	if (GDynTabContent6) GDynTabContent6->SetVisibility(
+	if (GDynTab.Content6) GDynTab.Content6->SetVisibility(
 		DynIdx == 6 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-	if (GDynTabContent7) GDynTabContent7->SetVisibility(
+	if (GDynTab.Content7) GDynTab.Content7->SetVisibility(
 		DynIdx == 7 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-	if (GDynTabContent8) GDynTabContent8->SetVisibility(
+	if (GDynTab.Content8) GDynTab.Content8->SetVisibility(
 		DynIdx == 8 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 
-	if (DynIdx == 8 && GDynTabContent8)
+	if (DynIdx == 8 && GDynTab.Content8)
 	{
-		int32 Cnt = GDynTabContent8->GetChildrenCount();
-		UWidget* Child0 = (Cnt > 0) ? GDynTabContent8->GetChildAt(0) : nullptr;
-		LOGI_STREAM("PanelManager") << "[SDK] ShowDynamicTab8: content=" << (void*)GDynTabContent8
+		int32 Cnt = GDynTab.Content8->GetChildrenCount();
+		UWidget* Child0 = (Cnt > 0) ? GDynTab.Content8->GetChildAt(0) : nullptr;
+		LOGI_STREAM("PanelManager") << "[SDK] ShowDynamicTab8: content=" << (void*)GDynTab.Content8
 		          << " children=" << Cnt
-		          << " vis=" << ToVisName(GDynTabContent8->GetVisibility())
+		          << " vis=" << ToVisName(GDynTab.Content8->GetVisibility())
 		          << " child0=" << (void*)Child0
 		          << " child0Vis=" << (Child0 ? ToVisName(Child0->GetVisibility()) : "null")
 		          << "\n";
@@ -648,9 +643,9 @@ void ShowOriginalTab(UBPMV_ConfigView2_C* CV)
 {
 	if (CV->CT_Contents)
 		CV->CT_Contents->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-	if (GDynTabContent6) GDynTabContent6->SetVisibility(ESlateVisibility::Collapsed);
-	if (GDynTabContent7) GDynTabContent7->SetVisibility(ESlateVisibility::Collapsed);
-	if (GDynTabContent8) GDynTabContent8->SetVisibility(ESlateVisibility::Collapsed);
+	if (GDynTab.Content6) GDynTab.Content6->SetVisibility(ESlateVisibility::Collapsed);
+	if (GDynTab.Content7) GDynTab.Content7->SetVisibility(ESlateVisibility::Collapsed);
+	if (GDynTab.Content8) GDynTab.Content8->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 

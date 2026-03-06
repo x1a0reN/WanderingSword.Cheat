@@ -47,6 +47,51 @@ bool IsSafeLiveObjectOfClass(UObject* Obj, UClass* ExpectedClass)
 	return Obj->IsA(ExpectedClass);
 }
 
+// ── Weak Pointer 辅助函数 ──
+
+FWeakObjectPtr ReadWeakPtrAt(UObject* Obj, uintptr_t Offset)
+{
+	FWeakObjectPtr Out{};
+	if (!Obj)
+		return Out;
+	const uint8* Base = reinterpret_cast<const uint8*>(Obj);
+	Out = *reinterpret_cast<const FWeakObjectPtr*>(Base + Offset);
+	return Out;
+}
+
+void WriteWeakPtrAt(UObject* Obj, uintptr_t Offset, const FWeakObjectPtr& Value)
+{
+	if (!Obj)
+		return;
+	uint8* Base = reinterpret_cast<uint8*>(Obj);
+	*reinterpret_cast<FWeakObjectPtr*>(Base + Offset) = Value;
+}
+
+bool IsWeakPtrFilled(const FWeakObjectPtr& Weak)
+{
+	return Weak.ObjectIndex >= 0 && Weak.ObjectSerialNumber > 0;
+}
+
+bool IsSameWeak(const FWeakObjectPtr& A, const FWeakObjectPtr& B)
+{
+	return A.ObjectIndex == B.ObjectIndex &&
+		A.ObjectSerialNumber == B.ObjectSerialNumber;
+}
+
+UObject* ResolveWeakPtrLoose(const FWeakObjectPtr& Weak)
+{
+	if (!IsWeakPtrFilled(Weak))
+		return nullptr;
+	UObject* Obj = Weak.Get();
+	if (!Obj)
+		return nullptr;
+	if (!IsSafeLiveObject(static_cast<UObject*>(Obj)))
+		return nullptr;
+	if (Obj->IsDefaultObject())
+		return nullptr;
+	return Obj;
+}
+
 FText MakeText(const wchar_t* W)
 {
 	return UKismetTextLibrary::Conv_StringToText(FString(W));
@@ -65,10 +110,10 @@ const char* ToVisName(ESlateVisibility V)
 }
 int32 GetItemAddQuantityFromEdit()
 {
-	if (!GItemQuantityEdit)
-		return GItemAddQuantity;
+	if (!GItemBrowser.QuantityEdit)
+		return GItemBrowser.AddQuantity;
 
-	FText T = GItemQuantityEdit->GetText();
+	FText T = GItemBrowser.QuantityEdit->GetText();
 	FString S = UKismetTextLibrary::Conv_TextToString(T);
 	const wchar_t* WS = S.CStr();
 	if (!WS || !WS[0])

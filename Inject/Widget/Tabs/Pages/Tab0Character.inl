@@ -49,6 +49,90 @@ namespace
 		AttrOtherWeaponsExp
 	};
 
+	// ── 静态数据表：统一 ETab0Field 的所有映射关系 ──
+
+	using FAttrDataResolver = FGameplayAttributeData* (*)(UJHAttributeSet*);
+
+	struct FTab0FieldMeta
+	{
+		ETab0Field Field;
+		const char* Tag;            // 调试字符串
+		const wchar_t* Title;       // 中文 UI 标题
+		const wchar_t* AttrName;    // UE4 属性名
+		FAttrDataResolver Resolver; // AttrSet 成员解析器
+		bool bInteger;              // 是否为整数字段
+	};
+
+#define TAB0_ATTR(field, tag, title, attrName, member) \
+	{ ETab0Field::field, tag, L##title, L##attrName, \
+	  [](UJHAttributeSet* a) -> FGameplayAttributeData* { return &a->member; }, true }
+
+#define TAB0_NON_ATTR(field, tag, title) \
+	{ ETab0Field::field, tag, L##title, nullptr, nullptr, true }
+
+	static const FTab0FieldMeta kTab0FieldMap[] =
+	{
+		TAB0_NON_ATTR(Money,            "Money",              "金钱"),
+		TAB0_NON_ATTR(SkillExp,         "SkillExp",           "武学点"),
+		TAB0_NON_ATTR(JingMaiPoint,     "JingMaiPoint",       "经脉点"),
+		TAB0_NON_ATTR(GuildHonor,       "GuildHonor",         "门派贡献"),
+		TAB0_NON_ATTR(InheritPoint,     "InheritPoint",       "继承点"),
+		{ ETab0Field::FishingLevelInt,  "FishingLevelInt",    L"钓鱼等级",   L"FishingLevel", nullptr, true },
+		TAB0_ATTR(AttrLevel,              "AttrLevel",              "等级",            "Level",              Level),
+		TAB0_ATTR(AttrHealth,             "AttrHealth",             "气血",            "Health",             Health),
+		TAB0_ATTR(AttrMaxHealth,          "AttrMaxHealth",          "气血上限",        "MaxHealth",          MaxHealth),
+		TAB0_ATTR(AttrMana,               "AttrMana",               "真气",            "Mana",               Mana),
+		TAB0_ATTR(AttrMaxMana,            "AttrMaxMana",            "真气上限",        "MaxMana",            MaxMana),
+		TAB0_ATTR(AttrJingLi,             "AttrJingLi",             "精力",            "JingLi",             JingLi),
+		TAB0_ATTR(AttrMaxJingLi,          "AttrMaxJingLi",          "精力上限",        "MaxJingLi",          MaxJingLi),
+		TAB0_ATTR(AttrStrength,           "AttrStrength",           "力道",            "Strength",           Strength),
+		TAB0_ATTR(AttrConstitution,       "AttrConstitution",       "根骨",            "Constitution",       Constitution),
+		TAB0_ATTR(AttrAgility,            "AttrAgility",            "身法",            "Agility",            Agility),
+		TAB0_ATTR(AttrNeiLi,              "AttrNeiLi",              "内功",            "NeiLi",              NeiLi),
+		TAB0_ATTR(AttrAttackPower,        "AttrAttackPower",        "攻击",            "AttackPower",        AttackPower),
+		TAB0_ATTR(AttrDefense,            "AttrDefense",            "防御",            "Defense",            Defense),
+		TAB0_ATTR(AttrCrit,               "AttrCrit",               "暴击",            "Crit",               Crit),
+		TAB0_ATTR(AttrCritResistance,     "AttrCritResistance",     "暴击抗性",        "CritResistance",     CritResistance),
+		TAB0_ATTR(AttrDodge,              "AttrDodge",              "闪避",            "Dodge",              Dodge),
+		TAB0_ATTR(AttrAccuracy,           "AttrAccuracy",           "命中",            "Accuracy",           Accuracy),
+		TAB0_ATTR(AttrWorldMoveSpeed,     "AttrWorldMoveSpeed",     "移动",            "WorldMoveSpeed",     WorldMoveSpeed),
+		TAB0_ATTR(AttrTurnRate,           "AttrTurnRate",           "聚气速率",        "TurnRate",           TurnRate),
+		TAB0_ATTR(AttrMagicShield,        "AttrMagicShield",        "真气护盾",        "MagicShield",        MagicShield),
+		TAB0_ATTR(AttrHealthShield1,      "AttrHealthShield1",      "气血护盾",        "HealthShield1",      HealthShield1),
+		TAB0_ATTR(AttrHonor,              "AttrHonor",              "名声",            "Honor",              Honor),
+		TAB0_ATTR(AttrCritDamagePercent,  "AttrCritDamagePercent",  "暴击伤害百分比",  "CritDamagePercent",  CritDamagePercent),
+		TAB0_ATTR(AttrHealthRestoreRate,  "AttrHealthRestoreRate",  "气血恢复速率1",   "HealthRestoreRate",  HealthRestoreRate),
+		TAB0_ATTR(AttrHealthReGenRate,    "AttrHealthReGenRate",    "气血恢复速率2",   "HealthReGenRate",    HealthReGenRate),
+		TAB0_ATTR(AttrManaRestoreRate,    "AttrManaRestoreRate",    "真气恢复速率1",   "ManaRestoreRate",    ManaRestoreRate),
+		TAB0_ATTR(AttrManaReGeneRate,     "AttrManaReGeneRate",     "真气恢复速率2",   "ManaReGeneRate",     ManaReGeneRate),
+		TAB0_ATTR(AttrBoxingLevel,        "AttrBoxingLevel",        "拳掌精通",        "BoxingLevel",        BoxingLevel),
+		TAB0_ATTR(AttrBoxingExp,          "AttrBoxingExp",          "拳掌经验",        "BoxingExp",          BoxingExp),
+		TAB0_ATTR(AttrFencingLevel,       "AttrFencingLevel",       "剑法精通",        "FencingLevel",       FencingLevel),
+		TAB0_ATTR(AttrFencingExp,         "AttrFencingExp",         "剑法经验",        "FencingExp",         FencingExp),
+		TAB0_ATTR(AttrSabreLevel,         "AttrSabreLevel",         "刀法精通",        "SabreLevel",         SabreLevel),
+		TAB0_ATTR(AttrSabreExp,           "AttrSabreExp",           "刀法经验",        "SabreExp",           SabreExp),
+		TAB0_ATTR(AttrSpearLevel,         "AttrSpearLevel",         "枪棍精通",        "SpearLevel",         SpearLevel),
+		TAB0_ATTR(AttrSpearExp,           "AttrSpearExp",           "枪棍经验",        "SpearExp",           SpearExp),
+		TAB0_ATTR(AttrHiddenWeaponsLevel, "AttrHiddenWeaponsLevel", "暗器精通",        "HiddenWeaponsLevel", HiddenWeaponsLevel),
+		TAB0_ATTR(AttrHiddenWeaponsExp,   "AttrHiddenWeaponsExp",   "暗器经验",        "HiddenWeaponsExp",   HiddenWeaponsExp),
+		TAB0_ATTR(AttrOtherWeaponsLevel,  "AttrOtherWeaponsLevel",  "其他武器精通",    "OtherWeaponsLevel",  OtherWeaponsLevel),
+		TAB0_ATTR(AttrOtherWeaponsExp,    "AttrOtherWeaponsExp",    "其他武器经验",    "OtherWeaponsExp",    OtherWeaponsExp),
+	};
+
+#undef TAB0_ATTR
+#undef TAB0_NON_ATTR
+
+	static constexpr size_t kTab0FieldMapSize = sizeof(kTab0FieldMap) / sizeof(kTab0FieldMap[0]);
+
+	const FTab0FieldMeta* FindTab0FieldMeta(ETab0Field Field)
+	{
+		for (size_t i = 0; i < kTab0FieldMapSize; ++i)
+			if (kTab0FieldMap[i].Field == Field)
+				return &kTab0FieldMap[i];
+		return nullptr;
+	}
+
+
 	struct FTab0Binding final
 	{
 		ETab0Field Field;
@@ -119,55 +203,8 @@ namespace
 
 	const char* Tab0FieldToString(ETab0Field Field)
 	{
-		switch (Field)
-		{
-		case ETab0Field::Money: return "Money";
-		case ETab0Field::SkillExp: return "SkillExp";
-		case ETab0Field::JingMaiPoint: return "JingMaiPoint";
-		case ETab0Field::GuildHonor: return "GuildHonor";
-		case ETab0Field::InheritPoint: return "InheritPoint";
-		case ETab0Field::FishingLevelInt: return "FishingLevelInt";
-		case ETab0Field::AttrLevel: return "AttrLevel";
-		case ETab0Field::AttrHealth: return "AttrHealth";
-		case ETab0Field::AttrMaxHealth: return "AttrMaxHealth";
-		case ETab0Field::AttrMana: return "AttrMana";
-		case ETab0Field::AttrMaxMana: return "AttrMaxMana";
-		case ETab0Field::AttrJingLi: return "AttrJingLi";
-		case ETab0Field::AttrMaxJingLi: return "AttrMaxJingLi";
-		case ETab0Field::AttrStrength: return "AttrStrength";
-		case ETab0Field::AttrConstitution: return "AttrConstitution";
-		case ETab0Field::AttrAgility: return "AttrAgility";
-		case ETab0Field::AttrNeiLi: return "AttrNeiLi";
-		case ETab0Field::AttrAttackPower: return "AttrAttackPower";
-		case ETab0Field::AttrDefense: return "AttrDefense";
-		case ETab0Field::AttrCrit: return "AttrCrit";
-		case ETab0Field::AttrCritResistance: return "AttrCritResistance";
-		case ETab0Field::AttrDodge: return "AttrDodge";
-		case ETab0Field::AttrAccuracy: return "AttrAccuracy";
-		case ETab0Field::AttrWorldMoveSpeed: return "AttrWorldMoveSpeed";
-		case ETab0Field::AttrTurnRate: return "AttrTurnRate";
-		case ETab0Field::AttrMagicShield: return "AttrMagicShield";
-		case ETab0Field::AttrHealthShield1: return "AttrHealthShield1";
-		case ETab0Field::AttrHonor: return "AttrHonor";
-		case ETab0Field::AttrCritDamagePercent: return "AttrCritDamagePercent";
-		case ETab0Field::AttrHealthRestoreRate: return "AttrHealthRestoreRate";
-		case ETab0Field::AttrHealthReGenRate: return "AttrHealthReGenRate";
-		case ETab0Field::AttrManaRestoreRate: return "AttrManaRestoreRate";
-		case ETab0Field::AttrManaReGeneRate: return "AttrManaReGeneRate";
-		case ETab0Field::AttrBoxingLevel: return "AttrBoxingLevel";
-		case ETab0Field::AttrBoxingExp: return "AttrBoxingExp";
-		case ETab0Field::AttrFencingLevel: return "AttrFencingLevel";
-		case ETab0Field::AttrFencingExp: return "AttrFencingExp";
-		case ETab0Field::AttrSabreLevel: return "AttrSabreLevel";
-		case ETab0Field::AttrSabreExp: return "AttrSabreExp";
-		case ETab0Field::AttrSpearLevel: return "AttrSpearLevel";
-		case ETab0Field::AttrSpearExp: return "AttrSpearExp";
-		case ETab0Field::AttrHiddenWeaponsLevel: return "AttrHiddenWeaponsLevel";
-		case ETab0Field::AttrHiddenWeaponsExp: return "AttrHiddenWeaponsExp";
-		case ETab0Field::AttrOtherWeaponsLevel: return "AttrOtherWeaponsLevel";
-		case ETab0Field::AttrOtherWeaponsExp: return "AttrOtherWeaponsExp";
-		default: return "Unknown";
-		}
+		const FTab0FieldMeta* Meta = FindTab0FieldMeta(Field);
+		return Meta ? Meta->Tag : "Unknown";
 	}
 
 	int32 RoundToInt(double Value)
@@ -271,53 +308,15 @@ namespace
 		if (!Title || !OutField || !OutInteger)
 			return false;
 
-		*OutInteger = true;
-
-		if (wcscmp(Title, L"金钱") == 0) { *OutField = ETab0Field::Money; return true; }
-		if (wcscmp(Title, L"武学点") == 0) { *OutField = ETab0Field::SkillExp; return true; }
-		if (wcscmp(Title, L"经脉点") == 0) { *OutField = ETab0Field::JingMaiPoint; return true; }
-		if (wcscmp(Title, L"门派贡献") == 0) { *OutField = ETab0Field::GuildHonor; return true; }
-		if (wcscmp(Title, L"继承点") == 0) { *OutField = ETab0Field::InheritPoint; return true; }
-		if (wcscmp(Title, L"等级") == 0) { *OutField = ETab0Field::AttrLevel; return true; }
-		if (wcscmp(Title, L"钓鱼等级") == 0) { *OutField = ETab0Field::FishingLevelInt; return true; }
-		if (wcscmp(Title, L"气血") == 0) { *OutField = ETab0Field::AttrHealth; return true; }
-		if (wcscmp(Title, L"气血上限") == 0) { *OutField = ETab0Field::AttrMaxHealth; return true; }
-		if (wcscmp(Title, L"真气") == 0) { *OutField = ETab0Field::AttrMana; return true; }
-		if (wcscmp(Title, L"真气上限") == 0) { *OutField = ETab0Field::AttrMaxMana; return true; }
-		if (wcscmp(Title, L"精力") == 0) { *OutField = ETab0Field::AttrJingLi; return true; }
-		if (wcscmp(Title, L"精力上限") == 0) { *OutField = ETab0Field::AttrMaxJingLi; return true; }
-		if (wcscmp(Title, L"力道") == 0) { *OutField = ETab0Field::AttrStrength; return true; }
-		if (wcscmp(Title, L"根骨") == 0) { *OutField = ETab0Field::AttrConstitution; return true; }
-		if (wcscmp(Title, L"身法") == 0) { *OutField = ETab0Field::AttrAgility; return true; }
-		if (wcscmp(Title, L"内功") == 0) { *OutField = ETab0Field::AttrNeiLi; return true; }
-		if (wcscmp(Title, L"攻击") == 0) { *OutField = ETab0Field::AttrAttackPower; return true; }
-		if (wcscmp(Title, L"防御") == 0) { *OutField = ETab0Field::AttrDefense; return true; }
-		if (wcscmp(Title, L"暴击") == 0) { *OutField = ETab0Field::AttrCrit; return true; }
-		if (wcscmp(Title, L"暴击抗性") == 0) { *OutField = ETab0Field::AttrCritResistance; return true; }
-		if (wcscmp(Title, L"闪避") == 0) { *OutField = ETab0Field::AttrDodge; return true; }
-		if (wcscmp(Title, L"命中") == 0) { *OutField = ETab0Field::AttrAccuracy; return true; }
-		if (wcscmp(Title, L"移动") == 0) { *OutField = ETab0Field::AttrWorldMoveSpeed; return true; }
-		if (wcscmp(Title, L"聚气速率") == 0) { *OutField = ETab0Field::AttrTurnRate; return true; }
-		if (wcscmp(Title, L"真气护盾") == 0) { *OutField = ETab0Field::AttrMagicShield; return true; }
-		if (wcscmp(Title, L"气血护盾") == 0) { *OutField = ETab0Field::AttrHealthShield1; return true; }
-		if (wcscmp(Title, L"名声") == 0) { *OutField = ETab0Field::AttrHonor; return true; }
-		if (wcscmp(Title, L"暴击伤害百分比") == 0) { *OutField = ETab0Field::AttrCritDamagePercent; return true; }
-		if (wcscmp(Title, L"气血恢复速率1") == 0) { *OutField = ETab0Field::AttrHealthRestoreRate; return true; }
-		if (wcscmp(Title, L"气血恢复速率2") == 0) { *OutField = ETab0Field::AttrHealthReGenRate; return true; }
-		if (wcscmp(Title, L"真气恢复速率1") == 0) { *OutField = ETab0Field::AttrManaRestoreRate; return true; }
-		if (wcscmp(Title, L"真气恢复速率2") == 0) { *OutField = ETab0Field::AttrManaReGeneRate; return true; }
-		if (wcscmp(Title, L"拳掌精通") == 0) { *OutField = ETab0Field::AttrBoxingLevel; return true; }
-		if (wcscmp(Title, L"拳掌经验") == 0) { *OutField = ETab0Field::AttrBoxingExp; return true; }
-		if (wcscmp(Title, L"剑法精通") == 0) { *OutField = ETab0Field::AttrFencingLevel; return true; }
-		if (wcscmp(Title, L"剑法经验") == 0) { *OutField = ETab0Field::AttrFencingExp; return true; }
-		if (wcscmp(Title, L"刀法精通") == 0) { *OutField = ETab0Field::AttrSabreLevel; return true; }
-		if (wcscmp(Title, L"刀法经验") == 0) { *OutField = ETab0Field::AttrSabreExp; return true; }
-		if (wcscmp(Title, L"枪棍精通") == 0) { *OutField = ETab0Field::AttrSpearLevel; return true; }
-		if (wcscmp(Title, L"枪棍经验") == 0) { *OutField = ETab0Field::AttrSpearExp; return true; }
-		if (wcscmp(Title, L"暗器精通") == 0) { *OutField = ETab0Field::AttrHiddenWeaponsLevel; return true; }
-		if (wcscmp(Title, L"暗器经验") == 0) { *OutField = ETab0Field::AttrHiddenWeaponsExp; return true; }
-		if (wcscmp(Title, L"其他武器精通") == 0) { *OutField = ETab0Field::AttrOtherWeaponsLevel; return true; }
-		if (wcscmp(Title, L"其他武器经验") == 0) { *OutField = ETab0Field::AttrOtherWeaponsExp; return true; }
+		for (size_t i = 0; i < kTab0FieldMapSize; ++i)
+		{
+			if (kTab0FieldMap[i].Title && wcscmp(Title, kTab0FieldMap[i].Title) == 0)
+			{
+				*OutField = kTab0FieldMap[i].Field;
+				*OutInteger = kTab0FieldMap[i].bInteger;
+				return true;
+			}
+		}
 		return false;
 	}
 
@@ -326,99 +325,16 @@ namespace
 		if (!AttrSet)
 			return nullptr;
 
-		switch (Field)
-		{
-		case ETab0Field::AttrLevel: return &AttrSet->Level;
-		case ETab0Field::AttrHealth: return &AttrSet->Health;
-		case ETab0Field::AttrMaxHealth: return &AttrSet->MaxHealth;
-		case ETab0Field::AttrMana: return &AttrSet->Mana;
-		case ETab0Field::AttrMaxMana: return &AttrSet->MaxMana;
-		case ETab0Field::AttrJingLi: return &AttrSet->JingLi;
-		case ETab0Field::AttrMaxJingLi: return &AttrSet->MaxJingLi;
-		case ETab0Field::AttrStrength: return &AttrSet->Strength;
-		case ETab0Field::AttrConstitution: return &AttrSet->Constitution;
-		case ETab0Field::AttrAgility: return &AttrSet->Agility;
-		case ETab0Field::AttrNeiLi: return &AttrSet->NeiLi;
-		case ETab0Field::AttrAttackPower: return &AttrSet->AttackPower;
-		case ETab0Field::AttrDefense: return &AttrSet->Defense;
-		case ETab0Field::AttrCrit: return &AttrSet->Crit;
-		case ETab0Field::AttrCritResistance: return &AttrSet->CritResistance;
-		case ETab0Field::AttrDodge: return &AttrSet->Dodge;
-		case ETab0Field::AttrAccuracy: return &AttrSet->Accuracy;
-		case ETab0Field::AttrWorldMoveSpeed: return &AttrSet->WorldMoveSpeed;
-		case ETab0Field::AttrTurnRate: return &AttrSet->TurnRate;
-		case ETab0Field::AttrMagicShield: return &AttrSet->MagicShield;
-		case ETab0Field::AttrHealthShield1: return &AttrSet->HealthShield1;
-		case ETab0Field::AttrHonor: return &AttrSet->Honor;
-		case ETab0Field::AttrCritDamagePercent: return &AttrSet->CritDamagePercent;
-		case ETab0Field::AttrHealthRestoreRate: return &AttrSet->HealthRestoreRate;
-		case ETab0Field::AttrHealthReGenRate: return &AttrSet->HealthReGenRate;
-		case ETab0Field::AttrManaRestoreRate: return &AttrSet->ManaRestoreRate;
-		case ETab0Field::AttrManaReGeneRate: return &AttrSet->ManaReGeneRate;
-		case ETab0Field::AttrBoxingLevel: return &AttrSet->BoxingLevel;
-		case ETab0Field::AttrBoxingExp: return &AttrSet->BoxingExp;
-		case ETab0Field::AttrFencingLevel: return &AttrSet->FencingLevel;
-		case ETab0Field::AttrFencingExp: return &AttrSet->FencingExp;
-		case ETab0Field::AttrSabreLevel: return &AttrSet->SabreLevel;
-		case ETab0Field::AttrSabreExp: return &AttrSet->SabreExp;
-		case ETab0Field::AttrSpearLevel: return &AttrSet->SpearLevel;
-		case ETab0Field::AttrSpearExp: return &AttrSet->SpearExp;
-		case ETab0Field::AttrHiddenWeaponsLevel: return &AttrSet->HiddenWeaponsLevel;
-		case ETab0Field::AttrHiddenWeaponsExp: return &AttrSet->HiddenWeaponsExp;
-		case ETab0Field::AttrOtherWeaponsLevel: return &AttrSet->OtherWeaponsLevel;
-		case ETab0Field::AttrOtherWeaponsExp: return &AttrSet->OtherWeaponsExp;
-		default:
+		const FTab0FieldMeta* Meta = FindTab0FieldMeta(Field);
+		if (!Meta || !Meta->Resolver)
 			return nullptr;
-		}
+		return Meta->Resolver(AttrSet);
 	}
 
 	const wchar_t* ResolveAttrFieldName(ETab0Field Field)
 	{
-		switch (Field)
-		{
-		case ETab0Field::AttrLevel: return L"Level";
-		case ETab0Field::AttrHealth: return L"Health";
-		case ETab0Field::AttrMaxHealth: return L"MaxHealth";
-		case ETab0Field::AttrMana: return L"Mana";
-		case ETab0Field::AttrMaxMana: return L"MaxMana";
-		case ETab0Field::AttrJingLi: return L"JingLi";
-		case ETab0Field::AttrMaxJingLi: return L"MaxJingLi";
-		case ETab0Field::AttrStrength: return L"Strength";
-		case ETab0Field::AttrConstitution: return L"Constitution";
-		case ETab0Field::AttrAgility: return L"Agility";
-		case ETab0Field::AttrNeiLi: return L"NeiLi";
-		case ETab0Field::AttrAttackPower: return L"AttackPower";
-		case ETab0Field::AttrDefense: return L"Defense";
-		case ETab0Field::AttrCrit: return L"Crit";
-		case ETab0Field::AttrCritResistance: return L"CritResistance";
-		case ETab0Field::AttrDodge: return L"Dodge";
-		case ETab0Field::AttrAccuracy: return L"Accuracy";
-		case ETab0Field::AttrWorldMoveSpeed: return L"WorldMoveSpeed";
-		case ETab0Field::AttrTurnRate: return L"TurnRate";
-		case ETab0Field::AttrMagicShield: return L"MagicShield";
-		case ETab0Field::AttrHealthShield1: return L"HealthShield1";
-		case ETab0Field::AttrHonor: return L"Honor";
-		case ETab0Field::AttrCritDamagePercent: return L"CritDamagePercent";
-		case ETab0Field::AttrHealthRestoreRate: return L"HealthRestoreRate";
-		case ETab0Field::AttrHealthReGenRate: return L"HealthReGenRate";
-		case ETab0Field::AttrManaRestoreRate: return L"ManaRestoreRate";
-		case ETab0Field::AttrManaReGeneRate: return L"ManaReGeneRate";
-		case ETab0Field::AttrBoxingLevel: return L"BoxingLevel";
-		case ETab0Field::AttrBoxingExp: return L"BoxingExp";
-		case ETab0Field::AttrFencingLevel: return L"FencingLevel";
-		case ETab0Field::AttrFencingExp: return L"FencingExp";
-		case ETab0Field::AttrSabreLevel: return L"SabreLevel";
-		case ETab0Field::AttrSabreExp: return L"SabreExp";
-		case ETab0Field::AttrSpearLevel: return L"SpearLevel";
-		case ETab0Field::AttrSpearExp: return L"SpearExp";
-		case ETab0Field::AttrHiddenWeaponsLevel: return L"HiddenWeaponsLevel";
-		case ETab0Field::AttrHiddenWeaponsExp: return L"HiddenWeaponsExp";
-		case ETab0Field::AttrOtherWeaponsLevel: return L"OtherWeaponsLevel";
-		case ETab0Field::AttrOtherWeaponsExp: return L"OtherWeaponsExp";
-		case ETab0Field::FishingLevelInt: return L"FishingLevel";
-		default:
-			return nullptr;
-		}
+		const FTab0FieldMeta* Meta = FindTab0FieldMeta(Field);
+		return Meta ? Meta->AttrName : nullptr;
 	}
 
 	bool BuildGameplayAttributeByField(ETab0Field Field, FGameplayAttribute* OutAttr)

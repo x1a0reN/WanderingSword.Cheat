@@ -58,6 +58,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Core\CheatState.cpp" />
+    <ClCompile Include="..\InlineHook.cpp" />
     <ClCompile Include="Utility\Logging.cpp" />
     <ClCompile Include="Utility\GCManager.cpp" />
     <ClCompile Include="Widget\WidgetUtils.cpp" />
@@ -102,6 +103,7 @@
     <ClInclude Include="Widget\PanelManager.hpp" />
     <ClInclude Include="Core\FrameHook.hpp" />
     <ClInclude Include="..\VTHook.hpp" />
+    <ClInclude Include="..\InlineHook.hpp" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

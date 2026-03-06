@@ -5,17 +5,17 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	Container->ClearChildren();
 	ClearItemBrowserState();
-	GTab1ItemNoDecreaseToggle = nullptr;
-	GTab1ItemGainMultiplierToggle = nullptr;
-	GTab1ItemGainMultiplierSlider = nullptr;
-	GTab1AllItemsSellableToggle = nullptr;
-	GTab1DropRate100Toggle = nullptr;
-	GTab1CraftEffectMultiplierToggle = nullptr;
-	GTab1CraftItemIncrementSlider = nullptr;
-	GTab1CraftExtraEffectSlider = nullptr;
-	GTab1MaxExtraAffixesToggle = nullptr;
-	GTab1IgnoreItemUseCountToggle = nullptr;
-	GTab1IgnoreItemRequirementsToggle = nullptr;
+	GTab1.ItemNoDecreaseToggle = nullptr;
+	GTab1.ItemGainMultiplierToggle = nullptr;
+	GTab1.ItemGainMultiplierSlider = nullptr;
+	GTab1.AllItemsSellableToggle = nullptr;
+	GTab1.DropRate100Toggle = nullptr;
+	GTab1.CraftEffectMultiplierToggle = nullptr;
+	GTab1.CraftItemIncrementSlider = nullptr;
+	GTab1.CraftExtraEffectSlider = nullptr;
+	GTab1.MaxExtraAffixesToggle = nullptr;
+	GTab1.IgnoreItemUseCountToggle = nullptr;
+	GTab1.IgnoreItemRequirementsToggle = nullptr;
 	int Count = 0;
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
@@ -28,13 +28,13 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		auto* Item = CreateToggleItem(PC, Title);
 		if (Item)
 		{
-			if (wcscmp(Title, L"物品不减") == 0) GTab1ItemNoDecreaseToggle = Item;
-			else if (wcscmp(Title, L"物品获得加倍") == 0) GTab1ItemGainMultiplierToggle = Item;
-			else if (wcscmp(Title, L"所有物品可出售") == 0) GTab1AllItemsSellableToggle = Item;
-			else if (wcscmp(Title, L"掉落率100%") == 0) GTab1DropRate100Toggle = Item;
-			else if (wcscmp(Title, L"锻造制衣效果加倍") == 0) GTab1CraftEffectMultiplierToggle = Item;
-			else if (wcscmp(Title, L"无视物品使用次数") == 0) GTab1IgnoreItemUseCountToggle = Item;
-			else if (wcscmp(Title, L"无视物品使用要求") == 0) GTab1IgnoreItemRequirementsToggle = Item;
+			if (wcscmp(Title, L"物品不减") == 0) GTab1.ItemNoDecreaseToggle = Item;
+			else if (wcscmp(Title, L"物品获得加倍") == 0) GTab1.ItemGainMultiplierToggle = Item;
+			else if (wcscmp(Title, L"所有物品可出售") == 0) GTab1.AllItemsSellableToggle = Item;
+			else if (wcscmp(Title, L"掉落率100%") == 0) GTab1.DropRate100Toggle = Item;
+			else if (wcscmp(Title, L"锻造制衣效果加倍") == 0) GTab1.CraftEffectMultiplierToggle = Item;
+			else if (wcscmp(Title, L"无视物品使用次数") == 0) GTab1.IgnoreItemUseCountToggle = Item;
+			else if (wcscmp(Title, L"无视物品使用要求") == 0) GTab1.IgnoreItemRequirementsToggle = Item;
 
 			if (Box) Box->AddChild(Item);
 			else if (OptionsBox) OptionsBox->AddChild(Item);
@@ -63,9 +63,9 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 					rememberedValue = it->second;
 			}
 
-			if (wcscmp(Title, L"加倍倍数") == 0) GTab1ItemGainMultiplierSlider = Item;
-			else if (wcscmp(Title, L"道具增量效果倍率") == 0) GTab1CraftItemIncrementSlider = Item;
-			else if (wcscmp(Title, L"额外效果倍率") == 0) GTab1CraftExtraEffectSlider = Item;
+			if (wcscmp(Title, L"加倍倍数") == 0) GTab1.ItemGainMultiplierSlider = Item;
+			else if (wcscmp(Title, L"道具增量效果倍率") == 0) GTab1.CraftItemIncrementSlider = Item;
+			else if (wcscmp(Title, L"额外效果倍率") == 0) GTab1.CraftExtraEffectSlider = Item;
 
 			// 统一倍率滑块范围：0-10
 			if (Item->VolumeSlider)
@@ -130,7 +130,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		AddSlider(RatioBox, L"额外效果倍率");
 
 		auto* LimitBox = AddSubPanel(L"限制与词条");
-		GTab1MaxExtraAffixesToggle = AddToggle(LimitBox, L"锻造制衣最大额外效果词条数");
+		GTab1.MaxExtraAffixesToggle = AddToggle(LimitBox, L"锻造制衣最大额外效果词条数");
 		AddToggle(LimitBox, L"无视物品使用次数");
 		AddToggle(LimitBox, L"无视物品使用要求");
 	}
@@ -144,7 +144,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		AddToggle(nullptr, L"锻造制衣效果加倍");
 		AddSlider(nullptr, L"道具增量效果倍率");
 		AddSlider(nullptr, L"额外效果倍率");
-		GTab1MaxExtraAffixesToggle = AddToggle(nullptr, L"最大额外词条数");
+		GTab1.MaxExtraAffixesToggle = AddToggle(nullptr, L"最大额外词条数");
 		AddToggle(nullptr, L"无视物品使用次数");
 		AddToggle(nullptr, L"无视物品使用要求");
 	}
@@ -198,16 +198,16 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	}
 
 	BuildItemCache();
-	GItemQuantityEdit = nullptr;
-	GItemCategoryDD = CreateVideoItemWithOptions(PC,
+	GItemBrowser.QuantityEdit = nullptr;
+	GItemBrowser.CategoryDD = CreateVideoItemWithOptions(PC,
 		L"\u2501\u2501\u7269\u54C1\u7BA1\u7406\u2501\u2501",
 		{ L"\u5168\u90E8", L"\u6B66\u5668", L"\u9632\u5177", L"\u6D88\u8017\u54C1", L"\u5176\u4ED6" });
-	GItemLastCatIdx = GUIRememberState.ItemCategoryIndex;
-	if (GItemLastCatIdx < 0 || GItemLastCatIdx > 4)
-		GItemLastCatIdx = 0;
+	GItemBrowser.LastCatIdx = GUIRememberState.ItemCategoryIndex;
+	if (GItemBrowser.LastCatIdx < 0 || GItemBrowser.LastCatIdx > 4)
+		GItemBrowser.LastCatIdx = 0;
 
-	GItemQuantityRow = nullptr;
-	if (GItemCategoryDD)
+	GItemBrowser.QuantityRow = nullptr;
+	if (GItemBrowser.CategoryDD)
 	{
 		auto* SearchEdit = static_cast<UEditableTextBox*>(
 			CreateRawWidget(UEditableTextBox::StaticClass(), Outer));
@@ -257,36 +257,36 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			}
 			SearchWidget->SetRenderTranslation(FVector2D{ 0.0f, -0.75f });
 
-			if (GItemCategoryDD->TXT_Title)
+			if (GItemBrowser.CategoryDD->TXT_Title)
 			{
-				GItemCategoryDD->TXT_Title->SetText(MakeText(L""));
-				GItemCategoryDD->TXT_Title->SetVisibility(ESlateVisibility::Collapsed);
-				UPanelWidget* TitleParent = GItemCategoryDD->TXT_Title->GetParent();
+				GItemBrowser.CategoryDD->TXT_Title->SetText(MakeText(L""));
+				GItemBrowser.CategoryDD->TXT_Title->SetVisibility(ESlateVisibility::Collapsed);
+				UPanelWidget* TitleParent = GItemBrowser.CategoryDD->TXT_Title->GetParent();
 				if (TitleParent)
 				{
 					UPanelSlot* SearchPanelSlot = nullptr;
 					if (TitleParent->IsA(UHorizontalBox::StaticClass()))
 					{
 						auto* HParent = static_cast<UHorizontalBox*>(TitleParent);
-						HParent->RemoveChild(GItemCategoryDD->TXT_Title);
+						HParent->RemoveChild(GItemBrowser.CategoryDD->TXT_Title);
 
 						bool bReaddCombo = false;
-						if (GItemCategoryDD->CB_Main && GItemCategoryDD->CB_Main->GetParent() == HParent)
+						if (GItemBrowser.CategoryDD->CB_Main && GItemBrowser.CategoryDD->CB_Main->GetParent() == HParent)
 						{
-							HParent->RemoveChild(GItemCategoryDD->CB_Main);
+							HParent->RemoveChild(GItemBrowser.CategoryDD->CB_Main);
 							bReaddCombo = true;
 						}
 
 						SearchPanelSlot = HParent->AddChildToHorizontalBox(SearchWidget);
 						if (bReaddCombo)
 						{
-							UWidget* ComboWidget = GItemCategoryDD->CB_Main;
+							UWidget* ComboWidget = GItemBrowser.CategoryDD->CB_Main;
 							auto* ComboSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
-							if (ComboSize && GItemCategoryDD->CB_Main)
+							if (ComboSize && GItemBrowser.CategoryDD->CB_Main)
 							{
 								ComboSize->SetWidthOverride(260.0f);
 								ComboSize->SetHeightOverride(40.0f);
-								ComboSize->SetContent(GItemCategoryDD->CB_Main);
+								ComboSize->SetContent(GItemBrowser.CategoryDD->CB_Main);
 								ComboWidget = ComboSize;
 							}
 
@@ -313,9 +313,9 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 						auto* ReplaceRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
 						if (ReplaceRow)
 						{
-							TitleParent->RemoveChild(GItemCategoryDD->TXT_Title);
-							if (GItemCategoryDD->CB_Main && GItemCategoryDD->CB_Main->GetParent() == TitleParent)
-								TitleParent->RemoveChild(GItemCategoryDD->CB_Main);
+							TitleParent->RemoveChild(GItemBrowser.CategoryDD->TXT_Title);
+							if (GItemBrowser.CategoryDD->CB_Main && GItemBrowser.CategoryDD->CB_Main->GetParent() == TitleParent)
+								TitleParent->RemoveChild(GItemBrowser.CategoryDD->CB_Main);
 
 							auto* NewSearchSlot = ReplaceRow->AddChildToHorizontalBox(SearchWidget);
 							if (NewSearchSlot)
@@ -331,15 +331,15 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 								NewSearchSlot->SetPadding(SearchPad);
 							}
 
-							if (GItemCategoryDD->CB_Main)
+							if (GItemBrowser.CategoryDD->CB_Main)
 							{
-								UWidget* ComboWidget = GItemCategoryDD->CB_Main;
+								UWidget* ComboWidget = GItemBrowser.CategoryDD->CB_Main;
 								auto* ComboSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
 								if (ComboSize)
 								{
 									ComboSize->SetWidthOverride(300.0f);
 									ComboSize->SetHeightOverride(40.0f);
-									ComboSize->SetContent(GItemCategoryDD->CB_Main);
+									ComboSize->SetContent(GItemBrowser.CategoryDD->CB_Main);
 									ComboWidget = ComboSize;
 								}
 
@@ -402,20 +402,20 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			}
 		}
 
-		if (BrowserBox) BrowserBox->AddChild(GItemCategoryDD);
-		else Container->AddChild(GItemCategoryDD);
+		if (BrowserBox) BrowserBox->AddChild(GItemBrowser.CategoryDD);
+		else Container->AddChild(GItemBrowser.CategoryDD);
 		Count++;
 	}
 
-	GItemPagerRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
-	if (GItemPagerRow)
+	GItemBrowser.PagerRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
+	if (GItemBrowser.PagerRow)
 	{
 		UWidget* PrevLayout = nullptr;
-		GItemPrevPageBtn = CreateGameStyleButton(PC, L"上一页", "ItemPrevPage",
+		GItemBrowser.PrevPageBtn = CreateGameStyleButton(PC, L"上一页", "ItemPrevPage",
 			136.0f, 48.0f, &PrevLayout);
 		if (PrevLayout)
 		{
-			auto* PrevSlot = GItemPagerRow->AddChildToHorizontalBox(PrevLayout);
+			auto* PrevSlot = GItemBrowser.PagerRow->AddChildToHorizontalBox(PrevLayout);
 			if (PrevSlot)
 			{
 				PrevSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
@@ -423,14 +423,14 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			}
 		}
 
-		GItemPageLabel = static_cast<UTextBlock*>(CreateRawWidget(UTextBlock::StaticClass(), Outer));
-		if (GItemPageLabel)
+		GItemBrowser.PageLabel = static_cast<UTextBlock*>(CreateRawWidget(UTextBlock::StaticClass(), Outer));
+		if (GItemBrowser.PageLabel)
 		{
-			GItemPageLabel->SetText(MakeText(L"1/1"));
-			GItemPageLabel->SetJustification(ETextJustify::Center);
-			GItemPageLabel->SetMinDesiredWidth(92.0f);
-			GItemPageLabel->Font.Size = 18;
-			auto* LabelSlot = GItemPagerRow->AddChildToHorizontalBox(GItemPageLabel);
+			GItemBrowser.PageLabel->SetText(MakeText(L"1/1"));
+			GItemBrowser.PageLabel->SetJustification(ETextJustify::Center);
+			GItemBrowser.PageLabel->SetMinDesiredWidth(92.0f);
+			GItemBrowser.PageLabel->Font.Size = 18;
+			auto* LabelSlot = GItemBrowser.PagerRow->AddChildToHorizontalBox(GItemBrowser.PageLabel);
 			if (LabelSlot)
 			{
 				LabelSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
@@ -439,11 +439,11 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		}
 
 		UWidget* NextLayout = nullptr;
-		GItemNextPageBtn = CreateGameStyleButton(PC, L"下一页", "ItemNextPage",
+		GItemBrowser.NextPageBtn = CreateGameStyleButton(PC, L"下一页", "ItemNextPage",
 			136.0f, 48.0f, &NextLayout);
 		if (NextLayout)
 		{
-			auto* NextSlot = GItemPagerRow->AddChildToHorizontalBox(NextLayout);
+			auto* NextSlot = GItemBrowser.PagerRow->AddChildToHorizontalBox(NextLayout);
 			if (NextSlot)
 			{
 				NextSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
@@ -452,16 +452,16 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		}
 	}
 
-	GItemGridPanel = nullptr;
-	GItemListView = nullptr;
-	for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+	GItemBrowser.GridPanel = nullptr;
+	GItemBrowser.ListView = nullptr;
+	for (int32 i = 0; i < kItemsPerPage; ++i)
 	{
-		GItemSlotButtons[i] = nullptr;
-		GItemSlotImages[i] = nullptr;
-		GItemSlotQualityBorders[i] = nullptr;
-		GItemSlotEntryWidgets[i] = nullptr;
-		GItemSlotItemIndices[i] = -1;
-		GItemSlotWasPressed[i] = false;
+		GItemBrowser.SlotButtons[i] = nullptr;
+		GItemBrowser.SlotImages[i] = nullptr;
+		GItemBrowser.SlotQualityBorders[i] = nullptr;
+		GItemBrowser.SlotEntryWidgets[i] = nullptr;
+		GItemBrowser.SlotItemIndices[i] = -1;
+		GItemBrowser.SlotWasPressed[i] = false;
 	}
 
 	UWidget* GridRootWidget = nullptr;
@@ -487,8 +487,8 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	if (GridRootWidget && BuiltListView)
 	{
-		GItemGridPanel = GridRootWidget;
-		GItemListView = BuiltListView;
+		GItemBrowser.GridPanel = GridRootWidget;
+		GItemBrowser.ListView = BuiltListView;
 		MarkAsGCRoot(static_cast<UObject*>(GridRootWidget));
 
 		// 强制指定 Entry 类，避免错误 entry blueprint 导致显示错乱。
@@ -496,13 +496,13 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (!EntryCls)
 			EntryCls = UObject::FindClass("BPEntry_Item_WDT_C");
 		if (EntryCls)
-			GItemListView->EntryWidgetClass = EntryCls;
+			GItemBrowser.ListView->EntryWidgetClass = EntryCls;
 
-		GItemListView->SetSelectionMode(ESelectionMode::Single);
-		GItemListView->BP_ClearSelection();
-		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemListView), UTileView::StaticClass()))
+		GItemBrowser.ListView->SetSelectionMode(ESelectionMode::Single);
+		GItemBrowser.ListView->BP_ClearSelection();
+		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemBrowser.ListView), UTileView::StaticClass()))
 		{
-			auto* Tile = static_cast<UTileView*>(GItemListView);
+			auto* Tile = static_cast<UTileView*>(GItemBrowser.ListView);
 			// 8 列布局：激进收窄，优先压缩横向占用。
 			Tile->SetEntryWidth(80.0f);
 			Tile->SetEntryHeight(88.0f);
@@ -526,13 +526,13 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 		LOGI_STREAM("Tab1Items")
 			<< "[SDK] ItemGrid created: widget=0x" << std::hex << reinterpret_cast<uintptr_t>(GridRootWidget)
-			<< " listView=0x" << std::hex << reinterpret_cast<uintptr_t>(GItemListView)
+			<< " listView=0x" << std::hex << reinterpret_cast<uintptr_t>(GItemBrowser.ListView)
 			<< " source=" << (bUsingPlainTile ? "PlainTileView" : "BP_ItemGridWDT")
 			<< " entryClass=0x" << std::hex
-			<< reinterpret_cast<uintptr_t>(GItemListView ? GItemListView->EntryWidgetClass.Get() : nullptr)
+			<< reinterpret_cast<uintptr_t>(GItemBrowser.ListView ? GItemBrowser.ListView->EntryWidgetClass.Get() : nullptr)
 			<< " entryClassName="
-			<< ((GItemListView && GItemListView->EntryWidgetClass.Get())
-				? GItemListView->EntryWidgetClass.Get()->GetName().c_str()
+			<< ((GItemBrowser.ListView && GItemBrowser.ListView->EntryWidgetClass.Get())
+				? GItemBrowser.ListView->EntryWidgetClass.Get()->GetName().c_str()
 				: "null")
 			<< std::dec << "\n";
 	}
@@ -541,13 +541,13 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		LOGE_STREAM("Tab1Items") << "[SDK] ItemGrid create failed (BP_ItemGridWDT_C)\n";
 	}
 
-	if (GItemPagerRow)
+	if (GItemBrowser.PagerRow)
 	{
 		UPanelSlot* PagerSlot = nullptr;
 		if (BrowserBox)
-			PagerSlot = BrowserBox->AddChild(GItemPagerRow);
+			PagerSlot = BrowserBox->AddChild(GItemBrowser.PagerRow);
 		else
-			PagerSlot = Container->AddChild(GItemPagerRow);
+			PagerSlot = Container->AddChild(GItemBrowser.PagerRow);
 
 		if (PagerSlot && PagerSlot->IsA(UVerticalBoxSlot::StaticClass()))
 		{
@@ -566,27 +566,27 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	AddPanelWithFixedGap(BrowserPanel, 0.0f, 8.0f);
 
-	GItemCurrentPage = 0;
-	if (GItemCategoryDD && GItemCategoryDD->CB_Main &&
-		IsSafeLiveObject(static_cast<UObject*>(GItemCategoryDD->CB_Main)))
+	GItemBrowser.CurrentPage = 0;
+	if (GItemBrowser.CategoryDD && GItemBrowser.CategoryDD->CB_Main &&
+		IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.CategoryDD->CB_Main)))
 	{
-		const int32 OptCount = GItemCategoryDD->CB_Main->GetOptionCount();
-		int32 RestoreIdx = GItemLastCatIdx;
+		const int32 OptCount = GItemBrowser.CategoryDD->CB_Main->GetOptionCount();
+		int32 RestoreIdx = GItemBrowser.LastCatIdx;
 		if (OptCount <= 0)
 			RestoreIdx = 0;
 		else if (RestoreIdx >= OptCount)
 			RestoreIdx = OptCount - 1;
 		if (RestoreIdx < 0)
 			RestoreIdx = 0;
-		GItemCategoryDD->CB_Main->SetSelectedIndex(RestoreIdx);
-		GItemLastCatIdx = RestoreIdx;
+		GItemBrowser.CategoryDD->CB_Main->SetSelectedIndex(RestoreIdx);
+		GItemBrowser.LastCatIdx = RestoreIdx;
 	}
 
-	GItemCurrentPage = (GUIRememberState.ItemCurrentPage >= 0) ? GUIRememberState.ItemCurrentPage : 0;
-	GItemAddQuantity = (GUIRememberState.ItemAddQuantity > 0) ? GUIRememberState.ItemAddQuantity : 1;
+	GItemBrowser.CurrentPage = (GUIRememberState.ItemCurrentPage >= 0) ? GUIRememberState.ItemCurrentPage : 0;
+	GItemBrowser.AddQuantity = (GUIRememberState.ItemAddQuantity > 0) ? GUIRememberState.ItemAddQuantity : 1;
 	UpdateItemSearchKeywordFromEdit();
 
-	FilterItems(GItemLastCatIdx);
+	FilterItems(GItemBrowser.LastCatIdx);
 	RefreshItemPage();
 	LOGI_STREAM("Tab1Items") << "[SDK] ItemGrid init immediate: created and refreshed\n";
 }
@@ -730,40 +730,6 @@ namespace
         0x31, 0xC0                                      // xor eax,eax
     };
 
-    uintptr_t ScanModulePatternRobust(const char* moduleName, const char* pattern)
-    {
-        if (!moduleName || !pattern)
-            return 0;
-
-        // 1) 优先扫可执行段
-        uintptr_t addr = InlineHook::HookManager::AobScanModuleFirst(moduleName, pattern, true);
-        if (addr != 0)
-            return addr;
-
-        // 2) 再扫模块可读段
-        addr = InlineHook::HookManager::AobScanModuleFirst(moduleName, pattern, false);
-        if (addr != 0)
-            return addr;
-
-        // 3) 回退：按模块地址范围做通用扫描（绕过模块节区过滤逻辑）
-        HMODULE hModule = GetModuleHandleA(moduleName);
-        if (!hModule)
-            return 0;
-
-        const uintptr_t base = reinterpret_cast<uintptr_t>(hModule);
-        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-        if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE)
-            return 0;
-        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + static_cast<uintptr_t>(dos->e_lfanew));
-        if (!nt || nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.SizeOfImage == 0)
-            return 0;
-
-        const uintptr_t end = base + static_cast<uintptr_t>(nt->OptionalHeader.SizeOfImage);
-        if (end <= base)
-            return 0;
-
-        return InlineHook::HookManager::AobScanFirst(pattern, base, end, false);
-    }
 }
 
 void EnableItemGainMultiplierHook();
@@ -974,7 +940,7 @@ void EnableAllItemsSellable()
     // 1) 搜索所有物品可出售特征码
     if (GAllItemsSellableAddr == 0)
     {
-        foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
+        foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] AllItemsSellable AobScan failed (pattern可能已随版本变化)\n";
@@ -997,7 +963,7 @@ void EnableAllItemsSellable()
     // 2) 搜索任务物品可出售特征码并启用
     if (GIncludeQuestItemsAddr == 0)
     {
-        foundAddr2 = ScanModulePatternRobust("JH-Win64-Shipping.exe", kQuestItemsSellablePattern);
+        foundAddr2 = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kQuestItemsSellablePattern);
         if (foundAddr2 == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] QuestItemsSellable AobScan failed\n";
@@ -1046,7 +1012,7 @@ void EnableDropRate100Patch()
 {
     if (GDropRate100Addr == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kDropRate100Pattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kDropRate100Pattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] DropRate100 AobScan failed, pattern not found\n";
@@ -1090,7 +1056,7 @@ void EnableIgnoreItemUseCountFeature()
 {
     if (GIgnoreItemUseCountHookOffset == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemUseCountHookPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemUseCountHookPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount hook AobScan failed, pattern not found\n";
@@ -1129,7 +1095,7 @@ void EnableIgnoreItemUseCountFeature()
 
     if (GIgnoreItemUseCountPatchAddr == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemUseCountPatchPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemUseCountPatchPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount patch AobScan failed, pattern not found\n";
@@ -1177,7 +1143,7 @@ void EnableIgnoreItemRequirementsPatch()
 {
     if (GIgnoreItemRequirementsAddr == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemRequirementsPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreItemRequirementsPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements AobScan failed, pattern not found\n";
@@ -1228,7 +1194,7 @@ void EnableCraftEffectMultiplierHook()
 
     if (GInForgingOffset == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kInForgingPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kInForgingPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect InForging AobScan failed\n";
@@ -1249,7 +1215,7 @@ void EnableCraftEffectMultiplierHook()
 
     if (GForgeEffectOffset == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kForgeEffectPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kForgeEffectPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeEffect AobScan failed\n";
@@ -1270,7 +1236,7 @@ void EnableCraftEffectMultiplierHook()
 
     if (GForgeRandEffectOffset == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kForgeRandEffectPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kForgeRandEffectPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] CraftEffect ForgeRandEffect AobScan failed\n";
@@ -1400,7 +1366,7 @@ void EnableMaxExtraAffixesHooks()
 
     if (GRandActionMaxOffset == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kRandActionMaxPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kRandActionMaxPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes RandActionMax AobScan failed\n";
@@ -1413,7 +1379,7 @@ void EnableMaxExtraAffixesHooks()
 
     if (GQualityResultsOffset == 0)
     {
-        const uintptr_t foundAddr = ScanModulePatternRobust("JH-Win64-Shipping.exe", kQualityResultsPattern);
+        const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kQualityResultsPattern);
         if (foundAddr == 0)
         {
             LOGE_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes QualityResults AobScan failed\n";

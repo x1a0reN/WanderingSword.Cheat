@@ -1,9 +1,9 @@
-﻿#pragma once
+#pragma once
 
 #include "CheatState.hpp"
 
 /// 浠?UItemResManager::ItemDataTable 鐨?RowMap 閬嶅巻鎵€鏈夌墿鍝侊紝
-/// 瑙ｆ瀽 FItemInfoSetting 缁撴瀯骞剁紦瀛樺埌 GAllItems (DefId/鍚嶇О/鍝佽川/瀛愮被鍨?鍥炬爣)銆?
+/// 瑙ｆ瀽 FItemInfoSetting 缁撴瀯骞剁紦瀛樺埌 GItemBrowser.AllItems (DefId/鍚嶇О/鍝佽川/瀛愮被鍨?鍥炬爣)銆?
 void BuildItemCache();
 
 /// 閫氳繃 ProcessEvent 璋冪敤 UImage::SetBrushFromSoftTexture锛?
@@ -14,7 +14,7 @@ void SetImageFromSoftTextureBySDK(UImage* ImageWidget, const uint8* SoftTextureD
 /// 缁撴灉鍐欏叆 GFilteredIndices锛屽苟閲嶇疆褰撳墠椤典负绗?0 椤点€?
 void FilterItems(int32 category);
 
-/// 鍒锋柊褰撳墠椤电殑鐗╁搧鏄剧ず: 鏍规嵁 GItemCurrentPage 鍜?GFilteredIndices
+/// 鍒锋柊褰撳墠椤电殑鐗╁搧鏄剧ず: 鏍规嵁 GItemBrowser.CurrentPage 鍜?GItemBrowser.FilteredIndices
 /// 鏇存柊 24 鏍肩墿鍝佸浘鏍囩綉鏍?+ 缈婚〉鎸夐挳鐘舵€?+ 椤电爜鏍囩銆?
 void RefreshItemPage();
 

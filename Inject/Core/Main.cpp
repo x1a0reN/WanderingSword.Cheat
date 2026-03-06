@@ -14,7 +14,7 @@ static void RemoveAllHooks()
 		return;
 
 	GVCPostRenderHook.Remove();
-	OriginalGVCPostRender = nullptr;
+	GOriginalPostRender = nullptr;
 	LOGI_STREAM("Main") << "[SDK] GVC PostRender unhooked\n";
 
 	DisableItemNoDecreaseHook();
@@ -61,9 +61,9 @@ DWORD MainThread(HMODULE Module)
 		if (GVC)
 		{
 			GVCPostRenderHook = VTableHook(GVC, Offsets::GVCPostRenderIdx);
-			OriginalGVCPostRender = GVCPostRenderHook.Install<GVCPostRenderFn>(HookedGVCPostRender);
+			GOriginalPostRender = GVCPostRenderHook.Install<GVCPostRenderFn>(HookedGVCPostRender);
 
-			if (OriginalGVCPostRender)
+			if (GOriginalPostRender)
 				LOGI_STREAM("Main") << "[SDK] GVC PostRender hooked at index " << Offsets::GVCPostRenderIdx << "\n";
 			else
 				LOGI_STREAM("Main") << "[SDK] Failed to hook GVC PostRender (VirtualProtect failed)\n";

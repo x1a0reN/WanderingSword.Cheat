@@ -1,20 +1,20 @@
-﻿void PopulateTab_Battle(UBPMV_ConfigView2_C* CV, APlayerController* PC)
+void PopulateTab_Battle(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	UPanelWidget* Container = GetOrCreateSlotContainer(CV, CV->InputSlot, "Tab2(InputSlot)");
 	if (!Container) return;
 	Container->ClearChildren();
 
-	GTab2DamageBoostToggle = nullptr;
-	GTab2DamageFriendlyOnlyToggle = nullptr;
-	GTab2SkillNoCooldownToggle = nullptr;
-	GTab2NoEncounterToggle = nullptr;
-	GTab2AllTeammatesInFightToggle = nullptr;
-	GTab2DefeatAsVictoryToggle = nullptr;
-	GTab2NeiGongFillLastSlotToggle = nullptr;
-	GTab2AutoRecoverHpMpToggle = nullptr;
-	GTab2TotalMoveSpeedToggle = nullptr;
-	GTab2DamageMultiplierSlider = nullptr;
-	GTab2MoveSpeedMultiplierSlider = nullptr;
+	GTab2.DamageBoostToggle = nullptr;
+	GTab2.DamageFriendlyOnlyToggle = nullptr;
+	GTab2.SkillNoCooldownToggle = nullptr;
+	GTab2.NoEncounterToggle = nullptr;
+	GTab2.AllTeammatesInFightToggle = nullptr;
+	GTab2.DefeatAsVictoryToggle = nullptr;
+	GTab2.NeiGongFillLastSlotToggle = nullptr;
+	GTab2.AutoRecoverHpMpToggle = nullptr;
+	GTab2.TotalMoveSpeedToggle = nullptr;
+	GTab2.DamageMultiplierSlider = nullptr;
+	GTab2.MoveSpeedMultiplierSlider = nullptr;
 
 	int Count = 0;
 
@@ -94,17 +94,17 @@
 
 	auto* SwitchPanel = CreateCollapsiblePanel(PC, L"战斗开关");
 	auto* SwitchBox = SwitchPanel ? SwitchPanel->CT_Contents : nullptr;
-	GTab2SkillNoCooldownToggle = AddToggle(SwitchBox, L"招式无视冷却");
-	GTab2DamageBoostToggle = AddToggle(SwitchBox, L"战斗加速");
-	GTab2DamageMultiplierSlider = AddSlider(SwitchBox, L"战斗加速倍数");
-	GTab2NoEncounterToggle = AddToggle(SwitchBox, L"不遇敌");
-	GTab2AllTeammatesInFightToggle = AddToggle(SwitchBox, L"全队友参战");
-	GTab2DefeatAsVictoryToggle = AddToggle(SwitchBox, L"战败视为胜利");
-	GTab2NeiGongFillLastSlotToggle = AddToggle(SwitchBox, L"心法填装最后一格");
-	GTab2AutoRecoverHpMpToggle = AddToggle(SwitchBox, L"战斗前自动恢复气血和真气");
-	GTab2TotalMoveSpeedToggle = AddToggle(SwitchBox, L"总移动速度加倍");
-	GTab2MoveSpeedMultiplierSlider = AddSlider(SwitchBox, L"移动倍数");
-	GTab2DamageFriendlyOnlyToggle = AddToggle(SwitchBox, L"只对本方生效");
+	GTab2.SkillNoCooldownToggle = AddToggle(SwitchBox, L"招式无视冷却");
+	GTab2.DamageBoostToggle = AddToggle(SwitchBox, L"战斗加速");
+	GTab2.DamageMultiplierSlider = AddSlider(SwitchBox, L"战斗加速倍数");
+	GTab2.NoEncounterToggle = AddToggle(SwitchBox, L"不遇敌");
+	GTab2.AllTeammatesInFightToggle = AddToggle(SwitchBox, L"全队友参战");
+	GTab2.DefeatAsVictoryToggle = AddToggle(SwitchBox, L"战败视为胜利");
+	GTab2.NeiGongFillLastSlotToggle = AddToggle(SwitchBox, L"心法填装最后一格");
+	GTab2.AutoRecoverHpMpToggle = AddToggle(SwitchBox, L"战斗前自动恢复气血和真气");
+	GTab2.TotalMoveSpeedToggle = AddToggle(SwitchBox, L"总移动速度加倍");
+	GTab2.MoveSpeedMultiplierSlider = AddSlider(SwitchBox, L"移动倍数");
+	GTab2.DamageFriendlyOnlyToggle = AddToggle(SwitchBox, L"只对本方生效");
 	AddPanelWithFixedGap(SwitchPanel, 0.0f, 10.0f);
 }
 
@@ -364,40 +364,7 @@ namespace
 		0x83, 0x79, 0x38, 0x00                                // cmp dword ptr [rcx+38],0
 	};
 
-	uintptr_t ScanModulePatternRobust_Tab2NoCD(const char* moduleName, const char* pattern)
-	{
-		if (!moduleName || !pattern)
-			return 0;
-
-		uintptr_t addr = InlineHook::HookManager::AobScanModuleFirst(moduleName, pattern, true);
-		if (addr != 0)
-			return addr;
-
-		addr = InlineHook::HookManager::AobScanModuleFirst(moduleName, pattern, false);
-		if (addr != 0)
-			return addr;
-
-		HMODULE hModule = GetModuleHandleA(moduleName);
-		if (!hModule)
-			return 0;
-
-		const uintptr_t base = reinterpret_cast<uintptr_t>(hModule);
-		const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-		if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE)
-			return 0;
-
-		const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + static_cast<uintptr_t>(dos->e_lfanew));
-		if (!nt || nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.SizeOfImage == 0)
-			return 0;
-
-		const uintptr_t end = base + static_cast<uintptr_t>(nt->OptionalHeader.SizeOfImage);
-		if (end <= base)
-			return 0;
-
-		return InlineHook::HookManager::AobScanFirst(pattern, base, end, false);
-	}
-
-	uintptr_t ScanPatternInModuleRange(const char* moduleName, const char* pattern, uintptr_t rangeStart, uintptr_t rangeSize)
+uintptr_t ScanPatternInModuleRange(const char* moduleName, const char* pattern, uintptr_t rangeStart, uintptr_t rangeSize)
 	{
 		if (!moduleName || !pattern || rangeStart == 0 || rangeSize == 0)
 			return 0;
@@ -765,7 +732,7 @@ void EnableSkillNoCooldownHooks()
 	const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
 
 	{
-		const uintptr_t fieldAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2JHASCFieldPattern);
+		const uintptr_t fieldAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2JHASCFieldPattern);
 		if (fieldAddr != 0)
 		{
 			int32 parsedOffset = 0;
@@ -779,7 +746,7 @@ void EnableSkillNoCooldownHooks()
 
 	if (GTab2UseSkillOffset == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2UseSkillPattern);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2UseSkillPattern);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] SkillNoCooldown UseSkill AobScan failed\n";
@@ -792,7 +759,7 @@ void EnableSkillNoCooldownHooks()
 
 	if (GTab2SkillNoCDOffset == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2SkillNoCDPattern);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2SkillNoCDPattern);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] SkillNoCooldown SkillNoCD AobScan failed\n";
@@ -886,7 +853,7 @@ void EnableNoEncounterPatch()
 {
 	if (GTab2NoEncounterPatchAddr == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2NoEncounterPattern);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2NoEncounterPattern);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] NoEncounter AobScan failed, pattern not found\n";
@@ -992,7 +959,7 @@ void EnableTotalMoveSpeedHook()
 
 	if (GTab2TotalMoveSpeedOffset == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2TotalMoveSpeedPattern);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2TotalMoveSpeedPattern);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed AobScan failed\n";
@@ -1052,7 +1019,7 @@ void EnableDefeatAsVictoryHook()
 
 	if (GTab2DefeatAsVictoryOffset == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2DefeatAsVictoryPattern);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2DefeatAsVictoryPattern);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] DefeatAsVictory AobScan failed\n";
@@ -1106,7 +1073,7 @@ void EnableNeiGongFillLastSlotFeature()
 				return;
 			}
 			const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
-			const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2NeiGongFillLastSlotPattern);
+			const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2NeiGongFillLastSlotPattern);
 			if (foundAddr == 0)
 			{
 				LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot AobScan failed\n";
@@ -1138,7 +1105,7 @@ void EnableNeiGongFillLastSlotFeature()
 	// 2) 硬编码补丁: AddNeiGongNoLimit+8: db 03
 	if (GTab2AddNeiGongNoLimitPatchAddr == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2AddNeiGongNoLimitPattern);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2AddNeiGongNoLimitPattern);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] AddNeiGongNoLimit AobScan failed\n";
@@ -1167,7 +1134,7 @@ void EnableNeiGongFillLastSlotFeature()
 	// 3) Lua 解码逻辑等价: 解析 RIP 相对地址，写 NeiGongLimit=7
 	if (GTab2NeiGongLimitAddr == 0)
 	{
-		const uintptr_t refAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2NeiGongLimitRefPattern);
+		const uintptr_t refAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2NeiGongLimitRefPattern);
 		if (refAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] NeiGongLimitRef AobScan failed\n";
@@ -1252,7 +1219,7 @@ void EnableAllTeammatesInFightHooks()
 
 	if (GTab2AllInFightOffset1 == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2AllInFightPattern1);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2AllInFightPattern1);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] AllInFight pattern1 scan failed\n";
@@ -1263,7 +1230,7 @@ void EnableAllTeammatesInFightHooks()
 
 	if (GTab2AllInFightOffset2 == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2AllInFightPattern2);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2AllInFightPattern2);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] AllInFight pattern2 scan failed\n";
@@ -1274,7 +1241,7 @@ void EnableAllTeammatesInFightHooks()
 
 	if (GTab2AllInFightOffset3 == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2AllInFightPattern3);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2AllInFightPattern3);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] AllInFight pattern3 scan failed\n";
@@ -1285,7 +1252,7 @@ void EnableAllTeammatesInFightHooks()
 
 	if (GTab2AllInFightOffset4 == 0)
 	{
-		const uintptr_t foundAddr = ScanModulePatternRobust_Tab2NoCD("JH-Win64-Shipping.exe", kTab2AllInFightPattern4);
+		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2AllInFightPattern4);
 		if (foundAddr == 0)
 		{
 			LOGE_STREAM("Tab2Battle") << "[SDK] AllInFight pattern4 scan failed\n";

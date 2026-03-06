@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
@@ -38,16 +38,16 @@ namespace
 
 	bool EnsureLiveInternalWidgetForFrame()
 	{
-		if (!InternalWidget)
+		if (!GInternalWidget)
 			return false;
 
-		auto* Obj = static_cast<UObject*>(InternalWidget);
+		auto* Obj = static_cast<UObject*>(GInternalWidget);
 		if (IsSafeLiveObject(Obj))
 			return true;
 
 		LOGI_STREAM("FrameHook") << "[SDK] FrameHook: stale internal widget pointer detected, reset state\n";
-		InternalWidget = nullptr;
-		InternalWidgetVisible = false;
+		GInternalWidget = nullptr;
+		GInternalWidgetVisible = false;
 		GCachedBtnExit = nullptr;
 		ClearRuntimeWidgetState();
 		return false;
@@ -220,21 +220,8 @@ namespace
 			(Name.find("Handle") != std::string::npos);
 	}
 
-	FWeakObjectPtr ReadWeakAt(UObject* Obj, uintptr_t Offset)
-	{
-		FWeakObjectPtr Out{};
-		if (!Obj)
-			return Out;
-		const uint8* Base = reinterpret_cast<const uint8*>(Obj);
-		Out = *reinterpret_cast<const FWeakObjectPtr*>(Base + Offset);
-		return Out;
-	}
+	// ReadWeakAt / IsSameWeak 已合并到 WidgetUtils (使用 ReadWeakPtrAt / IsSameWeak)
 
-	bool IsSameWeak(const FWeakObjectPtr& A, const FWeakObjectPtr& B)
-	{
-		return A.ObjectIndex == B.ObjectIndex &&
-			A.ObjectSerialNumber == B.ObjectSerialNumber;
-	}
 
 	void ResetBackpackCtxCaptureState()
 	{
@@ -355,7 +342,7 @@ namespace
 
 	void __fastcall HookedItemEntryProcessEvent(const UObject* ThisObj, UFunction* Function, void* Params)
 	{
-		if (ThisObj && Function && InternalWidgetVisible)
+		if (ThisObj && Function && GInternalWidgetVisible)
 		{
 			const std::string FuncName = Function->GetName();
 			if (kVerboseItemEntryProcessEventLogs)
@@ -379,14 +366,14 @@ namespace
 
 	UObject* FindLiveItemEntryForHook()
 	{
-		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+		for (int32 i = 0; i < kItemsPerPage; ++i)
 		{
-			UObject* Obj = static_cast<UObject*>(GItemSlotEntryWidgets[i]);
+			UObject* Obj = static_cast<UObject*>(GItemBrowser.SlotEntryWidgets[i]);
 			if (IsSafeLiveObjectOfClass(Obj, UJHNeoUIItemEntryWDT::StaticClass()))
 				return Obj;
 		}
 
-		UListView* ListView = GItemListView;
+		UListView* ListView = GItemBrowser.ListView;
 		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UListView::StaticClass()))
 			return nullptr;
 
@@ -459,7 +446,7 @@ namespace
 					bool bGridExact = false;
 					if (ShouldCaptureBackpackCtxFromGrid(GridObj, GridIndex, GridDist, bGridExact))
 					{
-						FWeakObjectPtr CtxWeak = ReadWeakAt(GridObj, kBackpackGridCtxWeakOffset);
+						FWeakObjectPtr CtxWeak = ReadWeakPtrAt(GridObj, kBackpackGridCtxWeakOffset);
 						if (CtxWeak.ObjectIndex >= 0 && CtxWeak.ObjectSerialNumber > 0)
 						{
 							UObject* CtxObj = CtxWeak.Get();
@@ -514,7 +501,7 @@ namespace
 					{
 						auto* View = static_cast<UJHBackpackViewBase*>(MutableThis);
 						UObject* GridObj = static_cast<UObject*>(View->GRID_ITEM);
-						FWeakObjectPtr CtxWeak = ReadWeakAt(GridObj, kBackpackGridCtxWeakOffset);
+						FWeakObjectPtr CtxWeak = ReadWeakPtrAt(GridObj, kBackpackGridCtxWeakOffset);
 						UObject* CtxObj = CtxWeak.Get();
 						if (!IsSafeLiveObject(CtxObj))
 							CtxObj = nullptr;
@@ -1073,49 +1060,49 @@ namespace
 	void ReadTab1ConfigFromUI(FTab1RuntimeConfig& Cfg)
 	{
 		// 璇诲彇寮€鍏抽€夐」
-		const bool NewItemNoDecrease = ReadToggleValue(GTab1ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
+		const bool NewItemNoDecrease = ReadToggleValue(GTab1.ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
 		if (NewItemNoDecrease != Cfg.ItemNoDecrease)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] ItemNoDecrease: " << (NewItemNoDecrease ? "ON" : "OFF") << "\n";
 			Cfg.ItemNoDecrease = NewItemNoDecrease;
 		}
 
-		const bool NewItemGainMultiplier = ReadToggleValue(GTab1ItemGainMultiplierToggle, Cfg.ItemGainMultiplier);
+		const bool NewItemGainMultiplier = ReadToggleValue(GTab1.ItemGainMultiplierToggle, Cfg.ItemGainMultiplier);
 		if (NewItemGainMultiplier != Cfg.ItemGainMultiplier)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] ItemGainMultiplier: " << (NewItemGainMultiplier ? "ON" : "OFF") << "\n";
 			Cfg.ItemGainMultiplier = NewItemGainMultiplier;
 		}
 
-		const bool NewAllItemsSellable = ReadToggleValue(GTab1AllItemsSellableToggle, Cfg.AllItemsSellable);
+		const bool NewAllItemsSellable = ReadToggleValue(GTab1.AllItemsSellableToggle, Cfg.AllItemsSellable);
 		if (NewAllItemsSellable != Cfg.AllItemsSellable)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] AllItemsSellable: " << (NewAllItemsSellable ? "ON" : "OFF") << "\n";
 			Cfg.AllItemsSellable = NewAllItemsSellable;
 		}
 
-		const bool NewDropRate100 = ReadToggleValue(GTab1DropRate100Toggle, Cfg.DropRate100);
+		const bool NewDropRate100 = ReadToggleValue(GTab1.DropRate100Toggle, Cfg.DropRate100);
 		if (NewDropRate100 != Cfg.DropRate100)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] DropRate100: " << (NewDropRate100 ? "ON" : "OFF") << "\n";
 			Cfg.DropRate100 = NewDropRate100;
 		}
 
-		const bool NewCraftEffectMultiplier = ReadToggleValue(GTab1CraftEffectMultiplierToggle, Cfg.CraftEffectMultiplier);
+		const bool NewCraftEffectMultiplier = ReadToggleValue(GTab1.CraftEffectMultiplierToggle, Cfg.CraftEffectMultiplier);
 		if (NewCraftEffectMultiplier != Cfg.CraftEffectMultiplier)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] CraftEffectMultiplier: " << (NewCraftEffectMultiplier ? "ON" : "OFF") << "\n";
 			Cfg.CraftEffectMultiplier = NewCraftEffectMultiplier;
 		}
 
-		const bool NewIgnoreItemUseCount = ReadToggleValue(GTab1IgnoreItemUseCountToggle, Cfg.IgnoreItemUseCount);
+		const bool NewIgnoreItemUseCount = ReadToggleValue(GTab1.IgnoreItemUseCountToggle, Cfg.IgnoreItemUseCount);
 		if (NewIgnoreItemUseCount != Cfg.IgnoreItemUseCount)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] IgnoreItemUseCount: " << (NewIgnoreItemUseCount ? "ON" : "OFF") << "\n";
 			Cfg.IgnoreItemUseCount = NewIgnoreItemUseCount;
 		}
 
-		const bool NewIgnoreItemRequirements = ReadToggleValue(GTab1IgnoreItemRequirementsToggle, Cfg.IgnoreItemRequirements);
+		const bool NewIgnoreItemRequirements = ReadToggleValue(GTab1.IgnoreItemRequirementsToggle, Cfg.IgnoreItemRequirements);
 		if (NewIgnoreItemRequirements != Cfg.IgnoreItemRequirements)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] IgnoreItemRequirements: " << (NewIgnoreItemRequirements ? "ON" : "OFF") << "\n";
@@ -1132,7 +1119,7 @@ namespace
 			return Slider->GetValue();
 		};
 
-		const float SliderGainValue = ReadSliderValue(GTab1ItemGainMultiplierSlider, 2.0f);
+		const float SliderGainValue = ReadSliderValue(GTab1.ItemGainMultiplierSlider, 2.0f);
 		const int32 NewGainValue = static_cast<int32>(SliderGainValue + 0.5f);
 		if (NewGainValue != Cfg.ItemGainMultiplierValue)
 		{
@@ -1140,7 +1127,7 @@ namespace
 			Cfg.ItemGainMultiplierValue = NewGainValue;
 		}
 
-		const float SliderIncrementValue = ReadSliderValue(GTab1CraftItemIncrementSlider, 2.0f);
+		const float SliderIncrementValue = ReadSliderValue(GTab1.CraftItemIncrementSlider, 2.0f);
 		const float NewIncrementValue = SliderIncrementValue;
 		if (std::fabs(NewIncrementValue - Cfg.CraftItemIncrementMultiplier) > 0.001f)
 		{
@@ -1148,7 +1135,7 @@ namespace
 			Cfg.CraftItemIncrementMultiplier = NewIncrementValue;
 		}
 
-		const float SliderExtraValue = ReadSliderValue(GTab1CraftExtraEffectSlider, 2.0f);
+		const float SliderExtraValue = ReadSliderValue(GTab1.CraftExtraEffectSlider, 2.0f);
 		const float NewExtraValue = SliderExtraValue;
 		if (std::fabs(NewExtraValue - Cfg.CraftExtraEffectMultiplier) > 0.001f)
 		{
@@ -1157,7 +1144,7 @@ namespace
 		}
 
 		// Toggle
-		const bool NewMaxExtraAffixes = ReadToggleValue(GTab1MaxExtraAffixesToggle, Cfg.MaxExtraAffixes);
+		const bool NewMaxExtraAffixes = ReadToggleValue(GTab1.MaxExtraAffixesToggle, Cfg.MaxExtraAffixes);
 		if (NewMaxExtraAffixes != Cfg.MaxExtraAffixes)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] MaxExtraAffixes: " << (NewMaxExtraAffixes ? "ON" : "OFF") << "\n";
@@ -1333,63 +1320,63 @@ namespace
 		}
 	void ReadTab2ConfigFromUI(FTab2RuntimeConfig& Cfg)
 	{
-		const bool NewSkillNoCooldown = ReadToggleValue(GTab2SkillNoCooldownToggle, Cfg.SkillNoCooldown);
+		const bool NewSkillNoCooldown = ReadToggleValue(GTab2.SkillNoCooldownToggle, Cfg.SkillNoCooldown);
 		if (NewSkillNoCooldown != Cfg.SkillNoCooldown)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 SkillNoCooldown: " << (NewSkillNoCooldown ? "ON" : "OFF") << "\n";
 			Cfg.SkillNoCooldown = NewSkillNoCooldown;
 		}
 
-		const bool NewBattleSpeedEnabled = ReadToggleValue(GTab2DamageBoostToggle, Cfg.BattleSpeedEnabled);
+		const bool NewBattleSpeedEnabled = ReadToggleValue(GTab2.DamageBoostToggle, Cfg.BattleSpeedEnabled);
 		if (NewBattleSpeedEnabled != Cfg.BattleSpeedEnabled)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 BattleSpeed: " << (NewBattleSpeedEnabled ? "ON" : "OFF") << "\n";
 			Cfg.BattleSpeedEnabled = NewBattleSpeedEnabled;
 		}
 
-		const bool NewNoEncounter = ReadToggleValue(GTab2NoEncounterToggle, Cfg.NoEncounter);
+		const bool NewNoEncounter = ReadToggleValue(GTab2.NoEncounterToggle, Cfg.NoEncounter);
 		if (NewNoEncounter != Cfg.NoEncounter)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 NoEncounter: " << (NewNoEncounter ? "ON" : "OFF") << "\n";
 			Cfg.NoEncounter = NewNoEncounter;
 		}
 
-		const bool NewAllTeammatesInFight = ReadToggleValue(GTab2AllTeammatesInFightToggle, Cfg.AllTeammatesInFight);
+		const bool NewAllTeammatesInFight = ReadToggleValue(GTab2.AllTeammatesInFightToggle, Cfg.AllTeammatesInFight);
 		if (NewAllTeammatesInFight != Cfg.AllTeammatesInFight)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 AllTeammatesInFight: " << (NewAllTeammatesInFight ? "ON" : "OFF") << "\n";
 			Cfg.AllTeammatesInFight = NewAllTeammatesInFight;
 		}
 
-		const bool NewDefeatAsVictory = ReadToggleValue(GTab2DefeatAsVictoryToggle, Cfg.DefeatAsVictory);
+		const bool NewDefeatAsVictory = ReadToggleValue(GTab2.DefeatAsVictoryToggle, Cfg.DefeatAsVictory);
 		if (NewDefeatAsVictory != Cfg.DefeatAsVictory)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 DefeatAsVictory: " << (NewDefeatAsVictory ? "ON" : "OFF") << "\n";
 			Cfg.DefeatAsVictory = NewDefeatAsVictory;
 		}
 
-		const bool NewNeiGongFillLastSlot = ReadToggleValue(GTab2NeiGongFillLastSlotToggle, Cfg.NeiGongFillLastSlot);
+		const bool NewNeiGongFillLastSlot = ReadToggleValue(GTab2.NeiGongFillLastSlotToggle, Cfg.NeiGongFillLastSlot);
 		if (NewNeiGongFillLastSlot != Cfg.NeiGongFillLastSlot)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 NeiGongFillLastSlot: " << (NewNeiGongFillLastSlot ? "ON" : "OFF") << "\n";
 			Cfg.NeiGongFillLastSlot = NewNeiGongFillLastSlot;
 		}
 
-		const bool NewAutoRecoverHpMp = ReadToggleValue(GTab2AutoRecoverHpMpToggle, Cfg.AutoRecoverHpMp);
+		const bool NewAutoRecoverHpMp = ReadToggleValue(GTab2.AutoRecoverHpMpToggle, Cfg.AutoRecoverHpMp);
 		if (NewAutoRecoverHpMp != Cfg.AutoRecoverHpMp)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 AutoRecoverHpMp: " << (NewAutoRecoverHpMp ? "ON" : "OFF") << "\n";
 			Cfg.AutoRecoverHpMp = NewAutoRecoverHpMp;
 		}
 
-		const bool NewTotalMoveSpeedEnabled = ReadToggleValue(GTab2TotalMoveSpeedToggle, Cfg.TotalMoveSpeedEnabled);
+		const bool NewTotalMoveSpeedEnabled = ReadToggleValue(GTab2.TotalMoveSpeedToggle, Cfg.TotalMoveSpeedEnabled);
 		if (NewTotalMoveSpeedEnabled != Cfg.TotalMoveSpeedEnabled)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 TotalMoveSpeed: " << (NewTotalMoveSpeedEnabled ? "ON" : "OFF") << "\n";
 			Cfg.TotalMoveSpeedEnabled = NewTotalMoveSpeedEnabled;
 		}
 
-		const bool NewTotalMoveSpeedFriendlyOnly = ReadToggleValue(GTab2DamageFriendlyOnlyToggle, Cfg.TotalMoveSpeedFriendlyOnly);
+		const bool NewTotalMoveSpeedFriendlyOnly = ReadToggleValue(GTab2.DamageFriendlyOnlyToggle, Cfg.TotalMoveSpeedFriendlyOnly);
 		if (NewTotalMoveSpeedFriendlyOnly != Cfg.TotalMoveSpeedFriendlyOnly)
 		{
 			LOGI_STREAM("FrameHook") << "[SDK] Tab2 TotalMoveSpeedFriendlyOnly: " << (NewTotalMoveSpeedFriendlyOnly ? "ON" : "OFF") << "\n";
@@ -1405,7 +1392,7 @@ namespace
 			return Slider->GetValue();
 		};
 
-		float NewBattleSpeedMultiplier = ReadSliderValue(GTab2DamageMultiplierSlider, Cfg.BattleSpeedMultiplier);
+		float NewBattleSpeedMultiplier = ReadSliderValue(GTab2.DamageMultiplierSlider, Cfg.BattleSpeedMultiplier);
 		if (NewBattleSpeedMultiplier < 0.0f) NewBattleSpeedMultiplier = 0.0f;
 		if (NewBattleSpeedMultiplier > 10.0f) NewBattleSpeedMultiplier = 10.0f;
 		if (std::fabs(NewBattleSpeedMultiplier - Cfg.BattleSpeedMultiplier) > 0.001f)
@@ -1414,7 +1401,7 @@ namespace
 			Cfg.BattleSpeedMultiplier = NewBattleSpeedMultiplier;
 		}
 
-		float NewTotalMoveSpeedMultiplier = ReadSliderValue(GTab2MoveSpeedMultiplierSlider, Cfg.TotalMoveSpeedMultiplier);
+		float NewTotalMoveSpeedMultiplier = ReadSliderValue(GTab2.MoveSpeedMultiplierSlider, Cfg.TotalMoveSpeedMultiplier);
 		if (NewTotalMoveSpeedMultiplier < 0.0f) NewTotalMoveSpeedMultiplier = 0.0f;
 		if (NewTotalMoveSpeedMultiplier > 10.0f) NewTotalMoveSpeedMultiplier = 10.0f;
 		if (std::fabs(NewTotalMoveSpeedMultiplier - Cfg.TotalMoveSpeedMultiplier) > 0.001f)
@@ -1597,8 +1584,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	PostRenderInFlightScope InFlightScope;
 
 	// Call original first to preserve normal rendering
-	if (OriginalGVCPostRender)
-		OriginalGVCPostRender(This, Canvas);
+	if (GOriginalPostRender)
+		GOriginalPostRender(This, Canvas);
 
 	DrawFpsOverlay(static_cast<UCanvas*>(Canvas));
 
@@ -1635,7 +1622,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	{
 		if (LastWorld != nullptr)
 		{
-			const bool HadWidget = (InternalWidget != nullptr) || InternalWidgetVisible;
+			const bool HadWidget = (GInternalWidget != nullptr) || GInternalWidgetVisible;
 			LOGI_STREAM("FrameHook") << "[SDK] WorldTransition: oldWorld=" << (void*)LastWorld
 				<< " newWorld=" << (void*)CurrentWorld
 				<< " oldLevel=" << (void*)LastLevel
@@ -1643,8 +1630,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				<< " hadWidget=" << (HadWidget ? 1 : 0)
 				<< " -> invalidate runtime state only\n";
 
-			InternalWidget = nullptr;
-			InternalWidgetVisible = false;
+			GInternalWidget = nullptr;
+			GInternalWidgetVisible = false;
 			GCachedBtnExit = nullptr;
 			ClearRuntimeWidgetState();
 			ResetBackpackCtxCaptureState();
@@ -1667,12 +1654,12 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	const bool HomeDown = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
 	if (!InTransitionGuard && HomeDown && !HomeWasDown)
 	{
-		const bool WasVisible = InternalWidgetVisible;
+		const bool WasVisible = GInternalWidgetVisible;
 		ToggleInternalWidget();
-		const bool IsNowVisible = InternalWidgetVisible &&
-			InternalWidget &&
-			IsSafeLiveObject(static_cast<UObject*>(InternalWidget)) &&
-			InternalWidget->IsInViewport();
+		const bool IsNowVisible = GInternalWidgetVisible &&
+			GInternalWidget &&
+			IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) &&
+			GInternalWidget->IsInViewport();
 		HomeNeedAnchorCtxRefresh = (!WasVisible && IsNowVisible);
 		HomeNeedDynTabRestore = (!WasVisible && IsNowVisible);
 		HomeNeedSliderRememberRestore = (!WasVisible && IsNowVisible);
@@ -1733,10 +1720,10 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		return;
 
 	const bool HasLiveInternalWidget = EnsureLiveInternalWidgetForFrame();
-	UUserWidget* LiveInternalWidget = HasLiveInternalWidget ? InternalWidget : nullptr;
+	UUserWidget* LiveInternalWidget = HasLiveInternalWidget ? GInternalWidget : nullptr;
 	UBPMV_ConfigView2_C* LiveConfigView = nullptr;
 	int32 ActiveNativeTabIndex = -1;
-	if (InternalWidgetVisible &&
+	if (GInternalWidgetVisible &&
 		LiveInternalWidget &&
 		LiveInternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass()))
 	{
@@ -1753,7 +1740,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	// On each HOME show: run anchor scan; rebuild item manager only when ctx changes.
 	if (HomeNeedAnchorCtxRefresh &&
-		InternalWidgetVisible &&
+		GInternalWidgetVisible &&
 		LiveConfigView &&
 		IsSafeLiveObject(static_cast<UObject*>(LiveConfigView)))
 	{
@@ -1783,7 +1770,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	// 面板刚显示时：先回灌记忆值，再短时禁止 realtime 覆写，避免默认值(如 1.0)覆盖缓存。
 	if (HomeNeedSliderRememberRestore &&
-		InternalWidgetVisible &&
+		GInternalWidgetVisible &&
 		LiveInternalWidget &&
 		IsSafeLiveObject(static_cast<UObject*>(LiveInternalWidget)))
 	{
@@ -1800,7 +1787,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	static bool ExitWasPressed = false;
 	bool ExitPressed = false;
 	const bool CanCheckExit =
-		InternalWidgetVisible &&
+		GInternalWidgetVisible &&
 		LiveInternalWidget &&
 		LiveInternalWidget->IsInViewport() &&
 		LiveInternalWidget->IsA(UBPMV_ConfigView2_C::StaticClass());
@@ -1839,7 +1826,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	// 鍦?Hide/Destroy/Recreate 鏃剁粺涓€閲囨牱锛岄伩鍏嶈繖閲屾寔缁疆璇㈠鑷?UI 甯ф姈鍔ㄣ€?
 	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;
-	if (InternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
+	if (GInternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
 		EnsureItemEntryProcessEventHookInstalled();
 
@@ -1852,41 +1839,41 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			PollVolumeItemsButtonsAndText();
 
 			static DWORD LastItemCacheRetryTick = 0;
-			if (!GItemCacheBuilt && (GItemCategoryDD || GItemGridPanel))
+			if (!GItemBrowser.CacheBuilt && (GItemBrowser.CategoryDD || GItemBrowser.GridPanel))
 			{
 				DWORD NowTick = GetTickCount();
 				if (NowTick - LastItemCacheRetryTick > 1000)
 				{
 					LastItemCacheRetryTick = NowTick;
 					BuildItemCache();
-					if (GItemCacheBuilt)
+					if (GItemBrowser.CacheBuilt)
 					{
 						int32 CurrentCat = 0;
-						if (GItemCategoryDD && GItemCategoryDD->CB_Main)
+						if (GItemBrowser.CategoryDD && GItemBrowser.CategoryDD->CB_Main)
 						{
-							int32 SelectedCat = GetComboSelectedIndexSafe(GItemCategoryDD->CB_Main);
+							int32 SelectedCat = GetComboSelectedIndexSafe(GItemBrowser.CategoryDD->CB_Main);
 							if (SelectedCat >= 0)
 								CurrentCat = SelectedCat;
 						}
-						GItemCurrentPage = 0;
-						GItemLastCatIdx = CurrentCat;
+						GItemBrowser.CurrentPage = 0;
+						GItemBrowser.LastCatIdx = CurrentCat;
 						FilterItems(CurrentCat);
 						RefreshItemPage();
 					}
 				}
 			}
 
-			int32 catIdx = GItemLastCatIdx;
+			int32 catIdx = GItemBrowser.LastCatIdx;
 			bool needFilterRefresh = false;
-			if (GItemCategoryDD && GItemCategoryDD->CB_Main)
+			if (GItemBrowser.CategoryDD && GItemBrowser.CategoryDD->CB_Main)
 			{
-				int32 Selected = GetComboSelectedIndexSafe(GItemCategoryDD->CB_Main);
+				int32 Selected = GetComboSelectedIndexSafe(GItemBrowser.CategoryDD->CB_Main);
 				if (Selected >= 0)
 				{
 					catIdx = Selected;
-					if (catIdx != GItemLastCatIdx)
+					if (catIdx != GItemBrowser.LastCatIdx)
 					{
-						GItemLastCatIdx = catIdx;
+						GItemBrowser.LastCatIdx = catIdx;
 						needFilterRefresh = true;
 					}
 				}
@@ -1895,19 +1882,19 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				needFilterRefresh = true;
 			if (needFilterRefresh)
 			{
-				GItemCurrentPage = 0;
+				GItemBrowser.CurrentPage = 0;
 				FilterItems((catIdx >= 0) ? catIdx : 0);
 				RefreshItemPage();
 			}
 
-			GItemAddQuantity = GetItemAddQuantityFromEdit();
-			GUIRememberState.ItemAddQuantity = GItemAddQuantity;
+			GItemBrowser.AddQuantity = GetItemAddQuantityFromEdit();
+			GUIRememberState.ItemAddQuantity = GItemBrowser.AddQuantity;
 
 			int32 ClickDefId = 0;
 			if (TryConsumeItemEntryClickDefId(ClickDefId))
 			{
 				const bool CtrlDown = ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
-				const int32 Quantity = CtrlDown ? 10 : ((GItemAddQuantity > 0) ? GItemAddQuantity : 1);
+				const int32 Quantity = CtrlDown ? 10 : ((GItemBrowser.AddQuantity > 0) ? GItemBrowser.AddQuantity : 1);
 				if (Quantity <= 1)
 				{
 					UItemFuncLib::AddItem(ClickDefId, 1);
@@ -1932,42 +1919,42 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				return nullptr;
 			};
 
-			UButton* PrevInner = GetClickableButton(GItemPrevPageBtn);
+			UButton* PrevInner = GetClickableButton(GItemBrowser.PrevPageBtn);
 			bool PrevPressed = PrevInner &&
 				IsSafeLiveObject(static_cast<UObject*>(PrevInner)) &&
 				PrevInner->IsPressed();
-			if (GItemPrevWasPressed && !PrevPressed && GItemCurrentPage > 0)
+			if (GItemBrowser.PrevWasPressed && !PrevPressed && GItemBrowser.CurrentPage > 0)
 			{
-				GItemCurrentPage--;
+				GItemBrowser.CurrentPage--;
 				RefreshItemPage();
 			}
-			GItemPrevWasPressed = PrevPressed;
+			GItemBrowser.PrevWasPressed = PrevPressed;
 
-			UButton* NextInner = GetClickableButton(GItemNextPageBtn);
+			UButton* NextInner = GetClickableButton(GItemBrowser.NextPageBtn);
 			bool NextPressed = NextInner &&
 				IsSafeLiveObject(static_cast<UObject*>(NextInner)) &&
 				NextInner->IsPressed();
-			if (GItemNextWasPressed && !NextPressed && (GItemCurrentPage + 1) < GItemTotalPages)
+			if (GItemBrowser.NextWasPressed && !NextPressed && (GItemBrowser.CurrentPage + 1) < GItemBrowser.TotalPages)
 			{
-				GItemCurrentPage++;
+				GItemBrowser.CurrentPage++;
 				RefreshItemPage();
 			}
-			GItemNextWasPressed = NextPressed;
+			GItemBrowser.NextWasPressed = NextPressed;
 		}
 	}
 	else
 	{
 		sLastItemUiPollTick = 0;
 		GPendingItemEntryClickDefId.store(0, std::memory_order_release);
-		GItemPrevWasPressed = false;
-		GItemNextWasPressed = false;
+		GItemBrowser.PrevWasPressed = false;
+		GItemBrowser.NextWasPressed = false;
 		// Avoid BP_ClearSelection while UMG object is unreachable/destroying.
 	}
 
 	// Battle tab sliders share the same +/- and right-side value mechanism as Tab1.
 	// They are not in the item-tab branch, so poll them separately here.
 	static DWORD sLastBattleSliderPollTick = 0;
-	if (InternalWidgetVisible && LiveInternalWidget && IsBattleTabActive)
+	if (GInternalWidgetVisible && LiveInternalWidget && IsBattleTabActive)
 	{
 		const DWORD BattleUiNow = GetTickCount();
 		const bool RunBattleSliderPoll =
@@ -1984,13 +1971,13 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 
 	const bool CanReadTab1FromUI =
-		InternalWidgetVisible &&
+		GInternalWidgetVisible &&
 		LiveInternalWidget &&
 		IsItemsTabActive;
 	PollAndApplyTab1Features(CanReadTab1FromUI);
 
 	const bool CanReadTab2FromUI =
-		InternalWidgetVisible &&
+		GInternalWidgetVisible &&
 		LiveInternalWidget &&
 		IsBattleTabActive;
 	PollAndApplyTab2Features(CanReadTab2FromUI);
@@ -1999,16 +1986,16 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	// 1) 鐗╁搧 Tab 鍐呴珮棰戣疆璇紙鑺傛祦鍒扮害 60Hz锛?
 	// 2) 闈炵墿鍝?Tab 浠呭湪宸叉湁 tips 娈嬬暀鏃朵綆棰戣疆璇紝鐢ㄤ簬蹇€熸敹鍙ｉ殣钘?
 	bool HoverGridValid = false;
-	if (GItemGridPanel)
+	if (GItemBrowser.GridPanel)
 	{
-		auto* GridObj = static_cast<UObject*>(GItemGridPanel);
+		auto* GridObj = static_cast<UObject*>(GItemBrowser.GridPanel);
 		HoverGridValid = IsSafeLiveObject(GridObj);
 	}
 	const bool HasActiveHoverTips =
-		(GItemHoveredSlot >= 0) ||
-		(GItemHoverTipsWidget && IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)));
+		(GItemBrowser.HoveredSlot >= 0) ||
+		(GItemBrowser.HoverTipsWidget && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.HoverTipsWidget)));
 	const bool CanPollHover =
-		InternalWidgetVisible &&
+		GInternalWidgetVisible &&
 		LiveInternalWidget &&
 		HoverGridValid &&
 		(IsItemsTabActive || HasActiveHoverTips);
@@ -2026,7 +2013,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 
 	// 閳光偓閳光偓 Dynamic tab button click detection 閳光偓閳光偓
-	if (InternalWidgetVisible && LiveConfigView)
+	if (GInternalWidgetVisible && LiveConfigView)
 	{
 		auto* CV = LiveConfigView;
 		auto IsLiveTabBtn = [](UBP_JHConfigTabBtn_C* Btn) -> bool
@@ -2060,9 +2047,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				sPendingNativeHighlightSettleFrames = 0;
 				sPendingNativeInactiveSettleFrames = 30;
 				ShowDynamicTab(CV, LastClosedTab);
-				if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(LastClosedTab == 6);
-				if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(LastClosedTab == 7);
-				if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(LastClosedTab == 8);
+				if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(LastClosedTab == 6);
+				if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(LastClosedTab == 7);
+				if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(LastClosedTab == 8);
 				sActiveDynTab = LastClosedTab;
 				LOGI_STREAM("FrameHook") << "[SDK] Restore dynamic tab on HOME-show: idx=" << LastClosedTab << "\n";
 			}
@@ -2108,9 +2095,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 					<< "\n";
 				CV->EVT_SyncTabIndex(sPendingNativeRestoreIdx);
 				ShowOriginalTab(CV);
-				if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(false);
 				sActiveDynTab = -1;
 			}
 			else
@@ -2138,18 +2125,18 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 
 		int32 dynHoverIdx = -1;
-		if      (IsLiveTabBtn(GDynTabBtn6) && GDynTabBtn6->IsHovered()) dynHoverIdx = 6;
-		else if (IsLiveTabBtn(GDynTabBtn7) && GDynTabBtn7->IsHovered()) dynHoverIdx = 7;
-		else if (IsLiveTabBtn(GDynTabBtn8) && GDynTabBtn8->IsHovered()) dynHoverIdx = 8;
+		if      (IsLiveTabBtn(GDynTab.Btn6) && GDynTab.Btn6->IsHovered()) dynHoverIdx = 6;
+		else if (IsLiveTabBtn(GDynTab.Btn7) && GDynTab.Btn7->IsHovered()) dynHoverIdx = 7;
+		else if (IsLiveTabBtn(GDynTab.Btn8) && GDynTab.Btn8->IsHovered()) dynHoverIdx = 8;
 
 		if (dynHoverIdx >= 6 && dynHoverIdx != sActiveDynTab)
 		{
 			// Entering a (different) dynamic tab 閳?show its content
 			ShowDynamicTab(CV, dynHoverIdx);
 			sPendingNativeInactiveSettleFrames = 30;
-			if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
-			if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
-			if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(dynHoverIdx == 8);
+			if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
+			if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
+			if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(dynHoverIdx == 8);
 			sActiveDynTab = dynHoverIdx;
 		}
 		else if (sActiveDynTab >= 6 && dynHoverIdx == -1)
@@ -2168,16 +2155,16 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			{
 				ShowOriginalTab(CV);
 				sPendingNativeInactiveSettleFrames = 0;
-				if (IsLiveTabBtn(GDynTabBtn6)) GDynTabBtn6->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTabBtn7)) GDynTabBtn7->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTabBtn8)) GDynTabBtn8->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(false);
+				if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(false);
 				sActiveDynTab = -1;
 			}
 		}
 	}
 
 	// Detect if blueprint logic closed the widget externally
-	if (InternalWidgetVisible && LiveInternalWidget && !LiveInternalWidget->IsInViewport())
+	if (GInternalWidgetVisible && LiveInternalWidget && !LiveInternalWidget->IsInViewport())
 	{
 		APlayerController* PC = GetFirstLocalPlayerController();
 		HideInternalWidget(PC);

@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -31,18 +31,7 @@ namespace
 	std::wstring GItemSearchKeyword;
 	std::wstring GItemSearchKeywordFolded;
 
-	const char* VisName(ESlateVisibility V)
-	{
-		switch (V)
-		{
-		case ESlateVisibility::Visible: return "Visible";
-		case ESlateVisibility::Collapsed: return "Collapsed";
-		case ESlateVisibility::Hidden: return "Hidden";
-		case ESlateVisibility::HitTestInvisible: return "HitTestInvisible";
-		case ESlateVisibility::SelfHitTestInvisible: return "SelfHitTestInvisible";
-		default: return "Unknown";
-		}
-	}
+	// VisName 已移除，统一使用 WidgetUtils 中的 ToVisName
 
 	int32 SanitizeItemQuality(uint8 RawQuality)
 	{
@@ -103,48 +92,8 @@ namespace
 	constexpr bool kEnableEntryInitSearch = true;    // Enable anchor-window search path.
 	constexpr bool kEnableFullScanFallback = false;  // 澶囩敤鍏ㄩ噺鎵紝榛樿鍏抽棴
 
-	FWeakObjectPtr ReadWeakPtrAt(UObject* Obj, uintptr_t Offset)
-	{
-		FWeakObjectPtr Out{};
-		if (!Obj)
-			return Out;
-		const uint8* Base = reinterpret_cast<const uint8*>(Obj);
-		Out = *reinterpret_cast<const FWeakObjectPtr*>(Base + Offset);
-		return Out;
-	}
-
-	void WriteWeakPtrAt(UObject* Obj, uintptr_t Offset, const FWeakObjectPtr& Value)
-	{
-		if (!Obj)
-			return;
-		uint8* Base = reinterpret_cast<uint8*>(Obj);
-		*reinterpret_cast<FWeakObjectPtr*>(Base + Offset) = Value;
-	}
-
-	bool IsWeakPtrFilled(const FWeakObjectPtr& Weak)
-	{
-		return Weak.ObjectIndex >= 0 && Weak.ObjectSerialNumber > 0;
-	}
-
-	bool IsSameWeak(const FWeakObjectPtr& A, const FWeakObjectPtr& B)
-	{
-		return A.ObjectIndex == B.ObjectIndex &&
-			A.ObjectSerialNumber == B.ObjectSerialNumber;
-	}
-
-	UObject* ResolveWeakPtrLoose(const FWeakObjectPtr& Weak)
-	{
-		if (!IsWeakPtrFilled(Weak))
-			return nullptr;
-		UObject* Obj = Weak.Get();
-		if (!Obj)
-			return nullptr;
-		if (!IsSafeLiveObject(static_cast<UObject*>(Obj)))
-			return nullptr;
-		if (Obj->IsDefaultObject())
-			return nullptr;
-		return Obj;
-	}
+	// ReadWeakPtrAt / WriteWeakPtrAt / IsWeakPtrFilled / IsSameWeak / ResolveWeakPtrLoose
+	// 已合并到 WidgetUtils.hpp/cpp
 
 FWeakObjectPtr GCachedEntryInitWeakB{};
 bool GHasCachedEntryInitWeakB = false;
@@ -551,7 +500,7 @@ UListView* GEntryInitPreparedListView = nullptr;
 }
 void BuildItemCache()
 {
-	if (GItemCacheBuilt) return;
+	if (GItemBrowser.CacheBuilt) return;
 	LOGI_STREAM("ItemBrowser") << "[SDK] Building item cache...\n";
 
 	// Resolve class for fallback scan path
@@ -628,8 +577,8 @@ void BuildItemCache()
     }
     LOGI_STREAM("ItemBrowser") << "[SDK] RowMap: rows=" << RowCount << " allocated=" << AllocatedSlots << "\n";
 
-    GAllItems.clear();
-    GAllItems.reserve(RowCount);
+    GItemBrowser.AllItems.clear();
+    GItemBrowser.AllItems.reserve(RowCount);
     int valid = 0;
 
     int32 QualityHistogram[8] = {};
@@ -683,16 +632,16 @@ void BuildItemCache()
 		Item.HasIcon = !IconAssetName->IsNone();
 
 		if (Item.Name[0] != 0 && Item.DefId > 0) {
-			GAllItems.push_back(Item);
+			GItemBrowser.AllItems.push_back(Item);
 			valid++;
 		}
 	}
 
 	// Sort by DefId for consistent display
-	std::sort(GAllItems.begin(), GAllItems.end(),
+	std::sort(GItemBrowser.AllItems.begin(), GItemBrowser.AllItems.end(),
 		[](const CachedItem& a, const CachedItem& b) { return a.DefId < b.DefId; });
 
-	GItemCacheBuilt = true;
+	GItemBrowser.CacheBuilt = true;
 	LOGI_STREAM("ItemBrowser") << "[SDK] Item cache: " << valid << " items loaded\n";
 	LOGI_STREAM("ItemBrowser") << "[SDK] Item quality histogram:"
 	          << " Q0=" << QualityHistogram[0]
@@ -817,31 +766,31 @@ static UJHNeoUISubsystem* GetJHNeoUISubsystem()
 
 static void HideCurrentItemTips()
 {
-	if (GItemHoverTipsWidget && IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)))
-		GItemHoverTipsWidget->SetVisibility(ESlateVisibility::Collapsed);
+	if (GItemBrowser.HoverTipsWidget && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.HoverTipsWidget)))
+		GItemBrowser.HoverTipsWidget->SetVisibility(ESlateVisibility::Collapsed);
 	if (GStandaloneItemTipWidget && IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget)))
 		GStandaloneItemTipWidget->SetVisibility(ESlateVisibility::Collapsed);
 
-	GItemHoverTipsWidget = nullptr;
-	GItemHoveredSlot = -1;
+	GItemBrowser.HoverTipsWidget = nullptr;
+	GItemBrowser.HoveredSlot = -1;
 
-	if (GItemHoverTempSpec)
+	if (GItemBrowser.HoverTempSpec)
 	{
-		ClearGCRoot(static_cast<UObject*>(GItemHoverTempSpec));
-		GItemHoverTempSpec = nullptr;
+		ClearGCRoot(static_cast<UObject*>(GItemBrowser.HoverTempSpec));
+		GItemBrowser.HoverTempSpec = nullptr;
 	}
 }
 
-// Filter items by category, rebuild GFilteredIndices
+// Filter items by category, rebuild GItemBrowser.FilteredIndices
 void FilterItems(int32 category)
 {
 	GUIRememberState.ItemCategoryIndex = category;
 
-	GFilteredIndices.clear();
-	for (int32 i = 0; i < (int32)GAllItems.size(); i++)
+	GItemBrowser.FilteredIndices.clear();
+	for (int32 i = 0; i < (int32)GItemBrowser.AllItems.size(); i++)
 	{
 		bool match = false;
-		uint8 st = GAllItems[i].SubType;
+		uint8 st = GItemBrowser.AllItems[i].SubType;
 		switch (category) {
 		case 0: match = true; break;                          // 闁稿繈鍔戦崕?
 		case 1: match = (st >= 1 && st <= 6); break;         // 婵繐绠戝▍?
@@ -851,52 +800,52 @@ void FilterItems(int32 category)
 		}
 		if (match && !GItemSearchKeywordFolded.empty())
 		{
-			bool SearchMatch = ContainsSearchInsensitive(GAllItems[i].Name, GItemSearchKeywordFolded);
+			bool SearchMatch = ContainsSearchInsensitive(GItemBrowser.AllItems[i].Name, GItemSearchKeywordFolded);
 			if (!SearchMatch)
 			{
 				wchar_t DefIdBuf[32] = {};
-				swprintf_s(DefIdBuf, 32, L"%d", GAllItems[i].DefId);
+				swprintf_s(DefIdBuf, 32, L"%d", GItemBrowser.AllItems[i].DefId);
 				SearchMatch = ContainsSearchInsensitive(DefIdBuf, GItemSearchKeywordFolded);
 			}
 			match = SearchMatch;
 		}
 
 		if (match)
-			GFilteredIndices.push_back(i);
+			GItemBrowser.FilteredIndices.push_back(i);
 	}
-	GItemTotalPages = ((int32)GFilteredIndices.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
-	if (GItemTotalPages < 1) GItemTotalPages = 1;
+	GItemBrowser.TotalPages = ((int32)GItemBrowser.FilteredIndices.size() + kItemsPerPage - 1) / kItemsPerPage;
+	if (GItemBrowser.TotalPages < 1) GItemBrowser.TotalPages = 1;
 	LOGI_STREAM("ItemBrowser") << "[SDK] Filter cat=" << category
 		<< " searchLen=" << GItemSearchKeyword.size()
-		<< ": " << GFilteredIndices.size()
-	          << " items, " << GItemTotalPages << " pages\n";
+		<< ": " << GItemBrowser.FilteredIndices.size()
+	          << " items, " << GItemBrowser.TotalPages << " pages\n";
 }
 
 // Refresh item grid to show the current page
 void RefreshItemPage()
 {
-	if (GItemCurrentPage >= GItemTotalPages)
-		GItemCurrentPage = GItemTotalPages - 1;
-	if (GItemCurrentPage < 0)
-		GItemCurrentPage = 0;
-	GUIRememberState.ItemCurrentPage = GItemCurrentPage;
+	if (GItemBrowser.CurrentPage >= GItemBrowser.TotalPages)
+		GItemBrowser.CurrentPage = GItemBrowser.TotalPages - 1;
+	if (GItemBrowser.CurrentPage < 0)
+		GItemBrowser.CurrentPage = 0;
+	GUIRememberState.ItemCurrentPage = GItemBrowser.CurrentPage;
 
-	const int32 StartIdx = GItemCurrentPage * ITEMS_PER_PAGE;
-	for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+	const int32 StartIdx = GItemBrowser.CurrentPage * kItemsPerPage;
+	for (int32 i = 0; i < kItemsPerPage; ++i)
 	{
-		GItemSlotButtons[i] = nullptr;
-		GItemSlotImages[i] = nullptr;
-		GItemSlotQualityBorders[i] = nullptr;
-		GItemSlotEntryWidgets[i] = nullptr;
-		GItemSlotItemIndices[i] = -1;
-		GItemSlotWasPressed[i] = false;
+		GItemBrowser.SlotButtons[i] = nullptr;
+		GItemBrowser.SlotImages[i] = nullptr;
+		GItemBrowser.SlotQualityBorders[i] = nullptr;
+		GItemBrowser.SlotEntryWidgets[i] = nullptr;
+		GItemBrowser.SlotItemIndices[i] = -1;
+		GItemBrowser.SlotWasPressed[i] = false;
 	}
 
-	UListView* ListView = GItemListView;
+	UListView* ListView = GItemBrowser.ListView;
 	if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UListView::StaticClass()))
 	{
-		GItemListView = nullptr;
-		GItemGridPanel = nullptr;
+		GItemBrowser.ListView = nullptr;
+		GItemBrowser.GridPanel = nullptr;
 		GEntryInitPreparedListView = nullptr;
 	}
 	else
@@ -949,21 +898,21 @@ void RefreshItemPage()
 		ListView->ClearListItems();
 
 		std::vector<int32> PageItemIndices;
-		PageItemIndices.reserve(ITEMS_PER_PAGE);
+		PageItemIndices.reserve(kItemsPerPage);
 		int32 BuiltSlots = 0;
 		int32 SpecCreateFail = 0;
 		int32 SpecInvalidFail = 0;
-		for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+		for (int32 i = 0; i < kItemsPerPage; ++i)
 		{
 			const int32 FiltIdx = StartIdx + i;
-			if (FiltIdx < 0 || FiltIdx >= static_cast<int32>(GFilteredIndices.size()))
+			if (FiltIdx < 0 || FiltIdx >= static_cast<int32>(GItemBrowser.FilteredIndices.size()))
 				continue;
 
-			const int32 ItemIdx = GFilteredIndices[FiltIdx];
-			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
+			const int32 ItemIdx = GItemBrowser.FilteredIndices[FiltIdx];
+			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GItemBrowser.AllItems.size()))
 				continue;
 
-			const CachedItem& CI = GAllItems[ItemIdx];
+			const CachedItem& CI = GItemBrowser.AllItems[ItemIdx];
 			UItemInfoSpec* Spec = UItemFuncLib::MakeItemInfoSpec(CI.DefId, 1, EItemRandPoolType::None);
 			if (!Spec)
 			{
@@ -982,7 +931,7 @@ void RefreshItemPage()
 			++BuiltSlots;
 		}
 
-		TAllocatedArray<UObject*> InListItems(ITEMS_PER_PAGE);
+		TAllocatedArray<UObject*> InListItems(kItemsPerPage);
 		int32 SpecNonNullAtFeed = 0;
 		int32 SpecLiveAtFeed = 0;
 		int32 SpecClassOkAtFeed = 0;
@@ -1015,8 +964,8 @@ void RefreshItemPage()
 			}
 		}
 		LOGI_STREAM("ItemBrowser")
-			<< "[SDK] ItemGrid feed pre-set: page=" << (GItemCurrentPage + 1)
-			<< "/" << GItemTotalPages
+			<< "[SDK] ItemGrid feed pre-set: page=" << (GItemBrowser.CurrentPage + 1)
+			<< "/" << GItemBrowser.TotalPages
 			<< " builtSlots=" << BuiltSlots
 			<< " specVec=" << GCurrentPageSpecs.size()
 			<< " inListItems=" << InListItems.Num()
@@ -1105,10 +1054,10 @@ void RefreshItemPage()
 			// 闁告帗绻傞～鎰板礌閺嶎厽鈻夋繛鍫㈡暩缁紕鏁粙鍨弗闁哥姴鍊归弳鐔煎箲椤旇　鍋撴担鍛婂€甸悗鐟版湰閸ㄦ氨鏁崘銊ф拱闁挎稒绋栬棢闁告垹濮鹃悿?prepass/refresh 閻?entry 闁活亞鍠愰婊呪偓鍦仒缁躲儵宕犻弽銉㈠亾?			for (int32 Retry = 0; Retry < 3 && DisplayedNum == 0; ++Retry)
 			{
 				++LayoutRetryCount;
-				if (GItemGridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+				if (GItemBrowser.GridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.GridPanel)))
 				{
-					GItemGridPanel->ForceLayoutPrepass();
-					UPanelWidget* P0 = GItemGridPanel->GetParent();
+					GItemBrowser.GridPanel->ForceLayoutPrepass();
+					UPanelWidget* P0 = GItemBrowser.GridPanel->GetParent();
 					if (P0 && IsSafeLiveObject(static_cast<UObject*>(P0)))
 					{
 						P0->ForceLayoutPrepass();
@@ -1140,14 +1089,14 @@ void RefreshItemPage()
 				}
 			}
 
-			const char* ListVis = VisName(ListView->GetVisibility());
-			const char* GridVis = GItemGridPanel ? VisName(GItemGridPanel->GetVisibility()) : "null";
+			const char* ListVis = ToVisName(ListView->GetVisibility());
+			const char* GridVis = GItemBrowser.GridPanel ? ToVisName(GItemBrowser.GridPanel->GetVisibility()) : "null";
 			const char* ParentVis = "null";
-			if (GItemGridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+			if (GItemBrowser.GridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.GridPanel)))
 			{
-				UPanelWidget* P0 = GItemGridPanel->GetParent();
+				UPanelWidget* P0 = GItemBrowser.GridPanel->GetParent();
 				if (P0 && IsSafeLiveObject(static_cast<UObject*>(P0)))
-					ParentVis = VisName(P0->GetVisibility());
+					ParentVis = ToVisName(P0->GetVisibility());
 			}
 			LOGI_STREAM("ItemBrowser")
 				<< "[SDK] ItemGrid layout retry: tries=" << LayoutRetryCount
@@ -1164,11 +1113,11 @@ void RefreshItemPage()
 
 		auto BindEntryToSlot = [&](int32 Slot, UUserWidget* EntryWidget, int32 ItemIdx, UObject* ListItemObj) -> bool
 		{
-			if (Slot < 0 || Slot >= ITEMS_PER_PAGE)
+			if (Slot < 0 || Slot >= kItemsPerPage)
 				return false;
 			if (!IsSafeLiveObject(static_cast<UObject*>(EntryWidget)))
 				return false;
-			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
+			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GItemBrowser.AllItems.size()))
 				return false;
 
 			// 鐎殿喖鎼崺妤冩喆閿曗偓瑜?ListEntry 闁轰胶澧楀畵浣虹磼閹存繄鏆板☉鎾冲鐟曞棝寮婚幘瑙勭ギ闁硅婢佺槐婵嬫焼閸喖甯抽柡灞惧姃缁?WDT 閻犱警鍨扮欢鐐哄矗椤忓棙鏅搁柟瀛樺姇閿涙挾鈧稒鍔掔粭澶愬礆瀹勬澘鏁堕悗鐟扮畭閳?			if (ListItemObj && EntryWidget->IsA(IUserObjectListEntry::StaticClass()))
@@ -1182,9 +1131,9 @@ void RefreshItemPage()
 				ReusableXform->ForceConvertAndRender();
 			}
 
-			GItemSlotItemIndices[Slot] = ItemIdx;
-			GItemSlotEntryWidgets[Slot] = EntryWidget;
-			GItemSlotWasPressed[Slot] = false;
+			GItemBrowser.SlotItemIndices[Slot] = ItemIdx;
+			GItemBrowser.SlotEntryWidgets[Slot] = EntryWidget;
+			GItemBrowser.SlotWasPressed[Slot] = false;
 
 			UJHGPCBtn_C* BtnJHItem = nullptr;
 			UJHGPCBtn_ActiveBG_C* ActiveBG = nullptr;
@@ -1217,11 +1166,11 @@ void RefreshItemPage()
 
 				if (Display->IMG_Item &&
 					IsSafeLiveObjectOfClass(static_cast<UObject*>(Display->IMG_Item), UImage::StaticClass()))
-					GItemSlotImages[Slot] = static_cast<UImage*>(Display->IMG_Item);
+					GItemBrowser.SlotImages[Slot] = static_cast<UImage*>(Display->IMG_Item);
 
 				if (Display->IMG_QualityBorder &&
 					IsSafeLiveObjectOfClass(static_cast<UObject*>(Display->IMG_QualityBorder), UImage::StaticClass()))
-					GItemSlotQualityBorders[Slot] = static_cast<UImage*>(Display->IMG_QualityBorder);
+					GItemBrowser.SlotQualityBorders[Slot] = static_cast<UImage*>(Display->IMG_QualityBorder);
 
 				if (Display->IMG_Border &&
 					IsSafeLiveObjectOfClass(static_cast<UObject*>(Display->IMG_Border), UImage::StaticClass()))
@@ -1241,19 +1190,19 @@ void RefreshItemPage()
 
 				if (BtnJHItem->BtnMain &&
 					IsSafeLiveObjectOfClass(static_cast<UObject*>(BtnJHItem->BtnMain), UButton::StaticClass()))
-					GItemSlotButtons[Slot] = static_cast<UButton*>(BtnJHItem->BtnMain);
+					GItemBrowser.SlotButtons[Slot] = static_cast<UButton*>(BtnJHItem->BtnMain);
 			}
 
-			const CachedItem& CI = GAllItems[ItemIdx];
-			if (GItemSlotButtons[Slot])
+			const CachedItem& CI = GItemBrowser.AllItems[ItemIdx];
+			if (GItemBrowser.SlotButtons[Slot])
 			{
 				wchar_t Tip[96] = {};
 				swprintf_s(Tip, 96, L"%s [%d]", CI.Name, CI.DefId);
-				GItemSlotButtons[Slot]->SetToolTipText(MakeText(Tip));
-				GItemSlotButtons[Slot]->SetIsEnabled(true);
+				GItemBrowser.SlotButtons[Slot]->SetToolTipText(MakeText(Tip));
+				GItemBrowser.SlotButtons[Slot]->SetIsEnabled(true);
 			}
 
-			if (GItemSlotImages[Slot])
+			if (GItemBrowser.SlotImages[Slot])
 			{
 				if (CI.HasIcon)
 				{
@@ -1261,17 +1210,17 @@ void RefreshItemPage()
 					if (IconTex &&
 						IsSafeLiveObjectOfClass(static_cast<UObject*>(IconTex), UTexture2D::StaticClass()))
 					{
-						GItemSlotImages[Slot]->SetBrushFromTexture(IconTex, true);
-						GItemSlotImages[Slot]->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+						GItemBrowser.SlotImages[Slot]->SetBrushFromTexture(IconTex, true);
+						GItemBrowser.SlotImages[Slot]->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 					}
 					else
 					{
-						GItemSlotImages[Slot]->SetVisibility(ESlateVisibility::Collapsed);
+						GItemBrowser.SlotImages[Slot]->SetVisibility(ESlateVisibility::Collapsed);
 					}
 				}
 				else
 				{
-					GItemSlotImages[Slot]->SetVisibility(ESlateVisibility::Collapsed);
+					GItemBrowser.SlotImages[Slot]->SetVisibility(ESlateVisibility::Collapsed);
 				}
 			}
 
@@ -1284,19 +1233,19 @@ void RefreshItemPage()
 				MainBorder->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 			}
 
-			if (GItemSlotQualityBorders[Slot])
+			if (GItemBrowser.SlotQualityBorders[Slot])
 			{
 				UTexture2D* QTex = GetItemQualityBorderTexture(static_cast<uint8>(SafeQuality));
 				if (QTex &&
 					IsSafeLiveObjectOfClass(static_cast<UObject*>(QTex), UTexture2D::StaticClass()))
 				{
-					GItemSlotQualityBorders[Slot]->SetBrushFromTexture(QTex, true);
-					GItemSlotQualityBorders[Slot]->SetColorAndOpacity(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });
-					GItemSlotQualityBorders[Slot]->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+					GItemBrowser.SlotQualityBorders[Slot]->SetBrushFromTexture(QTex, true);
+					GItemBrowser.SlotQualityBorders[Slot]->SetColorAndOpacity(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });
+					GItemBrowser.SlotQualityBorders[Slot]->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 				}
 				else
 				{
-					GItemSlotQualityBorders[Slot]->SetVisibility(ESlateVisibility::Collapsed);
+					GItemBrowser.SlotQualityBorders[Slot]->SetVisibility(ESlateVisibility::Collapsed);
 				}
 			}
 
@@ -1305,7 +1254,7 @@ void RefreshItemPage()
 
 		int32 SlotCount = 0;
 		const int32 DisplayMapCount = (DisplayedNum < MappedNum) ? DisplayedNum : MappedNum;
-		for (int32 i = 0; i < DisplayMapCount && i < ITEMS_PER_PAGE; ++i)
+		for (int32 i = 0; i < DisplayMapCount && i < kItemsPerPage; ++i)
 		{
 			UObject* BindObj = nullptr;
 			if (i >= 0 && i < static_cast<int32>(GCurrentPageSpecs.size()))
@@ -1316,8 +1265,8 @@ void RefreshItemPage()
 
 		// Scan fallback removed: only trust ListView displayed/pool entries.
 		LOGI_STREAM("ItemBrowser")
-			<< "[SDK] ItemGrid refresh: page=" << (GItemCurrentPage + 1)
-			<< "/" << GItemTotalPages
+			<< "[SDK] ItemGrid refresh: page=" << (GItemBrowser.CurrentPage + 1)
+			<< "/" << GItemBrowser.TotalPages
 			<< " dataSlots=" << BuiltSlots
 			<< " listItems=" << NumItemsInList
 			<< " displayedEntries=" << DisplayedNum
@@ -1326,11 +1275,11 @@ void RefreshItemPage()
 			<< "\n";
 	}
 
-	if (GItemPageLabel)
+	if (GItemBrowser.PageLabel)
 	{
 		wchar_t Buf[16] = {};
-		swprintf_s(Buf, 16, L"%d/%d", GItemCurrentPage + 1, GItemTotalPages);
-		GItemPageLabel->SetText(MakeText(Buf));
+		swprintf_s(Buf, 16, L"%d/%d", GItemBrowser.CurrentPage + 1, GItemBrowser.TotalPages);
+		GItemBrowser.PageLabel->SetText(MakeText(Buf));
 	}
 	auto SetBtnEnabled = [](UJHCommon_Btn_Free_C* W, bool bEnabled) {
 		if (!W) return;
@@ -1344,8 +1293,8 @@ void RefreshItemPage()
 		if (W->JHGPCBtn)
 			W->JHGPCBtn->SetIsEnabled(bEnabled);
 	};
-	SetBtnEnabled(GItemPrevPageBtn, GItemCurrentPage > 0);
-	SetBtnEnabled(GItemNextPageBtn, (GItemCurrentPage + 1) < GItemTotalPages);
+	SetBtnEnabled(GItemBrowser.PrevPageBtn, GItemBrowser.CurrentPage > 0);
+	SetBtnEnabled(GItemBrowser.NextPageBtn, (GItemBrowser.CurrentPage + 1) < GItemBrowser.TotalPages);
 }
 
 void PollItemBrowserHoverTips()
@@ -1378,7 +1327,7 @@ void PollItemBrowserHoverTips()
 
 	int32 HoveredSlot = -1;
 	// 濞村吋锚閸樻稒鎷呯捄銊︽殢缂傚啯鍨堕悧鎼佸锤閹邦厾鍨奸柛娑欏灊閼垫垿鏁嶅畝鍕級闁稿繐绉甸惁鈩冩姜椤曗偓閸忔﹢宕?24 闁哄秴鍚嬬换浣规償?IsHovered 闁规亽鍨虹粊鎾Υ?
-	if (IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+	if (IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.GridPanel)))
 	{
 		UObject* WorldCtx = nullptr;
 		if (UWorld* World = UWorld::GetWorld())
@@ -1386,7 +1335,7 @@ void PollItemBrowserHoverTips()
 
 		if (WorldCtx)
 		{
-			const FGeometry GridGeo = GItemGridPanel->GetCachedGeometry();
+			const FGeometry GridGeo = GItemBrowser.GridPanel->GetCachedGeometry();
 			const FVector2D GridSize = USlateBlueprintLibrary::GetLocalSize(GridGeo);
 			if (GridSize.X > 1.0f && GridSize.Y > 1.0f)
 			{
@@ -1409,17 +1358,17 @@ void PollItemBrowserHoverTips()
 					const float GridH = MaxY - MinY;
 					if (GridW > 1.0f && GridH > 1.0f)
 					{
-						const float CellW = GridW / static_cast<float>(ITEM_GRID_COLS);
-						const float CellH = GridH / static_cast<float>(ITEM_GRID_ROWS);
+						const float CellW = GridW / static_cast<float>(kItemGridCols);
+						const float CellH = GridH / static_cast<float>(kItemGridRows);
 						const int32 Col = static_cast<int32>((MouseVP.X - MinX) / CellW);
 						const int32 Row = static_cast<int32>((MouseVP.Y - MinY) / CellH);
-						if (Col >= 0 && Col < ITEM_GRID_COLS && Row >= 0 && Row < ITEM_GRID_ROWS)
+						if (Col >= 0 && Col < kItemGridCols && Row >= 0 && Row < kItemGridRows)
 						{
-							const int32 Slot = Row * ITEM_GRID_COLS + Col;
-							if (Slot >= 0 && Slot < ITEMS_PER_PAGE)
+							const int32 Slot = Row * kItemGridCols + Col;
+							if (Slot >= 0 && Slot < kItemsPerPage)
 							{
-								const int32 ItemIdxFallback = GItemSlotItemIndices[Slot];
-								if (ItemIdxFallback >= 0 && ItemIdxFallback < static_cast<int32>(GAllItems.size()))
+								const int32 ItemIdxFallback = GItemBrowser.SlotItemIndices[Slot];
+								if (ItemIdxFallback >= 0 && ItemIdxFallback < static_cast<int32>(GItemBrowser.AllItems.size()))
 								{
 									HoveredSlot = Slot;
 									++HoverByGridFallbackCount;
@@ -1448,10 +1397,10 @@ void PollItemBrowserHoverTips()
 		if ((NowTick - sLastDeepProbeTick) >= 80)
 		{
 			sLastDeepProbeTick = NowTick;
-			for (int32 i = 0; i < ITEMS_PER_PAGE; ++i)
+			for (int32 i = 0; i < kItemsPerPage; ++i)
 			{
-				auto* Btn = GItemSlotButtons[i];
-				auto* Entry = GItemSlotEntryWidgets[i];
+				auto* Btn = GItemBrowser.SlotButtons[i];
+				auto* Entry = GItemBrowser.SlotEntryWidgets[i];
 				const bool BtnValid = IsSafeLiveObject(static_cast<UObject*>(Btn));
 				const bool EntryValid = IsSafeLiveObject(static_cast<UObject*>(Entry));
 				if (BtnValid) ++ValidBtnCount;
@@ -1576,7 +1525,7 @@ void PollItemBrowserHoverTips()
 	}
 
 	// 闁诡噮鍓氱拠鐐哄礆閸ャ劌搴婄紒瀣珪閳ь兛绀侀崹鐣屸偓瑙勭啲缁辩増螚閻樺磭鍨奸煫鍥跺亰閳ь剛鍠愭竟鍌涙交閸ャ劎澹愰悗娑欏姈濡炲倿鏁嶇仦鑲╃憹閻熸洑鐒﹂惁锛勬暜瑜旈崗姗€鏌屽鍛处 Tip 闁告劕鎳庨鎰板Υ?
-	const bool HoverTargetChanged = (HoveredSlot != GItemHoveredSlot);
+	const bool HoverTargetChanged = (HoveredSlot != GItemBrowser.HoveredSlot);
 	if (HoverTargetChanged)
 	{
 		if (sPendingHoverSlot != HoveredSlot)
@@ -1596,14 +1545,14 @@ void PollItemBrowserHoverTips()
 		sPendingHoverTick = 0;
 	}
 
-	const int32 ItemIdx = GItemSlotItemIndices[HoveredSlot];
+	const int32 ItemIdx = GItemBrowser.SlotItemIndices[HoveredSlot];
 	if (HoveredSlot != sLastProbeSlot)
 	{
 		if (kVerboseItemHoverLogs)
 		{
 			int32 DefId = -1;
-			if (ItemIdx >= 0 && ItemIdx < static_cast<int32>(GAllItems.size()))
-				DefId = GAllItems[ItemIdx].DefId;
+			if (ItemIdx >= 0 && ItemIdx < static_cast<int32>(GItemBrowser.AllItems.size()))
+				DefId = GItemBrowser.AllItems[ItemIdx].DefId;
 			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: slot=" << HoveredSlot
 			          << " itemIdx=" << ItemIdx
 			          << " defId=" << DefId << "\n";
@@ -1611,7 +1560,7 @@ void PollItemBrowserHoverTips()
 		sLastProbeSlot = HoveredSlot;
 	}
 
-	if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GAllItems.size()))
+	if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GItemBrowser.AllItems.size()))
 	{
 		if (sLastFailCode != 1)
 		{
@@ -1624,27 +1573,27 @@ void PollItemBrowserHoverTips()
 
 	// Hover target changed: build a fresh game-native tips widget.
 	const bool NeedRebuildTips =
-		(HoveredSlot != GItemHoveredSlot) ||
-		(!GItemHoverTipsWidget) ||
-		(!IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)));
+		(HoveredSlot != GItemBrowser.HoveredSlot) ||
+		(!GItemBrowser.HoverTipsWidget) ||
+		(!IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.HoverTipsWidget)));
 	static DWORD sLastTipRebuildTick = 0;
 
 	if (NeedRebuildTips)
 	{
-		const CachedItem& CI = GAllItems[ItemIdx];
+		const CachedItem& CI = GItemBrowser.AllItems[ItemIdx];
 		const bool HasReusableStandalone = IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget));
 		const bool RebuildTooFrequent = HasReusableStandalone && (NowTick - sLastTipRebuildTick < 40);
 		if (RebuildTooFrequent)
-			GItemHoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
+			GItemBrowser.HoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
 		else
-			GItemHoverTipsWidget = nullptr;
+			GItemBrowser.HoverTipsWidget = nullptr;
 		// 濞寸姴鎳嶆繛鍥偨閵娿劌娈扮€?StandaloneGameTip闁挎稑濂旂粭澶愬礃瀹ュ牏娈堕柣顫妽閻栧爼骞嬭箛鎾虫枾闁?Tip VM 闁规亽鍎辫ぐ娑㈠Υ?
-		if (!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)))
+		if (!GItemBrowser.HoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.HoverTipsWidget)))
 		{
 			const bool StandaloneOK = UpdateStandaloneItemTipContent(CI);
 			if (StandaloneOK && IsSafeLiveObject(static_cast<UObject*>(GStandaloneItemTipWidget)))
 			{
-				GItemHoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
+				GItemBrowser.HoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
 				sLastTipRebuildTick = NowTick;
 				if (kVerboseItemHoverLogs)
 				{
@@ -1654,7 +1603,7 @@ void PollItemBrowserHoverTips()
 			}
 		}
 
-		if (!GItemHoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemHoverTipsWidget)))
+		if (!GItemBrowser.HoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.HoverTipsWidget)))
 		{
 			if (sLastFailCode != 5)
 			{
@@ -1665,24 +1614,24 @@ void PollItemBrowserHoverTips()
 			return;
 		}
 
-		GItemHoveredSlot = HoveredSlot;
+		GItemBrowser.HoveredSlot = HoveredSlot;
 		sLastFailCode = -1;
 		if (kVerboseItemHoverLogs)
 		{
-			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: tips created widget=" << (void*)GItemHoverTipsWidget
+			LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverProbe: tips created widget=" << (void*)GItemBrowser.HoverTipsWidget
 			          << " defId=" << CI.DefId << "\n";
 		}
 	}
 
 	// Keep the tips anchored to the currently hovered backpack entry widget.
-	auto* Anchor = GItemSlotEntryWidgets[HoveredSlot];
+	auto* Anchor = GItemBrowser.SlotEntryWidgets[HoveredSlot];
 	const bool IsStandaloneTip =
 		(GStandaloneItemTipWidget &&
-		 GItemHoverTipsWidget == static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget));
+		 GItemBrowser.HoverTipsWidget == static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget));
 	if (!IsStandaloneTip && IsSafeLiveObject(static_cast<UObject*>(Anchor)))
 	{
 		if (auto* Subsystem = GetJHNeoUISubsystem())
-			Subsystem->UpdateItemTipsPosition(Anchor, GItemHoverTipsWidget, false);
+			Subsystem->UpdateItemTipsPosition(Anchor, GItemBrowser.HoverTipsWidget, false);
 	}
 
 	if (UWorld* World = UWorld::GetWorld())
@@ -1712,7 +1661,7 @@ void PollItemBrowserHoverTips()
 		}
 		else
 		{
-			TipSize = USlateBlueprintLibrary::GetLocalSize(GItemHoverTipsWidget->GetCachedGeometry());
+			TipSize = USlateBlueprintLibrary::GetLocalSize(GItemBrowser.HoverTipsWidget->GetCachedGeometry());
 			if (TipSize.X < 1.0f || TipSize.Y < 1.0f)
 				TipSize = FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight };
 		}
@@ -1765,40 +1714,40 @@ void PollItemBrowserHoverTips()
 			((NowTick - sLastTipPosTick) >= 66);
 		if (NeedMove)
 		{
-			GItemHoverTipsWidget->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
-			GItemHoverTipsWidget->SetPositionInViewport(TipPos, false);
+			GItemBrowser.HoverTipsWidget->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
+			GItemBrowser.HoverTipsWidget->SetPositionInViewport(TipPos, false);
 			sLastTipPos = TipPos;
 			sLastTipPosTick = NowTick;
 		}
 	}
 
-	GItemHoverTipsWidget->SetRenderOpacity(1.0f);
-	GItemHoverTipsWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+	GItemBrowser.HoverTipsWidget->SetRenderOpacity(1.0f);
+	GItemBrowser.HoverTipsWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 
 	static DWORD sLastTipsStateLogTick = 0;
 	if (kVerboseItemHoverLogs && (NowTick - sLastTipsStateLogTick >= 1000))
 	{
 		sLastTipsStateLogTick = NowTick;
-		const FGeometry TipsGeo = GItemHoverTipsWidget->GetCachedGeometry();
+		const FGeometry TipsGeo = GItemBrowser.HoverTipsWidget->GetCachedGeometry();
 		const FVector2D TipsSize = USlateBlueprintLibrary::GetLocalSize(TipsGeo);
-		LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverTipsState: widget=" << (void*)GItemHoverTipsWidget
-		          << " inViewport=" << (GItemHoverTipsWidget->IsInViewport() ? 1 : 0)
-		          << " vis=" << VisName(GItemHoverTipsWidget->GetVisibility())
-		          << " opacity=" << GItemHoverTipsWidget->GetRenderOpacity()
+		LOGI_STREAM("ItemBrowser") << "[SDK] ItemHoverTipsState: widget=" << (void*)GItemBrowser.HoverTipsWidget
+		          << " inViewport=" << (GItemBrowser.HoverTipsWidget->IsInViewport() ? 1 : 0)
+		          << " vis=" << ToVisName(GItemBrowser.HoverTipsWidget->GetVisibility())
+		          << " opacity=" << GItemBrowser.HoverTipsWidget->GetRenderOpacity()
 		          << " size=(" << TipsSize.X << "," << TipsSize.Y << ")\n";
 	}
 }
 
 void OnItemBrowserTabShown()
 {
-	UListView* ListView = GItemListView;
+	UListView* ListView = GItemBrowser.ListView;
 	if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(ListView), UListView::StaticClass()))
 		return;
 
-	if (GItemGridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemGridPanel)))
+	if (GItemBrowser.GridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.GridPanel)))
 	{
-		GItemGridPanel->ForceLayoutPrepass();
-		UPanelWidget* P0 = GItemGridPanel->GetParent();
+		GItemBrowser.GridPanel->ForceLayoutPrepass();
+		UPanelWidget* P0 = GItemBrowser.GridPanel->GetParent();
 		if (P0 && IsSafeLiveObject(static_cast<UObject*>(P0)))
 		{
 			P0->ForceLayoutPrepass();
@@ -1815,8 +1764,8 @@ void OnItemBrowserTabShown()
 
 	LOGI_STREAM("ItemBrowser")
 		<< "[SDK] ItemGrid tab-shown pre-refresh: numItems=" << ListView->GetNumItems()
-		<< " gridVis=" << (GItemGridPanel ? VisName(GItemGridPanel->GetVisibility()) : "null")
-		<< " listVis=" << VisName(ListView->GetVisibility())
+		<< " gridVis=" << (GItemBrowser.GridPanel ? ToVisName(GItemBrowser.GridPanel->GetVisibility()) : "null")
+		<< " listVis=" << ToVisName(ListView->GetVisibility())
 		<< "\n";
 
 	RefreshItemPage();
@@ -1832,8 +1781,8 @@ void CacheEntryInitContextWeakB(const FWeakObjectPtr& WeakB, const char* SourceT
 		return;
 
 	CacheEntryInitWeakB(WeakB);
-	if (GItemListView && IsSafeLiveObject(static_cast<UObject*>(GItemListView)))
-		WriteWeakPtrAt(static_cast<UObject*>(GItemListView), kNeoTileInitWeakOffsetB, WeakB);
+	if (GItemBrowser.ListView && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.ListView)))
+		WriteWeakPtrAt(static_cast<UObject*>(GItemBrowser.ListView), kNeoTileInitWeakOffsetB, WeakB);
 
 	LOGI_STREAM("ItemBrowser")
 		<< "[SDK] ItemGrid entry-init context cached from external source: src="
@@ -1881,8 +1830,8 @@ bool RefreshEntryInitContextFromAnchorScan(bool* OutChanged)
 		const bool Changed = (!HadCached) || (!IsSameWeak(GCachedEntryInitWeakB, WeakB));
 
 		CacheEntryInitWeakB(WeakB);
-		if (GItemListView && IsSafeLiveObject(static_cast<UObject*>(GItemListView)))
-			WriteWeakPtrAt(static_cast<UObject*>(GItemListView), kNeoTileInitWeakOffsetB, WeakB);
+		if (GItemBrowser.ListView && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.ListView)))
+			WriteWeakPtrAt(static_cast<UObject*>(GItemBrowser.ListView), kNeoTileInitWeakOffsetB, WeakB);
 
 		if (OutChanged)
 			*OutChanged = Changed;
@@ -1948,38 +1897,38 @@ void ClearItemBrowserState()
 	}
 	GStandaloneItemTipWidget = nullptr;
 
-	GItemCategoryDD = nullptr;
-	GItemLastCatIdx = -1;
+	GItemBrowser.CategoryDD = nullptr;
+	GItemBrowser.LastCatIdx = -1;
 
-	GItemPagerRow = nullptr;
-	GItemPrevPageBtn = nullptr;
-	GItemNextPageBtn = nullptr;
-	GItemPageLabel = nullptr;
-	GItemPrevWasPressed = false;
-	GItemNextWasPressed = false;
+	GItemBrowser.PagerRow = nullptr;
+	GItemBrowser.PrevPageBtn = nullptr;
+	GItemBrowser.NextPageBtn = nullptr;
+	GItemBrowser.PageLabel = nullptr;
+	GItemBrowser.PrevWasPressed = false;
+	GItemBrowser.NextWasPressed = false;
 
-	GItemQuantityRow = nullptr;
-	GItemQuantityEdit = nullptr;
-	GItemAddQuantity = 1;
+	GItemBrowser.QuantityRow = nullptr;
+	GItemBrowser.QuantityEdit = nullptr;
+	GItemBrowser.AddQuantity = 1;
 	GItemSearchEdit = nullptr;
 	GItemSearchKeyword.clear();
 	GItemSearchKeywordFolded.clear();
 
-	GItemGridPanel = nullptr;
-	GItemListView = nullptr;
+	GItemBrowser.GridPanel = nullptr;
+	GItemBrowser.ListView = nullptr;
 	GEntryInitPreparedListView = nullptr;
-	for (int32 i = 0; i < ITEMS_PER_PAGE; i++)
+	for (int32 i = 0; i < kItemsPerPage; i++)
 	{
-		GItemSlotButtons[i] = nullptr;
-		GItemSlotImages[i] = nullptr;
-		GItemSlotQualityBorders[i] = nullptr;
-		GItemSlotEntryWidgets[i] = nullptr;
-		GItemSlotItemIndices[i] = -1;
-		GItemSlotWasPressed[i] = false;
+		GItemBrowser.SlotButtons[i] = nullptr;
+		GItemBrowser.SlotImages[i] = nullptr;
+		GItemBrowser.SlotQualityBorders[i] = nullptr;
+		GItemBrowser.SlotEntryWidgets[i] = nullptr;
+		GItemBrowser.SlotItemIndices[i] = -1;
+		GItemBrowser.SlotWasPressed[i] = false;
 	}
 
-	GItemCurrentPage = 0;
-	GItemTotalPages = 0;
+	GItemBrowser.CurrentPage = 0;
+	GItemBrowser.TotalPages = 0;
 }
 
 
