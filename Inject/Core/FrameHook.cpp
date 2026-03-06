@@ -2327,9 +2327,17 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		IsSystemTabActive;
 	PollAndApplyTab5Features(CanReadTab5FromUI);
 
+	auto IsLiveDynContent = [](UVerticalBox* Box) -> bool
+	{
+		if (!Box) return false;
+		auto* Obj = static_cast<UObject*>(Box);
+		if (!IsSafeLiveObject(Obj)) return false;
+		if (Obj->Flags & EObjectFlags::BeginDestroyed) return false;
+		if (Obj->Flags & EObjectFlags::FinishDestroyed) return false;
+		return true;
+	};
 	const bool IsTeammateTabActive =
-		GDynTab.Content6 &&
-		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content6)) &&
+		IsLiveDynContent(GDynTab.Content6) &&
 		GDynTab.Content6->GetVisibility() != ESlateVisibility::Collapsed;
 	const bool CanReadTab6FromUI =
 		GInternalWidgetVisible &&

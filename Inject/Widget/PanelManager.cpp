@@ -76,20 +76,27 @@ namespace
 		if (!CV || !IsSafeLiveObject(static_cast<UObject*>(CV)))
 			return -1;
 
-		if (GDynTab.Content6 &&
-			IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content6)) &&
+		auto IsLiveDynContent = [](UVerticalBox* Box) -> bool
+		{
+			if (!Box) return false;
+			auto* Obj = static_cast<UObject*>(Box);
+			if (!IsSafeLiveObject(Obj)) return false;
+			if (Obj->Flags & EObjectFlags::BeginDestroyed) return false;
+			if (Obj->Flags & EObjectFlags::FinishDestroyed) return false;
+			return true;
+		};
+
+		if (IsLiveDynContent(GDynTab.Content6) &&
 			GDynTab.Content6->GetVisibility() != ESlateVisibility::Collapsed)
 		{
 			return 6;
 		}
-		if (GDynTab.Content7 &&
-			IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content7)) &&
+		if (IsLiveDynContent(GDynTab.Content7) &&
 			GDynTab.Content7->GetVisibility() != ESlateVisibility::Collapsed)
 		{
 			return 7;
 		}
-		if (GDynTab.Content8 &&
-			IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content8)) &&
+		if (IsLiveDynContent(GDynTab.Content8) &&
 			GDynTab.Content8->GetVisibility() != ESlateVisibility::Collapsed)
 		{
 			return 8;
