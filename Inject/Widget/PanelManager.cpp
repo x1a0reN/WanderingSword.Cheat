@@ -76,31 +76,25 @@ namespace
 		if (!CV || !IsSafeLiveObject(static_cast<UObject*>(CV)))
 			return -1;
 
-		auto IsLiveDynContent = [](UVerticalBox* Box) -> bool
+		auto ReadVisibilityDirect = [](UWidget* W) -> ESlateVisibility
+		{
+			if (!W) return ESlateVisibility::Collapsed;
+			return W->Visibility;
+		};
+
+		auto IsDynContentVisible = [&](UVerticalBox* Box) -> bool
 		{
 			if (!Box) return false;
 			auto* Obj = static_cast<UObject*>(Box);
 			if (!IsSafeLiveObject(Obj)) return false;
 			if (Obj->Flags & EObjectFlags::BeginDestroyed) return false;
 			if (Obj->Flags & EObjectFlags::FinishDestroyed) return false;
-			return true;
+			return ReadVisibilityDirect(static_cast<UWidget*>(Box)) != ESlateVisibility::Collapsed;
 		};
 
-		if (IsLiveDynContent(GDynTab.Content6) &&
-			GDynTab.Content6->GetVisibility() != ESlateVisibility::Collapsed)
-		{
-			return 6;
-		}
-		if (IsLiveDynContent(GDynTab.Content7) &&
-			GDynTab.Content7->GetVisibility() != ESlateVisibility::Collapsed)
-		{
-			return 7;
-		}
-		if (IsLiveDynContent(GDynTab.Content8) &&
-			GDynTab.Content8->GetVisibility() != ESlateVisibility::Collapsed)
-		{
-			return 8;
-		}
+		if (IsDynContentVisible(GDynTab.Content6)) return 6;
+		if (IsDynContentVisible(GDynTab.Content7)) return 7;
+		if (IsDynContentVisible(GDynTab.Content8)) return 8;
 
 		if (CV->CT_Contents &&
 			IsSafeLiveObject(static_cast<UObject*>(CV->CT_Contents)))

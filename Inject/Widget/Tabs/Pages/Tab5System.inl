@@ -95,9 +95,21 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* MoveBox = MovePanel ? MovePanel->CT_Contents : nullptr;
 	AddToggleStored(MoveBox, L"空格跳跃", GTab5.SpaceJumpToggle);
 	AddSliderStored(MoveBox, L"跳跃速度", GTab5.JumpSpeedSlider);
+	if (GTab5.JumpSpeedSlider && GTab5.JumpSpeedSlider->VolumeSlider)
+	{
+		GTab5.JumpSpeedSlider->VolumeSlider->SetValue(6.0f);
+		if (GTab5.JumpSpeedSlider->TXT_CurrentValue)
+			GTab5.JumpSpeedSlider->TXT_CurrentValue->SetText(MakeText(L"6"));
+	}
 	AddToggleStored(MoveBox, L"无限跳跃", GTab5.InfiniteJumpToggle);
 	AddToggleStored(MoveBox, L"奔跑/骑马加速", GTab5.RunMountSpeedToggle);
 	AddSliderStored(MoveBox, L"加速倍率", GTab5.RunMountSpeedSlider);
+	if (GTab5.RunMountSpeedSlider && GTab5.RunMountSpeedSlider->VolumeSlider)
+	{
+		GTab5.RunMountSpeedSlider->VolumeSlider->SetValue(2.0f);
+		if (GTab5.RunMountSpeedSlider->TXT_CurrentValue)
+			GTab5.RunMountSpeedSlider->TXT_CurrentValue->SetText(MakeText(L"2"));
+	}
 	AddSlider(MoveBox, L"世界移动速度");
 	AddSlider(MoveBox, L"场景移动速度");
 	AddPanelWithFixedGap(MovePanel, 0.0f, 10.0f);

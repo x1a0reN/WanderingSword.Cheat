@@ -58,6 +58,8 @@ struct PostRenderInFlightScope final
 		}
 	};
 
+	int32 GActiveDynTabForPoll = -1;
+
 	/// 检查作弊面板 Widget 指针是否仍指向有效的存活对象，
 	/// 若已被引擎回收则重置全局状态并返回 false。
 	bool EnsureLiveInternalWidgetForFrame()
@@ -1750,11 +1752,12 @@ struct PostRenderInFlightScope final
 				ACharacter* Hero = GetSceneHeroCharacter();
 				if (Hero)
 				{
-					if (Config.JumpSpeed > 0.0f)
+					auto* Movement = Hero->CharacterMovement;
+					if (Movement && IsSafeLiveObject(static_cast<UObject*>(Movement)))
 					{
-						auto* Movement = Hero->CharacterMovement;
-						if (Movement && IsSafeLiveObject(static_cast<UObject*>(Movement)))
-							Movement->JumpZVelocity = Config.JumpSpeed * 100.0f;
+						const float Velocity = Config.JumpSpeed * 150.0f;
+						if (Velocity > 0.0f)
+							Movement->JumpZVelocity = Velocity;
 					}
 					Hero->Jump();
 				}
@@ -2388,18 +2391,24 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		IsSystemTabActive;
 	PollAndApplyTab5Features(CanReadTab5FromUI);
 
-	auto IsLiveDynContent = [](UVerticalBox* Box) -> bool
+	static DWORD sLastSystemSliderPollTick = 0;
+	if (GInternalWidgetVisible && LiveInternalWidget && IsSystemTabActive)
 	{
-		if (!Box) return false;
-		auto* Obj = static_cast<UObject*>(Box);
-		if (!IsSafeLiveObject(Obj)) return false;
-		if (Obj->Flags & EObjectFlags::BeginDestroyed) return false;
-		if (Obj->Flags & EObjectFlags::FinishDestroyed) return false;
-		return true;
-	};
-	const bool IsTeammateTabActive =
-		IsLiveDynContent(GDynTab.Content6) &&
-		GDynTab.Content6->GetVisibility() != ESlateVisibility::Collapsed;
+		const DWORD SystemUiNow = GetTickCount();
+		const bool RunSystemSliderPoll =
+			(sLastSystemSliderPollTick == 0) || ((SystemUiNow - sLastSystemSliderPollTick) >= 16);
+		if (RunSystemSliderPoll)
+		{
+			sLastSystemSliderPollTick = SystemUiNow;
+			PollVolumeItemsButtonsAndText();
+		}
+	}
+	else
+	{
+		sLastSystemSliderPollTick = 0;
+	}
+
+	const bool IsTeammateTabActive = (GActiveDynTabForPoll == 6);
 	const bool CanReadTab6FromUI =
 		GInternalWidgetVisible &&
 		LiveInternalWidget &&
@@ -2569,6 +2578,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				sActiveDynTab = -1;
 			}
 		}
+
+		GActiveDynTabForPoll = sActiveDynTab;
 	}
 
 	if (GInternalWidgetVisible && LiveInternalWidget && !LiveInternalWidget->IsInViewport())
