@@ -1676,6 +1676,8 @@ struct PostRenderInFlightScope final
 
 	struct FTab5RuntimeConfig
 	{
+		bool SpaceJump = false;
+		float JumpSpeed = 600.0f;
 		bool InfiniteJump = false;
 		bool RunMountSpeed = false;
 		float RunMountSpeedMultiplier = 2.0f;
@@ -1685,6 +1687,18 @@ struct PostRenderInFlightScope final
 		bool FirstPlayInherit = false;
 		bool PostStation = false;
 	};
+
+	ACharacter* GetSceneHeroCharacter()
+	{
+		UWorld* World = UWorld::GetWorld();
+		if (!World) return nullptr;
+		AActor* Hero = UNPCFuncLib::GetSceneHero(static_cast<UObject*>(World));
+		if (!Hero || !IsSafeLiveObject(static_cast<UObject*>(Hero)))
+			return nullptr;
+		if (!Hero->IsA(ACharacter::StaticClass()))
+			return nullptr;
+		return static_cast<ACharacter*>(Hero);
+	}
 
 	void ReadTab5ConfigFromUI(FTab5RuntimeConfig& Cfg)
 	{
@@ -1697,6 +1711,8 @@ struct PostRenderInFlightScope final
 			return Slider->GetValue();
 		};
 
+		Cfg.SpaceJump = ReadToggleValue(GTab5.SpaceJumpToggle, Cfg.SpaceJump);
+		Cfg.JumpSpeed = ReadSliderValue(GTab5.JumpSpeedSlider, Cfg.JumpSpeed);
 		Cfg.InfiniteJump = ReadToggleValue(GTab5.InfiniteJumpToggle, Cfg.InfiniteJump);
 		Cfg.RunMountSpeed = ReadToggleValue(GTab5.RunMountSpeedToggle, Cfg.RunMountSpeed);
 		Cfg.RunMountSpeedMultiplier = ReadSliderValue(GTab5.RunMountSpeedSlider, Cfg.RunMountSpeedMultiplier);
@@ -1724,6 +1740,27 @@ struct PostRenderInFlightScope final
 		static FTab5RuntimeConfig Config{};
 		if (CanReadFromUI)
 			ReadTab5ConfigFromUI(Config);
+
+		if (Config.SpaceJump && !GInternalWidgetVisible)
+		{
+			static bool SpaceWasDown = false;
+			const bool SpaceDown = (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
+			if (SpaceDown && !SpaceWasDown)
+			{
+				ACharacter* Hero = GetSceneHeroCharacter();
+				if (Hero)
+				{
+					if (Config.JumpSpeed > 0.0f)
+					{
+						auto* Movement = Hero->CharacterMovement;
+						if (Movement && IsSafeLiveObject(static_cast<UObject*>(Movement)))
+							Movement->JumpZVelocity = Config.JumpSpeed * 100.0f;
+					}
+					Hero->Jump();
+				}
+			}
+			SpaceWasDown = SpaceDown;
+		}
 
 		#define TAB5_TOGGLE(field, enableFn, disableFn) \
 			{ static bool Last_##field = false; \

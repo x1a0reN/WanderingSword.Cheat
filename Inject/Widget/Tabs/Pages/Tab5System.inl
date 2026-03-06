@@ -93,8 +93,8 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	auto* MovePanel = CreateCollapsiblePanel(PC, L"移动与跳跃");
 	auto* MoveBox = MovePanel ? MovePanel->CT_Contents : nullptr;
-	AddToggle(MoveBox, L"空格跳跃");
-	AddSlider(MoveBox, L"跳跃速度");
+	AddToggleStored(MoveBox, L"空格跳跃", GTab5.SpaceJumpToggle);
+	AddSliderStored(MoveBox, L"跳跃速度", GTab5.JumpSpeedSlider);
 	AddToggleStored(MoveBox, L"无限跳跃", GTab5.InfiniteJumpToggle);
 	AddToggleStored(MoveBox, L"奔跑/骑马加速", GTab5.RunMountSpeedToggle);
 	AddSliderStored(MoveBox, L"加速倍率", GTab5.RunMountSpeedSlider);
