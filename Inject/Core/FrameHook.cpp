@@ -1559,10 +1559,11 @@ struct PostRenderInFlightScope final
 	void ReadTab3ConfigFromUI(FTab3RuntimeConfig& Cfg)
 	{
 		Cfg.CraftIgnoreRequirements = ReadToggleValue(GTab3.CraftIgnoreRequirementsToggle, Cfg.CraftIgnoreRequirements);
-		Cfg.CraftOutputQuantityEnabled = ReadToggleValue(GTab3.CraftOutputQuantityToggle, Cfg.CraftOutputQuantityEnabled);
+
 
 		const int32 NewCraftOutputQtyVal = ReadIntegerEditValue(GetRuntimeEditBoxByTitle(L"产出数量"), Cfg.CraftOutputQuantityValue, 1, 9999);
 		Cfg.CraftOutputQuantityValue = NewCraftOutputQtyVal;
+		Cfg.CraftOutputQuantityEnabled = (NewCraftOutputQtyVal != 1);
 
 		Cfg.GatherCooldown = ReadToggleValue(GTab3.GatherCooldownToggle, Cfg.GatherCooldown);
 		Cfg.FishRareOnly = ReadToggleValue(GTab3.FishRareOnlyToggle, Cfg.FishRareOnly);
@@ -1688,6 +1689,8 @@ struct PostRenderInFlightScope final
 		bool FirstPlayHard = false;
 		bool FirstPlayInherit = false;
 		bool PostStation = false;
+		bool UnlockCodex = false;
+		bool UnlockAchievement = false;
 	};
 
 	ACharacter* GetSceneHeroCharacter()
@@ -1722,6 +1725,8 @@ struct PostRenderInFlightScope final
 		Cfg.FirstPlayHard = ReadToggleValue(GTab5.FirstPlayHardToggle, Cfg.FirstPlayHard);
 		Cfg.FirstPlayInherit = ReadToggleValue(GTab5.FirstPlayInheritToggle, Cfg.FirstPlayInherit);
 		Cfg.PostStation = ReadToggleValue(GTab5.PostStationToggle, Cfg.PostStation);
+		Cfg.UnlockCodex = ReadToggleValue(GTab5.UnlockCodexToggle, Cfg.UnlockCodex);
+		Cfg.UnlockAchievement = ReadToggleValue(GTab5.UnlockAchievementToggle, Cfg.UnlockAchievement);
 
 		if (GTab5.MountSelectDD &&
 			IsSafeLiveObject(static_cast<UObject*>(GTab5.MountSelectDD)) &&
@@ -1777,6 +1782,11 @@ struct PostRenderInFlightScope final
 		TAB5_TOGGLE(FirstPlayHard, EnableFirstPlayHardPatch, DisableFirstPlayHardPatch)
 		TAB5_TOGGLE(FirstPlayInherit, EnableFirstPlayInheritPatch, DisableFirstPlayInheritPatch)
 		TAB5_TOGGLE(PostStation, EnablePostStationPatch, DisablePostStationPatch)
+		TAB5_TOGGLE(UnlockCodex, EnableUnlockAllCodex, DisableUnlockAllCodex)
+		TAB5_TOGGLE(UnlockAchievement, EnableUnlockAllAchievements, DisableUnlockAllAchievements)
+
+		// 屏幕设置: 每帧检测变化并通过 SDK 应用
+		ApplyScreenSettings();
 
 		static bool LastRunMountSpeed = false;
 		if (Config.RunMountSpeed != LastRunMountSpeed)
@@ -2011,6 +2021,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			DisableFirstPlayHardPatch();
 			DisableFirstPlayInheritPatch();
 			DisablePostStationPatch();
+			DisableUnlockAllCodex();
+			DisableUnlockAllAchievements();
 			DisableFollowerCountHook();
 			DisableReplaceTeammateHook();
 			APlayerController* PC = GetFirstLocalPlayerController();

@@ -161,7 +161,7 @@ struct Tab2Controls
 struct Tab3Controls
 {
     UBPVE_JHConfigVideoItem2_C*  CraftIgnoreRequirementsToggle = nullptr;  // 锻造/制衣/炼丹/烹饪无视要求
-    UBPVE_JHConfigVideoItem2_C*  CraftOutputQuantityToggle     = nullptr;  // 设置产出数量
+
     UBPVE_JHConfigVolumeItem2_C* CraftOutputQuantityEdit       = nullptr;  // 产出数量 (Numeric EditBox)
     UBPVE_JHConfigVideoItem2_C*  GatherCooldownToggle          = nullptr;  // 采集一秒冷却
     UBPVE_JHConfigVideoItem2_C*  FishRareOnlyToggle            = nullptr;  // 钓鱼只钓稀有物
@@ -202,6 +202,11 @@ struct Tab5Controls
     UBPVE_JHConfigVideoItem2_C*  GmCommandToggle               = nullptr;  // 激活GM命令行
     UBPVE_JHConfigVideoItem2_C*  UnlockCodexToggle             = nullptr;  // 解锁全图鉴
     UBPVE_JHConfigVideoItem2_C*  UnlockAchievementToggle       = nullptr;  // 解锁全成就
+    UBPVE_JHConfigVideoItem2_C*  ScreenModeDD                  = nullptr;  // 首选屏幕模式
+    UBPVE_JHConfigVideoItem2_C*  VSyncDD                       = nullptr;  // 使用垂直同步
+    UBPVE_JHConfigVideoItem2_C*  DynResDD                      = nullptr;  // 使用动态分辨率
+    UBPVE_JHConfigVolumeItem2_C* ResolutionXEdit               = nullptr;  // 分辨率X
+    UBPVE_JHConfigVolumeItem2_C* ResolutionYEdit               = nullptr;  // 分辨率Y
 };
 
 /// 动态扩展 Tab (6/7/8) 的按钮与内容容器
@@ -408,6 +413,14 @@ void DisableFirstPlayInheritPatch();
 
 void EnablePostStationPatch();                  // 未交互驿站可用
 void DisablePostStationPatch();
+
+void EnableUnlockAllCodex();                     // 解锁全图鉴
+void DisableUnlockAllCodex();
+
+void EnableUnlockAllAchievements();              // 解锁全成就
+void DisableUnlockAllAchievements();
+
+void ApplyScreenSettings();                      // 屏幕设置
 
 // ── Tab6: 队友系统 ──
 void EnableFollowerCountHook();                 // 设置队友跟随数量

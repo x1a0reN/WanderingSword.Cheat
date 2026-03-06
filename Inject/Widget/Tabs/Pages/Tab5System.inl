@@ -241,46 +241,30 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* StoryBox = StoryPanel ? StoryPanel->CT_Contents : nullptr;
 	AddToggleStored(StoryBox, L"一周目可选极难", GTab5.FirstPlayHardToggle);
 	AddToggleStored(StoryBox, L"一周目可选传承", GTab5.FirstPlayInheritToggle);
-	AddToggle(StoryBox, L"承君传承包括所有");
 	AddToggleStored(StoryBox, L"未交互驿站可用", GTab5.PostStationToggle);
 	AddToggle(StoryBox, L"激活GM命令行");
-	AddToggle(StoryBox, L"解锁全图鉴");
-	AddToggle(StoryBox, L"解锁全成就");
+	AddToggleStored(StoryBox, L"解锁全图鉴", GTab5.UnlockCodexToggle);
+	AddToggleStored(StoryBox, L"解锁全成就", GTab5.UnlockAchievementToggle);
 	AddPanelWithFixedGap(StoryPanel, 0.0f, 10.0f);
+
+	auto AddNumericStored = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue, UBPVE_JHConfigVolumeItem2_C*& OutRef) {
+		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : Container, Title, L"输入数字", DefaultValue);
+		if (Item)
+		{
+			OutRef = Item;
+			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			Count++;
+		}
+	};
 
 	auto* ScreenPanel = CreateCollapsiblePanel(PC, L"屏幕设置");
 	auto* ScreenBox = ScreenPanel ? ScreenPanel->CT_Contents : nullptr;
-	AddDropdown(ScreenBox, L"分辨率", { L"1920x1080", L"2560x1440", L"3840x2160" });
-	AddDropdown(ScreenBox, L"窗口模式", { L"全屏", L"无边框", L"窗口" });
-	AddToggle(ScreenBox, L"垂直同步");
+	AddNumericStored(ScreenBox, L"分辨率X", L"1920", GTab5.ResolutionXEdit);
+	AddNumericStored(ScreenBox, L"分辨率Y", L"1080", GTab5.ResolutionYEdit);
+	AddDropdownStored(ScreenBox, L"首选屏幕模式", { L"全屏", L"无边框窗口", L"窗口" }, GTab5.ScreenModeDD);
+	AddDropdownStored(ScreenBox, L"使用垂直同步", { L"否", L"是" }, GTab5.VSyncDD);
+	AddDropdownStored(ScreenBox, L"使用动态分辨率", { L"否", L"是" }, GTab5.DynResDD);
 	AddPanelWithFixedGap(ScreenPanel, 0.0f, 10.0f);
-
-	auto* DiffPanel = CreateCollapsiblePanel(PC, L"开档难度系数");
-	auto* DiffBox = DiffPanel ? DiffPanel->CT_Contents : nullptr;
-	AddNumeric(DiffBox, L"简单系数", L"100");
-	AddNumeric(DiffBox, L"普通系数", L"100");
-	AddNumeric(DiffBox, L"困难系数", L"100");
-	AddNumeric(DiffBox, L"极难系数", L"100");
-	AddNumeric(DiffBox, L"敌人伤害系数", L"100");
-	AddNumeric(DiffBox, L"敌人气血系数", L"100");
-	AddNumeric(DiffBox, L"资源产出系数", L"100");
-	AddNumeric(DiffBox, L"经验获取系数", L"100");
-	AddPanelWithFixedGap(DiffPanel, 0.0f, 10.0f);
-
-	auto* TitlePanel = CreateCollapsiblePanel(PC, L"称号战力门槛");
-	auto* TitleBox = TitlePanel ? TitlePanel->CT_Contents : nullptr;
-	AddNumeric(TitleBox, L"称号门槛1", L"100");
-	AddNumeric(TitleBox, L"称号门槛2", L"200");
-	AddNumeric(TitleBox, L"称号门槛3", L"300");
-	AddNumeric(TitleBox, L"称号门槛4", L"400");
-	AddNumeric(TitleBox, L"称号门槛5", L"500");
-	AddNumeric(TitleBox, L"称号门槛6", L"600");
-	AddNumeric(TitleBox, L"称号门槛7", L"700");
-	AddNumeric(TitleBox, L"称号门槛8", L"800");
-	AddNumeric(TitleBox, L"称号门槛9", L"900");
-	AddNumeric(TitleBox, L"称号门槛10", L"1000");
-	AddNumeric(TitleBox, L"称号门槛11", L"1100");
-	AddPanelWithFixedGap(TitlePanel, 0.0f, 8.0f);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -616,4 +600,321 @@ void DisablePostStationPatch()
 	const unsigned char disable[] = { 0x0F, 0x85 };
 	InlineHook::HookManager::WriteMemory(GPostStationAddr, disable, 2);
 	LOGI_STREAM("Tab5System") << "[SDK] PostStation disabled\n";
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  解锁全图鉴
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+namespace
+{
+	// 假需求: FRequirementSetting{Type=5, ID=150, Num=1.0} — "永远满足"
+	struct FakeRequirement
+	{
+		int32 Type = 5;
+		int32 ID = 150;
+		float Num = 1.0f;
+	};
+	static FakeRequirement GFakeReq;
+
+	// 备份结构: 保存每行原始 Requirements TArray 指针与大小
+	struct ReqBackupEntry
+	{
+		uintptr_t OrigDataPtr;
+		int32     OrigArrayNum;
+		int32     OrigArrayMax;
+	};
+
+	// 成就额外备份: AchievementType
+	struct AchiBackupEntry : ReqBackupEntry
+	{
+		int32 OrigAchievementType;
+	};
+
+	static std::vector<ReqBackupEntry>  GCodexBackup;
+	static bool                         GUnlockCodexApplied = false;
+
+	static std::vector<AchiBackupEntry> GAchiBackup;
+	static bool                         GUnlockAchievementApplied = false;
+}
+
+void EnableUnlockAllCodex()
+{
+	if (GUnlockCodexApplied) return;
+
+	UPictorialResManager* PicMgr = UManagerFuncLib::GetPictorialResManager();
+	if (!PicMgr || !IsSafeLiveObject(static_cast<UObject*>(PicMgr)))
+	{
+		LOGE_STREAM("Tab5System") << "[SDK] UnlockCodex: PictorialResManager is null\n";
+		return;
+	}
+
+	UDataTable* Table = PicMgr->PictorialResourceTable;
+	if (!Table || !IsSafeLiveObject(static_cast<UObject*>(Table)))
+	{
+		LOGE_STREAM("Tab5System") << "[SDK] UnlockCodex: PictorialResourceTable is null\n";
+		return;
+	}
+
+	auto& RowMap = Table->RowMap;
+	const int32 AllocatedSlots = RowMap.IsValid() ? RowMap.NumAllocated() : 0;
+	if (AllocatedSlots <= 0)
+	{
+		LOGE_STREAM("Tab5System") << "[SDK] UnlockCodex: RowMap empty\n";
+		return;
+	}
+
+	GCodexBackup.clear();
+	GCodexBackup.reserve(AllocatedSlots);
+
+	const uintptr_t FakePtr = reinterpret_cast<uintptr_t>(&GFakeReq);
+
+	int32 Modified = 0;
+	for (int32 i = 0; i < AllocatedSlots; ++i)
+	{
+		if (!RowMap.IsValidIndex(i)) continue;
+		uint8* RowData = RowMap[i].Value();
+		if (!RowData) continue;
+
+		// FPictorialSetting::DefaultRequirements TArray at offset 0x98
+		ReqBackupEntry Entry{};
+		Entry.OrigDataPtr = *reinterpret_cast<uintptr_t*>(RowData + 0x98);
+		Entry.OrigArrayNum = *reinterpret_cast<int32*>(RowData + 0xA0);
+		Entry.OrigArrayMax = *reinterpret_cast<int32*>(RowData + 0xA4);
+		GCodexBackup.push_back(Entry);
+
+		// Overwrite with fake requirement
+		*reinterpret_cast<uintptr_t*>(RowData + 0x98) = FakePtr;
+		*reinterpret_cast<int32*>(RowData + 0xA0) = 1;
+		*reinterpret_cast<int32*>(RowData + 0xA4) = 1;
+		++Modified;
+	}
+
+	GUnlockCodexApplied = true;
+	LOGI_STREAM("Tab5System") << "[SDK] UnlockCodex enabled, modified " << Modified << " rows\n";
+}
+
+void DisableUnlockAllCodex()
+{
+	if (!GUnlockCodexApplied) return;
+
+	UPictorialResManager* PicMgr = UManagerFuncLib::GetPictorialResManager();
+	UDataTable* Table = (PicMgr && IsSafeLiveObject(static_cast<UObject*>(PicMgr)))
+		? PicMgr->PictorialResourceTable : nullptr;
+
+	if (Table && IsSafeLiveObject(static_cast<UObject*>(Table)))
+	{
+		auto& RowMap = Table->RowMap;
+		const int32 AllocatedSlots = RowMap.IsValid() ? RowMap.NumAllocated() : 0;
+
+		size_t BackupIdx = 0;
+		for (int32 i = 0; i < AllocatedSlots && BackupIdx < GCodexBackup.size(); ++i)
+		{
+			if (!RowMap.IsValidIndex(i)) continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData) continue;
+
+			const auto& Entry = GCodexBackup[BackupIdx++];
+			*reinterpret_cast<uintptr_t*>(RowData + 0x98) = Entry.OrigDataPtr;
+			*reinterpret_cast<int32*>(RowData + 0xA0) = Entry.OrigArrayNum;
+			*reinterpret_cast<int32*>(RowData + 0xA4) = Entry.OrigArrayMax;
+		}
+	}
+
+	GCodexBackup.clear();
+	GUnlockCodexApplied = false;
+	LOGI_STREAM("Tab5System") << "[SDK] UnlockCodex disabled\n";
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  解锁全成就
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+void EnableUnlockAllAchievements()
+{
+	if (GUnlockAchievementApplied) return;
+
+	UAchievementResManager* AchiMgr = UManagerFuncLib::GetAchievementResManager();
+	if (!AchiMgr || !IsSafeLiveObject(static_cast<UObject*>(AchiMgr)))
+	{
+		LOGE_STREAM("Tab5System") << "[SDK] UnlockAchievement: AchievementResManager is null\n";
+		return;
+	}
+
+	UDataTable* Table = AchiMgr->AchievementResourceTable;
+	if (!Table || !IsSafeLiveObject(static_cast<UObject*>(Table)))
+	{
+		LOGE_STREAM("Tab5System") << "[SDK] UnlockAchievement: AchievementResourceTable is null\n";
+		return;
+	}
+
+	auto& RowMap = Table->RowMap;
+	const int32 AllocatedSlots = RowMap.IsValid() ? RowMap.NumAllocated() : 0;
+	if (AllocatedSlots <= 0)
+	{
+		LOGE_STREAM("Tab5System") << "[SDK] UnlockAchievement: RowMap empty\n";
+		return;
+	}
+
+	GAchiBackup.clear();
+	GAchiBackup.reserve(AllocatedSlots);
+
+	const uintptr_t FakePtr = reinterpret_cast<uintptr_t>(&GFakeReq);
+
+	int32 Modified = 0;
+	for (int32 i = 0; i < AllocatedSlots; ++i)
+	{
+		if (!RowMap.IsValidIndex(i)) continue;
+		uint8* RowData = RowMap[i].Value();
+		if (!RowData) continue;
+
+		// FAchievementInfoSetting::Requirements TArray at offset 0x20
+		AchiBackupEntry Entry{};
+		Entry.OrigDataPtr = *reinterpret_cast<uintptr_t*>(RowData + 0x20);
+		Entry.OrigArrayNum = *reinterpret_cast<int32*>(RowData + 0x28);
+		Entry.OrigArrayMax = *reinterpret_cast<int32*>(RowData + 0x2C);
+		Entry.OrigAchievementType = *reinterpret_cast<int32*>(RowData + 0x40);
+		GAchiBackup.push_back(Entry);
+
+		// Overwrite with fake requirement
+		*reinterpret_cast<uintptr_t*>(RowData + 0x20) = FakePtr;
+		*reinterpret_cast<int32*>(RowData + 0x28) = 1;
+		*reinterpret_cast<int32*>(RowData + 0x2C) = 1;
+		// Set AchievementType = 3 (completed)
+		*reinterpret_cast<int32*>(RowData + 0x40) = 3;
+		++Modified;
+	}
+
+	GUnlockAchievementApplied = true;
+	LOGI_STREAM("Tab5System") << "[SDK] UnlockAchievement enabled, modified " << Modified << " rows\n";
+}
+
+void DisableUnlockAllAchievements()
+{
+	if (!GUnlockAchievementApplied) return;
+
+	UAchievementResManager* AchiMgr = UManagerFuncLib::GetAchievementResManager();
+	UDataTable* Table = (AchiMgr && IsSafeLiveObject(static_cast<UObject*>(AchiMgr)))
+		? AchiMgr->AchievementResourceTable : nullptr;
+
+	if (Table && IsSafeLiveObject(static_cast<UObject*>(Table)))
+	{
+		auto& RowMap = Table->RowMap;
+		const int32 AllocatedSlots = RowMap.IsValid() ? RowMap.NumAllocated() : 0;
+
+		size_t BackupIdx = 0;
+		for (int32 i = 0; i < AllocatedSlots && BackupIdx < GAchiBackup.size(); ++i)
+		{
+			if (!RowMap.IsValidIndex(i)) continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData) continue;
+
+			const auto& Entry = GAchiBackup[BackupIdx++];
+			*reinterpret_cast<uintptr_t*>(RowData + 0x20) = Entry.OrigDataPtr;
+			*reinterpret_cast<int32*>(RowData + 0x28) = Entry.OrigArrayNum;
+			*reinterpret_cast<int32*>(RowData + 0x2C) = Entry.OrigArrayMax;
+			*reinterpret_cast<int32*>(RowData + 0x40) = Entry.OrigAchievementType;
+		}
+	}
+
+	GAchiBackup.clear();
+	GUnlockAchievementApplied = false;
+	LOGI_STREAM("Tab5System") << "[SDK] UnlockAchievement disabled\n";
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  屏幕设置 (via UGameUserSettings SDK)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+namespace
+{
+	// 安全读取下拉框选中索引
+	int32 SafeReadDropdownIndex(UBPVE_JHConfigVideoItem2_C* DD)
+	{
+		if (!DD || !IsSafeLiveObject(static_cast<UObject*>(DD))) return -1;
+		if (!DD->CB_Main || !IsSafeLiveObject(static_cast<UObject*>(DD->CB_Main))) return -1;
+		return DD->CB_Main->GetSelectedIndex();
+	}
+
+	// 安全读取数字编辑框中的整数值
+	int32 SafeReadNumericEdit(UBPVE_JHConfigVolumeItem2_C* Edit, int32 DefaultValue)
+	{
+		if (!Edit || !IsSafeLiveObject(static_cast<UObject*>(Edit))) return DefaultValue;
+		if (!Edit->TXT_CurrentValue || !IsSafeLiveObject(static_cast<UObject*>(Edit->TXT_CurrentValue)))
+			return DefaultValue;
+
+		const std::string Raw = Edit->TXT_CurrentValue->GetText().ToString();
+		if (Raw.empty()) return DefaultValue;
+
+		try { int32 Val = std::stoi(Raw); return (Val > 0) ? Val : DefaultValue; }
+		catch (...) { return DefaultValue; }
+	}
+}
+
+void ApplyScreenSettings()
+{
+	// 读取当前 UI 值
+	const int32 ResX = SafeReadNumericEdit(GTab5.ResolutionXEdit, 0);
+	const int32 ResY = SafeReadNumericEdit(GTab5.ResolutionYEdit, 0);
+	const int32 ModeIdx = SafeReadDropdownIndex(GTab5.ScreenModeDD);
+	const int32 VSyncIdx = SafeReadDropdownIndex(GTab5.VSyncDD);
+	const int32 DynResIdx = SafeReadDropdownIndex(GTab5.DynResDD);
+
+	// 用静态变量追踪上一次 UI 值, 只在值变化时才应用
+	static int32 LastResX = 0, LastResY = 0;
+	static int32 LastModeIdx = -1, LastVSyncIdx = -1, LastDynResIdx = -1;
+	static bool  bInitialized = false;
+
+	// 首次调用: 记录初始 UI 值, 不做任何修改
+	if (!bInitialized)
+	{
+		LastResX = ResX; LastResY = ResY;
+		LastModeIdx = ModeIdx; LastVSyncIdx = VSyncIdx; LastDynResIdx = DynResIdx;
+		bInitialized = true;
+		return;
+	}
+
+	// 检测是否有 UI 值变化
+	const bool bResChanged = (ResX > 0 && ResY > 0 && (ResX != LastResX || ResY != LastResY));
+	const bool bModeChanged = (ModeIdx >= 0 && ModeIdx != LastModeIdx);
+	const bool bVSyncChanged = (VSyncIdx >= 0 && VSyncIdx != LastVSyncIdx);
+	const bool bDynResChanged = (DynResIdx >= 0 && DynResIdx != LastDynResIdx);
+
+	if (!bResChanged && !bModeChanged && !bVSyncChanged && !bDynResChanged)
+		return;
+
+	// 更新追踪值
+	if (bResChanged) { LastResX = ResX; LastResY = ResY; }
+	if (bModeChanged) LastModeIdx = ModeIdx;
+	if (bVSyncChanged) LastVSyncIdx = VSyncIdx;
+	if (bDynResChanged) LastDynResIdx = DynResIdx;
+
+	// 直接在当前线程应用 (UI-tracking 保证不会在首次打开菜单时触发)
+	UGameUserSettings* Settings = UGameUserSettings::GetGameUserSettings();
+	if (!Settings) return;
+
+	if (bResChanged)
+	{
+		FIntPoint Res; Res.X = ResX; Res.Y = ResY;
+		Settings->SetScreenResolution(Res);
+		LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: Resolution " << ResX << "x" << ResY << "\n";
+	}
+	if (bModeChanged)
+	{
+		Settings->SetFullscreenMode(static_cast<EWindowMode>(ModeIdx));
+		LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: FullscreenMode " << ModeIdx << "\n";
+	}
+	if (bVSyncChanged)
+	{
+		Settings->SetVSyncEnabled(VSyncIdx == 1);
+		LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: VSync " << VSyncIdx << "\n";
+	}
+	if (bDynResChanged)
+	{
+		Settings->SetDynamicResolutionEnabled(DynResIdx == 1);
+		LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: DynRes " << DynResIdx << "\n";
+	}
+
+	Settings->ApplySettings(false);
+	LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: Applied\n";
 }

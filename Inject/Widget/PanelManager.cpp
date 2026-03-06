@@ -154,7 +154,7 @@ void ClearRuntimeWidgetState()
 	GTab1.IgnoreItemRequirementsToggle = nullptr;
 
 	GTab3.CraftIgnoreRequirementsToggle = nullptr;
-	GTab3.CraftOutputQuantityToggle = nullptr;
+
 	GTab3.CraftOutputQuantityEdit = nullptr;
 	GTab3.GatherCooldownToggle = nullptr;
 	GTab3.FishRareOnlyToggle = nullptr;

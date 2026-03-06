@@ -47,10 +47,10 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* SwitchBox = SwitchPanel ? SwitchPanel->CT_Contents : nullptr;
 	GTab3.CraftIgnoreRequirementsToggle = CreateToggleItem(PC, L"锻造/制衣/炼丹/烹饪无视要求");
 	if (GTab3.CraftIgnoreRequirementsToggle) { if (SwitchBox) SwitchBox->AddChild(GTab3.CraftIgnoreRequirementsToggle); else Container->AddChild(GTab3.CraftIgnoreRequirementsToggle); Count++; }
-	GTab3.CraftOutputQuantityToggle = CreateToggleItem(PC, L"设置产出数量");
-	if (GTab3.CraftOutputQuantityToggle) { if (SwitchBox) SwitchBox->AddChild(GTab3.CraftOutputQuantityToggle); else Container->AddChild(GTab3.CraftOutputQuantityToggle); Count++; }
+	GTab3.CraftOutputQuantityEdit = CreateVolumeNumericEditBoxItem(PC, Outer, SwitchBox ? SwitchBox : Container, L"产出数量", L"输入数字", L"1");
+	if (GTab3.CraftOutputQuantityEdit) { if (SwitchBox) SwitchBox->AddChild(GTab3.CraftOutputQuantityEdit); else Container->AddChild(GTab3.CraftOutputQuantityEdit); Count++; }
 
-	GTab3.GatherCooldownToggle = CreateToggleItem(PC, L"采集一秒冷却");
+	GTab3.GatherCooldownToggle = CreateToggleItem(PC, L"采集物每秒刷新");
 	if (GTab3.GatherCooldownToggle) { if (SwitchBox) SwitchBox->AddChild(GTab3.GatherCooldownToggle); else Container->AddChild(GTab3.GatherCooldownToggle); Count++; }
 	GTab3.FishRareOnlyToggle = CreateToggleItem(PC, L"钓鱼只钓稀有物");
 	if (GTab3.FishRareOnlyToggle) { if (SwitchBox) SwitchBox->AddChild(GTab3.FishRareOnlyToggle); else Container->AddChild(GTab3.FishRareOnlyToggle); Count++; }
@@ -59,12 +59,6 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab3.HomelandHarvestToggle = CreateToggleItem(PC, L"家园随时收获");
 	if (GTab3.HomelandHarvestToggle) { if (SwitchBox) SwitchBox->AddChild(GTab3.HomelandHarvestToggle); else Container->AddChild(GTab3.HomelandHarvestToggle); Count++; }
 	AddPanelWithFixedGap(SwitchPanel, 0.0f, 10.0f);
-
-	auto* OutputPanel = CreateCollapsiblePanel(PC, L"产出与掉落");
-	auto* OutputBox = OutputPanel ? OutputPanel->CT_Contents : nullptr;
-	GTab3.CraftOutputQuantityEdit = CreateVolumeNumericEditBoxItem(PC, Outer, OutputBox ? OutputBox : Container, L"产出数量", L"输入数字", L"1");
-	if (GTab3.CraftOutputQuantityEdit) { if (OutputBox) OutputBox->AddChild(GTab3.CraftOutputQuantityEdit); else Container->AddChild(GTab3.CraftOutputQuantityEdit); Count++; }
-	AddPanelWithFixedGap(OutputPanel, 0.0f, 10.0f);
 
 	auto* MasteryPanel = CreateCollapsiblePanel(PC, L"生活精通");
 	auto* MasteryBox = MasteryPanel ? MasteryPanel->CT_Contents : nullptr;
