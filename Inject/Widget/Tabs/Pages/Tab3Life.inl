@@ -38,6 +38,7 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (Item)
 		{
 			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
+			RegisterTab0Binding(Title, Item, PC);
 			Count++;
 		}
 	};

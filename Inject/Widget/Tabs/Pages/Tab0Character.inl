@@ -46,7 +46,29 @@ namespace
 		AttrHiddenWeaponsLevel,
 		AttrHiddenWeaponsExp,
 		AttrOtherWeaponsLevel,
-		AttrOtherWeaponsExp
+		AttrOtherWeaponsExp,
+		AttrDaZaoLevel,
+		AttrDaZaoExp,
+		AttrMedicalLevel,
+		AttrMedicalExp,
+		AttrZhiYiLevel,
+		AttrZhiYiExp,
+		AttrAlchemyLevel,
+		AttrAlchemyExp,
+		AttrCookingLevel,
+		AttrCookingExp,
+		AttrGatheringLevel,
+		AttrGatheringExp,
+		AttrFishingLevelAttr,
+		AttrFishingExpAttr,
+		AttrDrinkLevel,
+		AttrDrinkExp,
+		AttrTeaCeremonyLevel,
+		AttrTeaCeremonyExp,
+		AttrEloquenceLevel,
+		AttrEloquenceExp,
+		AttrCalligraphyLevel,
+		AttrCalligraphyExp
 	};
 
 
@@ -68,6 +90,9 @@ namespace
 
 #define TAB0_NON_ATTR(field, tag, title) \
 	{ ETab0Field::field, tag, L##title, nullptr, nullptr, true }
+
+#define TAB0_NAME_ATTR(field, tag, title, attrName) \
+	{ ETab0Field::field, tag, L##title, L##attrName, nullptr, true }
 
 	static const FTab0FieldMeta kTab0FieldMap[] =
 	{
@@ -116,10 +141,33 @@ namespace
 		TAB0_ATTR(AttrHiddenWeaponsExp,   "AttrHiddenWeaponsExp",   "暗器经验",        "HiddenWeaponsExp",   HiddenWeaponsExp),
 		TAB0_ATTR(AttrOtherWeaponsLevel,  "AttrOtherWeaponsLevel",  "其他武器精通",    "OtherWeaponsLevel",  OtherWeaponsLevel),
 		TAB0_ATTR(AttrOtherWeaponsExp,    "AttrOtherWeaponsExp",    "其他武器经验",    "OtherWeaponsExp",    OtherWeaponsExp),
+		TAB0_NAME_ATTR(AttrDaZaoLevel,         "AttrDaZaoLevel",         "锻造精通",        "DaZaoLevel"),
+		TAB0_NAME_ATTR(AttrDaZaoExp,           "AttrDaZaoExp",           "锻造经验",        "DaZaoExp"),
+		TAB0_NAME_ATTR(AttrMedicalLevel,       "AttrMedicalLevel",       "医术精通",        "MedicalLevel"),
+		TAB0_NAME_ATTR(AttrMedicalExp,         "AttrMedicalExp",         "医术经验",        "MedicalExp"),
+		TAB0_NAME_ATTR(AttrZhiYiLevel,         "AttrZhiYiLevel",         "制衣精通",        "ZhiYiLevel"),
+		TAB0_NAME_ATTR(AttrZhiYiExp,           "AttrZhiYiExp",           "制衣经验",        "ZhiYiExp"),
+		TAB0_NAME_ATTR(AttrAlchemyLevel,       "AttrAlchemyLevel",       "炼丹精通",        "AlchemyLevel"),
+		TAB0_NAME_ATTR(AttrAlchemyExp,         "AttrAlchemyExp",         "炼丹经验",        "AlchemyExp"),
+		TAB0_NAME_ATTR(AttrCookingLevel,       "AttrCookingLevel",       "烹饪精通",        "CookingLevel"),
+		TAB0_NAME_ATTR(AttrCookingExp,         "AttrCookingExp",         "烹饪经验",        "CookingExp"),
+		TAB0_NAME_ATTR(AttrGatheringLevel,     "AttrGatheringLevel",     "采集精通",        "GatheringLevel"),
+		TAB0_NAME_ATTR(AttrGatheringExp,       "AttrGatheringExp",       "采集经验",        "GatheringExp"),
+		TAB0_NAME_ATTR(AttrFishingLevelAttr,   "AttrFishingLevelAttr",   "钓鱼精通",        "FishingLevel"),
+		TAB0_NAME_ATTR(AttrFishingExpAttr,     "AttrFishingExpAttr",     "钓鱼经验",        "FishingExp"),
+		TAB0_NAME_ATTR(AttrDrinkLevel,         "AttrDrinkLevel",         "饮酒精通",        "DrinkLevel"),
+		TAB0_NAME_ATTR(AttrDrinkExp,           "AttrDrinkExp",           "饮酒经验",        "DrinkExp"),
+		TAB0_NAME_ATTR(AttrTeaCeremonyLevel,   "AttrTeaCeremonyLevel",   "茶道精通",        "TeaCeremonyLevel"),
+		TAB0_NAME_ATTR(AttrTeaCeremonyExp,     "AttrTeaCeremonyExp",     "茶道经验",        "TeaCeremonyExp"),
+		TAB0_NAME_ATTR(AttrEloquenceLevel,     "AttrEloquenceLevel",     "口才精通",        "EloquenceLevel"),
+		TAB0_NAME_ATTR(AttrEloquenceExp,       "AttrEloquenceExp",       "口才经验",        "EloquenceExp"),
+		TAB0_NAME_ATTR(AttrCalligraphyLevel,   "AttrCalligraphyLevel",   "书法精通",        "CalligraphyLevel"),
+		TAB0_NAME_ATTR(AttrCalligraphyExp,     "AttrCalligraphyExp",     "书法经验",        "CalligraphyExp"),
 	};
 
 #undef TAB0_ATTR
 #undef TAB0_NON_ATTR
+#undef TAB0_NAME_ATTR
 
 	static constexpr size_t kTab0FieldMapSize = sizeof(kTab0FieldMap) / sizeof(kTab0FieldMap[0]);
 
