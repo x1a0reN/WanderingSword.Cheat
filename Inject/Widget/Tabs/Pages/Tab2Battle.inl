@@ -155,8 +155,8 @@ namespace
 	int32 GTab2NeiGongLimitOriginalValue = 6;
 	bool GTab2NeiGongLimitOriginalCaptured = false;
 
-	constexpr uint32_t kTab2BattleSpeedHookOffset1 = 0x100D67B; // sub_14100D620 + 0x5B
-	constexpr uint32_t kTab2BattleSpeedHookOffset2 = 0x100D73B; // sub_14100D6E0 + 0x5B
+	constexpr uint32_t kTab2BattleSpeedHookOffset1 = 0x100D67B;
+	constexpr uint32_t kTab2BattleSpeedHookOffset2 = 0x100D73B;
 	constexpr int32 kTab2BattleModuleAnchorIndex = 52869;
 	constexpr int32 kTab2BattleModuleSearchRadius = 10;
 
@@ -177,191 +177,173 @@ namespace
 	const char* kTab2TotalMoveSpeedPattern = "74 ? F3 0F 10 ? ? ? ? ? 48 83 C4 ? ? C3 F3 0F 10 ? ? ? ? ? 48 83 C4 ? ? C3 F3 0F 10";
 
 	const unsigned char kTab2UseSkillHookTemplate[] = {
-		0x49, 0x89, 0xCA,                                     // mov r10,rcx
-		0x50,                                                 // push rax
-		0x51,                                                 // push rcx
-		0x52,                                                 // push rdx
-		0x41, 0x50,                                           // push r8
-		0x41, 0x51,                                           // push r9
-		0x41, 0x52,                                           // push r10
-		0x41, 0x53,                                           // push r11
-		0x53,                                                 // push rbx
-		0x49, 0xBB,                                           // mov r11, imm64(flag)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0x41, 0xC7, 0x03, 0x00, 0x00, 0x00, 0x00,            // mov dword ptr [r11],0
-		0x48, 0x83, 0xEC, 0x20,                               // sub rsp,20h
-		0x4C, 0x89, 0xD1,                                     // mov rcx,r10
-		0x49, 0xBB,                                           // mov r11, imm64(helper)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0x41, 0xFF, 0xD3,                                     // call r11
-		0x48, 0x83, 0xC4, 0x20,                               // add rsp,20h
-		0x5B,                                                 // pop rbx
-		0x41, 0x5B,                                           // pop r11
-		0x41, 0x5A,                                           // pop r10
-		0x41, 0x59,                                           // pop r9
-		0x41, 0x58,                                           // pop r8
-		0x5A,                                                 // pop rdx
-		0x59,                                                 // pop rcx
-		0x58                                                  // pop rax
+		0x49, 0x89, 0xCA,
+		0x50,
+		0x51,
+		0x52,
+		0x41, 0x50,
+		0x41, 0x51,
+		0x41, 0x52,
+		0x41, 0x53,
+		0x53,
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0x41, 0xC7, 0x03, 0x00, 0x00, 0x00, 0x00,
+		0x48, 0x83, 0xEC, 0x20,
+		0x4C, 0x89, 0xD1,
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0x41, 0xFF, 0xD3,
+		0x48, 0x83, 0xC4, 0x20,
+		0x5B,
+		0x41, 0x5B,
+		0x41, 0x5A,
+		0x41, 0x59,
+		0x41, 0x58,
+		0x5A,
+		0x59,
+		0x58
 	};
 	constexpr size_t kTab2UseSkillFlagImm64Offset = 17;
 	constexpr size_t kTab2UseSkillHelperImm64Offset = 41;
 
 	const unsigned char kTab2SkillNoCDHookTemplate[] = {
-		0x8B, 0x80, 0xDC, 0x01, 0x00, 0x00,                  // mov eax,[rax+1DC]
-		0x49, 0xBB,                                           // mov r11, imm64(flag)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0x41, 0x83, 0x3B, 0x01,                               // cmp dword ptr [r11],1
-		0x75, 0x05,                                           // jne +5
-		0xB8, 0x01, 0x00, 0x00, 0x00                          // mov eax,1
+		0x8B, 0x80, 0xDC, 0x01, 0x00, 0x00,
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0x41, 0x83, 0x3B, 0x01,
+		0x75, 0x05,
+		0xB8, 0x01, 0x00, 0x00, 0x00
 	};
 	constexpr size_t kTab2SkillNoCDFlagImm64Offset = 8;
 
 	const unsigned char kTab2BattleSpeedHookTemplate[] = {
-		0x49, 0xBB,                                           // mov r11, imm64(enableFlag)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0x41, 0x83, 0x3B, 0x00,                               // cmp dword ptr [r11],0
-		0x74, 0x0F,                                           // je +0F
-		0x49, 0xBB,                                           // mov r11, imm64(multiplier)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0xF3, 0x41, 0x0F, 0x10, 0x33                          // movss xmm6,dword ptr [r11]
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0x41, 0x83, 0x3B, 0x00,
+		0x74, 0x0F,
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0xF3, 0x41, 0x0F, 0x10, 0x33
 	};
 	constexpr size_t kTab2BattleSpeedFlagImm64Offset = 2;
 	constexpr size_t kTab2BattleSpeedValueImm64Offset = 18;
 
 	const unsigned char kTab2AutoRecoverHpMpHookTemplate[] = {
-		0x50,                                                 // push rax
-		0x51,                                                 // push rcx
-		0x52,                                                 // push rdx
-		0x41, 0x50,                                           // push r8
-		0x41, 0x51,                                           // push r9
-		0x41, 0x52,                                           // push r10
-		0x41, 0x53,                                           // push r11
-		0x48, 0x83, 0xEC, 0x20,                               // sub rsp,20h
-		0x49, 0xBB,                                           // mov r11, imm64(helper)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0x41, 0xFF, 0xD3,                                     // call r11
-		0x48, 0x83, 0xC4, 0x20,                               // add rsp,20h
-		0x41, 0x5B,                                           // pop r11
-		0x41, 0x5A,                                           // pop r10
-		0x41, 0x59,                                           // pop r9
-		0x41, 0x58,                                           // pop r8
-		0x5A,                                                 // pop rdx
-		0x59,                                                 // pop rcx
-		0x58                                                  // pop rax
+		0x50,
+		0x51,
+		0x52,
+		0x41, 0x50,
+		0x41, 0x51,
+		0x41, 0x52,
+		0x41, 0x53,
+		0x48, 0x83, 0xEC, 0x20,
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0x41, 0xFF, 0xD3,
+		0x48, 0x83, 0xC4, 0x20,
+		0x41, 0x5B,
+		0x41, 0x5A,
+		0x41, 0x59,
+		0x41, 0x58,
+		0x5A,
+		0x59,
+		0x58
 	};
 	constexpr size_t kTab2AutoRecoverHpMpHelperImm64Offset = 17;
 
-	// CT 对齐:
-	// MaxWalkSpeed+0x10 注入点，先执行被覆盖 8 字节（由 InstallHook 自动拼接），
-	// 再执行:
-	// push r8
-	// cmp [friendlyOnlyFlag],1
-	// jne mul
-	// mov r8,[rbx+130]
-	// cmp r8,rsp
-	// jna exit
-	// cmp [r8+4C0],0
-	// jne exit
-	// mul: mulss xmm0,[multiplier]
-	// exit: pop r8
 	const unsigned char kTab2TotalMoveSpeedHookTemplate[] = {
-		0x41, 0x50,                                           // push r8
-		0x49, 0xBB,                                           // mov r11, imm64(friendlyOnlyFlag)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0x41, 0x83, 0x3B, 0x01,                               // cmp dword ptr [r11],1
-		0x75, 0x16,                                           // jne +0x16 -> mul
-		0x4C, 0x8B, 0x83, 0x30, 0x01, 0x00, 0x00,             // mov r8,[rbx+130]
-		0x4C, 0x3B, 0xC4,                                     // cmp r8,rsp
-		0x76, 0x19,                                           // jbe +0x19 -> exit(pop r8)
-		0x41, 0x83, 0xB8, 0xC0, 0x04, 0x00, 0x00, 0x00,       // cmp dword ptr [r8+4C0],0
-		0x75, 0x0F,                                           // jne +0x0F -> exit(pop r8)
-		0x49, 0xBB,                                           // mov r11, imm64(multiplier)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                  // imm64 low
-		0x00, 0x00,                                           // imm64 high
-		0xF3, 0x41, 0x0F, 0x59, 0x03,                         // mulss xmm0,dword ptr [r11]
-		0x41, 0x58                                            // pop r8
+		0x41, 0x50,
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0x41, 0x83, 0x3B, 0x01,
+		0x75, 0x16,
+		0x4C, 0x8B, 0x83, 0x30, 0x01, 0x00, 0x00,
+		0x4C, 0x3B, 0xC4,
+		0x76, 0x19,
+		0x41, 0x83, 0xB8, 0xC0, 0x04, 0x00, 0x00, 0x00,
+		0x75, 0x0F,
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+		0xF3, 0x41, 0x0F, 0x59, 0x03,
+		0x41, 0x58
 	};
 	constexpr size_t kTab2TotalMoveSpeedFlagImm64Offset = 4;
 	constexpr size_t kTab2TotalMoveSpeedMultiplierImm64Offset = 42;
 
-	// CT 语义:
-	// [ENABLE] aobscanmodule(..., 41 55 41 56 41 57 48 83 EC 50 44 0F B6 ? 48 8B)
-	// 注入后先 mov dl,0，再执行被覆盖的 push r13/push r14/push r15。
-	// 这里通过 appendRelocatedOriginalCode=false，确保不拼接原地 stolen bytes。
 	const unsigned char kTab2DefeatAsVictoryHookTemplate[] = {
-		0xB2, 0x00,       // mov dl,0
-		0x41, 0x55,       // push r13
-		0x41, 0x56,       // push r14
-		0x41, 0x57        // push r15
+		0xB2, 0x00,
+		0x41, 0x55,
+		0x41, 0x56,
+		0x41, 0x57
 	};
 
-	// CT: xinfazhuangtian
 	const unsigned char kTab2NeiGongFillLastSlotHookTemplate[] = {
-		0x49, 0xFF, 0xC0,                         // inc r8
-		0x48, 0x83, 0xC0, 0x18,                   // add rax,18h
-		0x52,                                     // push rdx
-		0x44, 0x89, 0xC2,                         // mov edx,r8d
-		0xFF, 0xC2,                               // inc edx
-		0x39, 0xCA,                               // cmp edx,ecx
-		0x5A,                                     // pop rdx
-		0x75, 0x12,                               // jne +0x12
-		0xC7, 0x00, 0x01, 0x00, 0x00, 0x00,       // mov dword ptr [rax],1
-		0xC7, 0x40, 0x18, 0x01, 0x00, 0x00, 0x00, // mov dword ptr [rax+18],1
-		0x89, 0x48, 0x1C,                         // mov [rax+1C],ecx
-		0xFF, 0xC1                                // inc ecx
+		0x49, 0xFF, 0xC0,
+		0x48, 0x83, 0xC0, 0x18,
+		0x52,
+		0x44, 0x89, 0xC2,
+		0xFF, 0xC2,
+		0x39, 0xCA,
+		0x5A,
+		0x75, 0x12,
+		0xC7, 0x00, 0x01, 0x00, 0x00, 0x00,
+		0xC7, 0x40, 0x18, 0x01, 0x00, 0x00, 0x00,
+		0x89, 0x48, 0x1C,
+		0xFF, 0xC1
 	};
 
 	const unsigned char kTab2AllInFightHookTemplate1[] = {
-		0x49, 0x8B, 0x8D, 0xF0, 0x00, 0x00, 0x00,             // mov rcx,[r13+F0]
-		0x49, 0x63, 0x85, 0xF8, 0x00, 0x00, 0x00              // movsxd rax,dword ptr [r13+F8]
+		0x49, 0x8B, 0x8D, 0xF0, 0x00, 0x00, 0x00,
+		0x49, 0x63, 0x85, 0xF8, 0x00, 0x00, 0x00
 	};
 
 	const unsigned char kTab2AllInFightHookTemplate2[] = {
-		0x41, 0x8B, 0xB7, 0xF8, 0x00, 0x00, 0x00,             // mov esi,[r15+F8]
-		0xFF, 0xCE,                                           // dec esi
-		0x89, 0x74, 0x24, 0x58,                               // mov [rsp+58],esi
-		0x89, 0x74, 0x24, 0x5C,                               // mov [rsp+5C],esi
-		0x49, 0x8D, 0xB7, 0xF0, 0x00, 0x00, 0x00              // lea rsi,[r15+F0]
+		0x41, 0x8B, 0xB7, 0xF8, 0x00, 0x00, 0x00,
+		0xFF, 0xCE,
+		0x89, 0x74, 0x24, 0x58,
+		0x89, 0x74, 0x24, 0x5C,
+		0x49, 0x8D, 0xB7, 0xF0, 0x00, 0x00, 0x00
 	};
 
 	const unsigned char kTab2AllInFightHookTemplate3[] = {
-		0x50,                                                 // push rax
-		0x52,                                                 // push rdx
-		0x53,                                                 // push rbx
-		0x48, 0x8B, 0x16,                                     // mov rdx,[rsi]
-		0x4A, 0x8B, 0x1C, 0x22,                               // mov rbx,[rdx+r12]
-		0x83, 0xBB, 0x90, 0x00, 0x00, 0x00, 0x00,             // cmp dword ptr [rbx+90],0
-		0x74, 0x19,                                           // je +0x19 (to xor rdi,rdi)
-		0x44, 0x89, 0xF0,                                     // mov eax,r14d
-		0x48, 0x31, 0xD2,                                     // xor rdx,rdx
-		0xBB, 0x04, 0x00, 0x00, 0x00,                         // mov ebx,4
-		0xF7, 0xF3,                                           // div ebx
-		0x48, 0x89, 0xD0,                                     // mov rax,rdx
-		0x4D, 0x8D, 0x14, 0xC1,                               // lea r10,[r9+rax*8]
-		0x49, 0x8B, 0x3A,                                     // mov rdi,[r10]
-		0xEB, 0x03,                                           // jmp +3
-		0x48, 0x31, 0xFF,                                     // xor rdi,rdi
-		0x5B,                                                 // pop rbx
-		0x5A,                                                 // pop rdx
-		0x58,                                                 // pop rax
-		0x83, 0xE8, 0x01                                      // sub eax,1
+		0x50,
+		0x52,
+		0x53,
+		0x48, 0x8B, 0x16,
+		0x4A, 0x8B, 0x1C, 0x22,
+		0x83, 0xBB, 0x90, 0x00, 0x00, 0x00, 0x00,
+		0x74, 0x19,
+		0x44, 0x89, 0xF0,
+		0x48, 0x31, 0xD2,
+		0xBB, 0x04, 0x00, 0x00, 0x00,
+		0xF7, 0xF3,
+		0x48, 0x89, 0xD0,
+		0x4D, 0x8D, 0x14, 0xC1,
+		0x49, 0x8B, 0x3A,
+		0xEB, 0x03,
+		0x48, 0x31, 0xFF,
+		0x5B,
+		0x5A,
+		0x58,
+		0x83, 0xE8, 0x01
 	};
 
 	const unsigned char kTab2AllInFightHookTemplate4[] = {
-		0x49, 0x8B, 0x0C, 0x04,                               // mov rcx,[r12+rax]
-		0x48, 0x83, 0x7C, 0x24, 0x50, 0x00,                   // cmp qword ptr [rsp+50],0
-		0x75, 0x04,                                           // jne +4
-		0x39, 0xC0,                                           // cmp eax,eax
-		0xEB, 0x04,                                           // jmp +4
-		0x83, 0x79, 0x38, 0x00                                // cmp dword ptr [rcx+38],0
+		0x49, 0x8B, 0x0C, 0x04,
+		0x48, 0x83, 0x7C, 0x24, 0x50, 0x00,
+		0x75, 0x04,
+		0x39, 0xC0,
+		0xEB, 0x04,
+		0x83, 0x79, 0x38, 0x00
 	};
 
 uintptr_t ScanPatternInModuleRange(const char* moduleName, const char* pattern, uintptr_t rangeStart, uintptr_t rangeSize)
@@ -702,8 +684,6 @@ uintptr_t ScanPatternInModuleRange(const char* moduleName, const char* pattern, 
 		if (!IsSafeLiveObjectOfClass(static_cast<UObject*>(view), UJHNeoUIBattleModuleView::StaticClass()))
 			return false;
 
-		// 保持原生按钮状态语义：当前是 1x 就走 _1，否则走 _2。
-		// 我们的 inline hook 会把两条分支最终都改成自定义倍速。
 		if (view->BtnSpeedUpFlagIs1())
 			view->HandleBtn_SpeedUp_1();
 		else
@@ -859,7 +839,7 @@ void EnableNoEncounterPatch()
 			LOGE_STREAM("Tab2Battle") << "[SDK] NoEncounter AobScan failed, pattern not found\n";
 			return;
 		}
-		GTab2NoEncounterPatchAddr = foundAddr + 9; // CE: BuYuDi+9
+		GTab2NoEncounterPatchAddr = foundAddr + 9;
 		LOGI_STREAM("Tab2Battle") << "[SDK] NoEncounter patch found: base=0x"
 			<< std::hex << foundAddr << ", patch=0x" << GTab2NoEncounterPatchAddr << std::dec << "\n";
 	}
@@ -904,11 +884,9 @@ void DisableNoEncounterPatch()
 
 void EnableAutoRecoverHpMpHook()
 {
-	// 改为纯 SDK 实现：不再安装 recoverHPMP inline hook。
 	GTab2AutoRecoverHpMpEnabled = true;
 	GTab2AutoRecoverHpMpAppliedInFight = false;
 
-	// 若用户在战斗内临时开启，允许立刻生效一次。
 	TickAutoRecoverHpMpBySDK();
 	LOGI_STREAM("Tab2Battle") << "[SDK] AutoRecoverHpMp enabled (SDK mode)\n";
 }
@@ -918,7 +896,6 @@ void DisableAutoRecoverHpMpHook()
 	GTab2AutoRecoverHpMpEnabled = false;
 	GTab2AutoRecoverHpMpAppliedInFight = false;
 
-	// 兼容旧版本残留：若曾装过 hook，顺手卸掉，避免状态污染。
 	if (GTab2AutoRecoverHpMpHookId != UINT32_MAX)
 	{
 		InlineHook::HookManager::UninstallHook(GTab2AutoRecoverHpMpHookId);
@@ -929,7 +906,6 @@ void DisableAutoRecoverHpMpHook()
 
 void SetTotalMoveSpeedMultiplier(float Value)
 {
-	// Tab2 特性轮询每帧都会调到这里，顺带驱动“战斗前自动恢复”SDK事件触发。
 	TickAutoRecoverHpMpBySDK();
 
 	if (Value < 0.0f)
@@ -965,7 +941,7 @@ void EnableTotalMoveSpeedHook()
 			LOGE_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed AobScan failed\n";
 			return;
 		}
-		GTab2TotalMoveSpeedOffset = (foundAddr + 0x10) - moduleBase; // CT: MaxWalkSpeed+0x10 (hex)
+		GTab2TotalMoveSpeedOffset = (foundAddr + 0x10) - moduleBase;
 		LOGI_STREAM("Tab2Battle") << "[SDK] TotalMoveSpeed found: base=0x"
 			<< std::hex << foundAddr << ", hook=0x" << (moduleBase + GTab2TotalMoveSpeedOffset)
 			<< " (+0x10)" << std::dec << "\n";
@@ -1061,7 +1037,6 @@ void DisableDefeatAsVictoryHook()
 
 void EnableNeiGongFillLastSlotFeature()
 {
-	// 1) inline hook: xinfazhuangtian
 	if (GTab2NeiGongFillLastSlotHookId == UINT32_MAX)
 	{
 		if (GTab2NeiGongFillLastSlotOffset == 0)
@@ -1102,7 +1077,6 @@ void EnableNeiGongFillLastSlotFeature()
 		LOGI_STREAM("Tab2Battle") << "[SDK] NeiGongFillLastSlot hook enabled, id=" << GTab2NeiGongFillLastSlotHookId << "\n";
 	}
 
-	// 2) 硬编码补丁: AddNeiGongNoLimit+8: db 03
 	if (GTab2AddNeiGongNoLimitPatchAddr == 0)
 	{
 		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2AddNeiGongNoLimitPattern);
@@ -1131,7 +1105,6 @@ void EnableNeiGongFillLastSlotFeature()
 			<< std::hex << GTab2AddNeiGongNoLimitPatchAddr << std::dec << "\n";
 	}
 
-	// 3) Lua 解码逻辑等价: 解析 RIP 相对地址，写 NeiGongLimit=7
 	if (GTab2NeiGongLimitAddr == 0)
 	{
 		const uintptr_t refAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab2NeiGongLimitRefPattern);
@@ -1368,13 +1341,13 @@ void EnableAllTeammatesInFightHooks()
 		}
 
 		unsigned char hookCode[26] = {};
-		std::memcpy(hookCode, originalCmp, 7);                          // readmem(allInFight5,7)
+		std::memcpy(hookCode, originalCmp, 7);
 		const unsigned char cmpRsp50[] = { 0x48, 0x83, 0x7C, 0x24, 0x50, 0x00 };
-		std::memcpy(hookCode + 7, cmpRsp50, sizeof(cmpRsp50));          // cmp [rsp+50],0
-		hookCode[13] = 0x75; hookCode[14] = 0x04;                       // jne +4
-		hookCode[15] = 0x39; hookCode[16] = 0xE4;                       // cmp esp,esp
-		hookCode[17] = 0xEB; hookCode[18] = 0x07;                       // jmp +7
-		std::memcpy(hookCode + 19, originalCmp, 7);                     // readmem(allInFight5,7)
+		std::memcpy(hookCode + 7, cmpRsp50, sizeof(cmpRsp50));
+		hookCode[13] = 0x75; hookCode[14] = 0x04;
+		hookCode[15] = 0x39; hookCode[16] = 0xE4;
+		hookCode[17] = 0xEB; hookCode[18] = 0x07;
+		std::memcpy(hookCode + 19, originalCmp, 7);
 
 		uint32_t hookId = UINT32_MAX;
 		if (!InlineHook::HookManager::InstallHook(
@@ -1505,10 +1478,6 @@ void DisableBattleSpeedHooks()
 	GTab2BattleSpeedLastAppliedMultiplier = 0.0f;
 	GTab2BattleSpeedLastAutoApplyTick = 0;
 
-	// 关闭加速时主动回收到 1x，避免上一次战斗残留倍率持续生效。
-	// 顺序：
-	// 1) 用 GameTimeManager 强制落地 1.0f
-	// 2) 同步一次战斗界面按钮状态（尽量与原生 UI 语义一致）
 	if (UGameTimeManager* gameTimeMgr = UManagerFuncLib::GetGameTimeManager();
 		IsSafeLiveObjectOfClass(static_cast<UObject*>(gameTimeMgr), UGameTimeManager::StaticClass()))
 	{
@@ -1518,12 +1487,10 @@ void DisableBattleSpeedHooks()
 	if (UJHNeoUIBattleModuleView* view = FindLiveBattleModuleViewForSpeed();
 		IsSafeLiveObjectOfClass(static_cast<UObject*>(view), UJHNeoUIBattleModuleView::StaticClass()))
 	{
-		// 与用户操作逻辑保持一致：关加速时触发一次“1x按钮”路径。
 		view->HandleBtn_SpeedUp_1();
 		if (UGameTimeManager* gameTimeMgr = UManagerFuncLib::GetGameTimeManager();
 			IsSafeLiveObjectOfClass(static_cast<UObject*>(gameTimeMgr), UGameTimeManager::StaticClass()))
 		{
-			// 二次兜底，确保最终战斗时间流速确实是 1x。
 			gameTimeMgr->SetGameTimeDilationInFight(1.0f, true);
 		}
 	}

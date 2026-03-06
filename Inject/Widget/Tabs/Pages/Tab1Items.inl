@@ -67,7 +67,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			else if (wcscmp(Title, L"道具增量效果倍率") == 0) GTab1.CraftItemIncrementSlider = Item;
 			else if (wcscmp(Title, L"额外效果倍率") == 0) GTab1.CraftExtraEffectSlider = Item;
 
-			// 统一倍率滑块范围：0-10
 			if (Item->VolumeSlider)
 			{
 				Item->VolumeSlider->MinValue = 0.0f;
@@ -308,8 +307,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 					}
 					else
 					{
-						// 非 Horizontal 容器（常见是 Canvas）时，重建一层横向容器承载搜索框和下拉框，
-						// 避免原蓝图左侧标题区域固定宽度导致搜索框宽度不生效。
 						auto* ReplaceRow = static_cast<UHorizontalBox*>(CreateRawWidget(UHorizontalBox::StaticClass(), Outer));
 						if (ReplaceRow)
 						{
@@ -468,7 +465,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	UListView* BuiltListView = nullptr;
 	bool bUsingPlainTile = false;
 
-	// 使用 BP_ItemGridWDT，确保走游戏原生 WDT 初始化与数据绑定链路。
 	auto* ItemGridTemplate = static_cast<UObject*>(UBP_ItemGridWDT_C::GetDefaultObj());
 	auto* ItemGrid = static_cast<UBP_ItemGridWDT_C*>(
 		CreateRawWidgetFromTemplate(
@@ -491,7 +487,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		GItemBrowser.ListView = BuiltListView;
 		MarkAsGCRoot(static_cast<UObject*>(GridRootWidget));
 
-		// 强制指定 Entry 类，避免错误 entry blueprint 导致显示错乱。
 		UClass* EntryCls = UObject::FindClassFast("BPEntry_Item_WDT_C");
 		if (!EntryCls)
 			EntryCls = UObject::FindClass("BPEntry_Item_WDT_C");
@@ -503,7 +498,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (IsSafeLiveObjectOfClass(static_cast<UObject*>(GItemBrowser.ListView), UTileView::StaticClass()))
 		{
 			auto* Tile = static_cast<UTileView*>(GItemBrowser.ListView);
-			// 8 列布局：激进收窄，优先压缩横向占用。
 			Tile->SetEntryWidth(80.0f);
 			Tile->SetEntryHeight(88.0f);
 		}
@@ -512,8 +506,6 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		auto* GridHostSize = static_cast<USizeBox*>(CreateRawWidget(USizeBox::StaticClass(), Outer));
 		if (GridHostSize)
 		{
-			// TileView 在 VerticalBox 中若无稳定高度，容易布局塌缩为 0，导致不生成可见 Entry。
-			// 与 EntryWidth/Height 成比例，目标约 8x5 可见格（激进收窄）。
 			GridHostSize->SetWidthOverride(660.0f);
 			GridHostSize->SetHeightOverride(452.0f);
 			GridHostSize->SetContent(GridRootWidget);
@@ -594,7 +586,7 @@ void PopulateTab_Items(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 namespace
 {
     uint32_t GTab1ItemNoDecreaseHookId = UINT32_MAX;
-    uintptr_t GItemNoDecreaseOffset = 0;  // 保存搜索到的偏移量
+    uintptr_t GItemNoDecreaseOffset = 0;
     uint32_t GTab1ItemGainMultiplierHookId = UINT32_MAX;
     uintptr_t GItemGainMultiplierOffset = 0;
     volatile LONG GItemGainMultiplierAsmValue = 2;
@@ -612,7 +604,6 @@ namespace
     volatile float GCraftItemIncrementAsmValue = 2.0f;
     volatile float GCraftExtraEffectAsmValue = 2.0f;
 
-    // 所有物品可出售
     uintptr_t GAllItemsSellableAddr = 0;
     uintptr_t GIncludeQuestItemsAddr = 0;
     uintptr_t GIncludeQuestItemsAddr2 = 0;
@@ -622,7 +613,6 @@ namespace
     uintptr_t GIgnoreItemUseCountHookOffset = 0;
     uint32_t GTab1IgnoreItemUseCountHookId = UINT32_MAX;
 
-    // 物品不减特征码
     const char* kItemNoDecreasePattern = "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 41 0F B6 F1 41 8B E8 48 8B FA 48 8B D9";
     const char* kItemGainMultiplierPattern = "0B 50 30 0B 50 2C 0B 50 28";
     const char* kInForgingPattern = "0F 10 00 0F 11 46 28 44 89";
@@ -631,103 +621,97 @@ namespace
     const char* kRandActionMaxPattern = "?? ?? 04 ?? ?? ?? ?? 8D ?? 01 F3 0F 10";
     const char* kQualityResultsPattern = "48 03 F6 4D 8B 3F";
 
-    // 所有物品可出售特征码
     const char* kAllItemsSellablePattern = "80 ?? ?? 3C 75 ?? 32 C0 C3 80 ?? 83 00 00 00 00 0F 94 C0 C3";
-    // 任务物品可出售特征码
     const char* kQuestItemsSellablePattern = "48 8B ?? 70 80 78 40 3C";
-    // 掉落率100%（DropItem + A: 84 C0 -> 90 90）
     const char* kDropRate100Pattern = "F3 0F 2C ? 04 E8 ? ? ? ? 84 C0 74 ? 48";
-    // 无视物品使用要求（match + 0xB: 74 -> EB）
     const char* kIgnoreItemRequirementsPattern = "?? 8D ?? ?? ?? 8D ?? ?? 48 ?? ?? 74 ?? 33 ED";
     const char* kIgnoreItemUseCountHookPattern = "E8 ? ? ? ? 48 8B ? ? 8B ? ? ? 00 00 ? ? 7C ? 48";
     const char* kIgnoreItemUseCountPatchPattern = "7C ? 48 8D 85 ? ? ? ? 48 89 44 24 ? 4C 8D";
 
-    // 功能：如果 Num < 0，则设为 0（防止负数扣除）
     const unsigned char kItemNoDecreaseTrampolineCode[] = {
-        0x41, 0x83, 0xF8, 0x00,               // cmp r8d, 0
-        0x0F, 0x8D, 0x03, 0x00, 0x00, 0x00,   // jge +3
-        0x45, 0x31, 0xC0                      // xor r8d, r8d
+        0x41, 0x83, 0xF8, 0x00,
+        0x0F, 0x8D, 0x03, 0x00, 0x00, 0x00,
+        0x45, 0x31, 0xC0
     };
 
     const unsigned char kItemGainMultiplierTrampolineTemplate[] = {
-        0x41, 0x50,                                      // push r8
-        0x4C, 0x8B, 0x40, 0x70,                          // mov r8,[rax+70]
-        0x41, 0x80, 0xB8, 0x84, 0x00, 0x00, 0x00, 0x00, // cmp byte ptr [r8+84],00
-        0x0F, 0x84, 0x15, 0x00, 0x00, 0x00,             // je +0x15 (jump to pop r8)
-        0x41, 0x53,                                      // push r11
-        0x49, 0xBB,                                      // mov r11, imm64
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,             // imm64 low
-        0x00, 0x00,                                      // imm64 high
-        0x45, 0x8B, 0x1B,                                // mov r11d,[r11]
-        0x44, 0x89, 0x58, 0x40,                          // mov [rax+40],r11d
-        0x41, 0x5B,                                      // pop r11
-        0x41, 0x58                                       // pop r8
+        0x41, 0x50,
+        0x4C, 0x8B, 0x40, 0x70,
+        0x41, 0x80, 0xB8, 0x84, 0x00, 0x00, 0x00, 0x00,
+        0x0F, 0x84, 0x15, 0x00, 0x00, 0x00,
+        0x41, 0x53,
+        0x49, 0xBB,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x45, 0x8B, 0x1B,
+        0x44, 0x89, 0x58, 0x40,
+        0x41, 0x5B,
+        0x41, 0x58
     };
-    // Template offset of imm64 in "49 BB imm64"
     constexpr size_t kItemGainMulImm64Offset = 24;
 
     const unsigned char kCraftCaptureTrampolineTemplate[] = {
-        0x41, 0x53,                                     // push r11
-        0x49, 0xBB,                                     // mov r11, imm64
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
-        0x00, 0x00,                                     // imm64 high
-        0x45, 0x89, 0x3B,                               // mov [r11], r15d
-        0x41, 0x5B                                      // pop r11
+        0x41, 0x53,
+        0x49, 0xBB,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x45, 0x89, 0x3B,
+        0x41, 0x5B
     };
     constexpr size_t kCraftCaptureCtxImm64Offset = 4;
 
     const unsigned char kCraftEffectTrampolineTemplate[] = {
-        0x41, 0x53,                                     // push r11
-        0x49, 0xBB,                                     // mov r11, modeAddr
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
-        0x00, 0x00,                                     // imm64 high
-        0x41, 0x83, 0x3B, 0x02,                         // cmp dword ptr [r11], 2
-        0x75, 0x13,                                     // jne +0x13 (skip to pop r11)
-        0xD9, 0x40, 0x08,                               // fld dword ptr [rax+8]
-        0x49, 0xBB,                                     // mov r11, incrementAddr
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
-        0x00, 0x00,                                     // imm64 high
-        0x41, 0xD8, 0x0B,                               // fmul dword ptr [r11]
-        0xD9, 0x58, 0x08,                               // fstp dword ptr [rax+8]
-        0x41, 0x5B                                      // pop r11
+        0x41, 0x53,
+        0x49, 0xBB,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x41, 0x83, 0x3B, 0x02,
+        0x75, 0x13,
+        0xD9, 0x40, 0x08,
+        0x49, 0xBB,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x41, 0xD8, 0x0B,
+        0xD9, 0x58, 0x08,
+        0x41, 0x5B
     };
     constexpr size_t kCraftEffectModeImm64Offset = 4;
     constexpr size_t kCraftEffectIncImm64Offset = 23;
 
     const unsigned char kCraftRandEffectTrampolineTemplate[] = {
-        0x41, 0x53,                                     // push r11
-        0x49, 0xBB,                                     // mov r11, modeAddr
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
-        0x00, 0x00,                                     // imm64 high
-        0x41, 0x83, 0x3B, 0x02,                         // cmp dword ptr [r11], 2
-        0x75, 0x19,                                     // jne +0x19
-        0x83, 0x39, 0x05,                               // cmp dword ptr [rcx], 5
-        0x74, 0x14,                                     // je +0x14
-        0x83, 0x39, 0x06,                               // cmp dword ptr [rcx], 6
-        0x74, 0x0F,                                     // je +0x0F
-        0x49, 0xBB,                                     // mov r11, extraAddr
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            // imm64 low
-        0x00, 0x00,                                     // imm64 high
-        0xF3, 0x41, 0x0F, 0x10, 0x13,                   // movss xmm2, dword ptr [r11]
-        0x41, 0x5B                                      // pop r11
+        0x41, 0x53,
+        0x49, 0xBB,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x41, 0x83, 0x3B, 0x02,
+        0x75, 0x19,
+        0x83, 0x39, 0x05,
+        0x74, 0x14,
+        0x83, 0x39, 0x06,
+        0x74, 0x0F,
+        0x49, 0xBB,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0xF3, 0x41, 0x0F, 0x10, 0x13,
+        0x41, 0x5B
     };
     constexpr size_t kCraftRandModeImm64Offset = 4;
     constexpr size_t kCraftRandExtraImm64Offset = 30;
 
     const unsigned char kRandActionMaxTrampolineCode[] = {
-        0x48, 0xC7, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF,       // mov rdi,-1
-        0x41, 0xB8, 0x09, 0x00, 0x00, 0x00              // mov r8d,9
+        0x48, 0xC7, 0xC7, 0xFF, 0xFF, 0xFF, 0xFF,
+        0x41, 0xB8, 0x09, 0x00, 0x00, 0x00
     };
 
     const unsigned char kQualityResultsTrampolineCode[] = {
-        0x41, 0x8B, 0x77, 0x08,                         // mov esi,[r15+8]
-        0xFF, 0xCE,                                     // dec esi
-        0x01, 0xF6,                                     // add esi,esi
-        0x48, 0x63, 0xF6,                               // movsxd rsi,esi
-        0x4D, 0x8B, 0x3F                                // mov r15,[r15]
+        0x41, 0x8B, 0x77, 0x08,
+        0xFF, 0xCE,
+        0x01, 0xF6,
+        0x48, 0x63, 0xF6,
+        0x4D, 0x8B, 0x3F
     };
     const unsigned char kIgnoreItemUseCountTrampolineCode[] = {
-        0x31, 0xC0                                      // xor eax,eax
+        0x31, 0xC0
     };
 
 }
@@ -752,7 +736,6 @@ void EnableItemNoDecreaseHook()
     if (GTab1ItemNoDecreaseHookId != UINT32_MAX)
         return;
 
-    // 第一次开启时搜索特征码获取偏移量
     if (GItemNoDecreaseOffset == 0)
     {
         uintptr_t foundAddr = InlineHook::HookManager::AobScanModuleFirst("JH-Win64-Shipping.exe", kItemNoDecreasePattern);
@@ -762,7 +745,6 @@ void EnableItemNoDecreaseHook()
             return;
         }
 
-        // 计算模块内偏移
         HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
         if (!hModule)
         {
@@ -931,13 +913,11 @@ void DisableItemGainMultiplierHook()
     GTab1ItemGainMultiplierHookId = UINT32_MAX;
 }
 
-// 所有物品可出售（合并任务物品）
 void EnableAllItemsSellable()
 {
     uintptr_t foundAddr = 0;
     uintptr_t foundAddr2 = 0;
 
-    // 1) 搜索所有物品可出售特征码
     if (GAllItemsSellableAddr == 0)
     {
         foundAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kAllItemsSellablePattern);
@@ -951,16 +931,13 @@ void EnableAllItemsSellable()
     }
     else
     {
-        // 已缓存地址，直接使用
         foundAddr = GAllItemsSellableAddr - 0x10;
     }
 
-    // ENABLE: mov al, 1; nop
     const unsigned char enableBytes[] = { 0x0C, 0x01, 0x90 };
     InlineHook::HookManager::WriteMemory(GAllItemsSellableAddr, enableBytes, sizeof(enableBytes));
     LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable enabled\n";
 
-    // 2) 搜索任务物品可出售特征码并启用
     if (GIncludeQuestItemsAddr == 0)
     {
         foundAddr2 = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kQuestItemsSellablePattern);
@@ -976,7 +953,6 @@ void EnableAllItemsSellable()
         }
     }
 
-    // ENABLE: 任务物品可出售
     if (GIncludeQuestItemsAddr != 0)
     {
         const unsigned char enableByte1[] = { 0x0C, 0x01 };
@@ -992,12 +968,10 @@ void DisableAllItemsSellable()
     if (GAllItemsSellableAddr == 0)
         return;
 
-    // DISABLE: setz al
     const unsigned char disableBytes[] = { 0x0F, 0x94, 0xC0 };
     InlineHook::HookManager::WriteMemory(GAllItemsSellableAddr, disableBytes, sizeof(disableBytes));
     LOGI_STREAM("Tab1Items") << "[SDK] AllItemsSellable disabled\n";
 
-    // DISABLE: 任务物品可出售
     if (GIncludeQuestItemsAddr != 0)
     {
         const unsigned char disableByte1[] = { 0x32, 0xC0 };
@@ -1019,7 +993,6 @@ void EnableDropRate100Patch()
             return;
         }
 
-        // CE: DropItem + A
         GDropRate100Addr = foundAddr + 0xA;
         LOGI_STREAM("Tab1Items") << "[SDK] DropRate100 found at: 0x" << std::hex << foundAddr
             << ", patch=0x" << GDropRate100Addr << std::dec << "\n";
@@ -1070,7 +1043,7 @@ void EnableIgnoreItemUseCountFeature()
             return;
         }
 
-        const uintptr_t hookAddr = foundAddr + 0x9; // CE: usageCount1+9
+        const uintptr_t hookAddr = foundAddr + 0x9;
         GIgnoreItemUseCountHookOffset = hookAddr - reinterpret_cast<uintptr_t>(hModule);
         LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount hook found at: 0x" << std::hex
             << hookAddr << ", offset: 0x" << GIgnoreItemUseCountHookOffset << std::dec << "\n";
@@ -1101,7 +1074,7 @@ void EnableIgnoreItemUseCountFeature()
             LOGE_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount patch AobScan failed, pattern not found\n";
             return;
         }
-        GIgnoreItemUseCountPatchAddr = foundAddr; // CE: usageCount2
+        GIgnoreItemUseCountPatchAddr = foundAddr;
         LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemUseCount patch found at: 0x" << std::hex
             << GIgnoreItemUseCountPatchAddr << std::dec << "\n";
     }
@@ -1150,7 +1123,6 @@ void EnableIgnoreItemRequirementsPatch()
             return;
         }
 
-        // CE: useRequirements + B
         GIgnoreItemRequirementsAddr = foundAddr + 0xB;
         LOGI_STREAM("Tab1Items") << "[SDK] IgnoreItemRequirements found at: 0x" << std::hex << foundAddr
             << ", patch=0x" << GIgnoreItemRequirementsAddr << std::dec << "\n";
@@ -1449,4 +1421,3 @@ void DisableMaxExtraAffixesHooks()
 
     LOGI_STREAM("Tab1Items") << "[SDK] MaxExtraAffixes hooks disabled\n";
 }
-

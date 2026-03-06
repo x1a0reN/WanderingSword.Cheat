@@ -74,5 +74,3 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	}
 	AddPanelWithFixedGap(OperatePanel, 0.0f, 8.0f);
 }
-
-

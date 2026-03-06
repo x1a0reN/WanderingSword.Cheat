@@ -119,5 +119,3 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddNumeric(TitleBox, L"称号门槛11", L"1100");
 	AddPanelWithFixedGap(TitlePanel, 0.0f, 8.0f);
 }
-
-

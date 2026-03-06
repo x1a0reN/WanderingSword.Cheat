@@ -188,7 +188,7 @@ namespace
 	std::unordered_map<uintptr_t, FDropPoolOriginalState> GTab1DropPoolOriginals;
 	std::unordered_map<uintptr_t, FRandPoolOriginalState> GTab1RandPoolOriginals;
 
-	using UObjectProcessEventFn = void(__fastcall*)(const UObject* /* This */, UFunction* /* Function */, void* /* Params */);
+	using UObjectProcessEventFn = void(__fastcall*)(const UObject* , UFunction* , void* );
 	VTableHook GItemEntryProcessEventHook;
 	UObjectProcessEventFn GOriginalItemEntryProcessEvent = nullptr;
 	std::atomic<int32> GPendingItemEntryClickDefId = 0;
@@ -219,8 +219,6 @@ namespace
 			(Name.find("OnEntry") != std::string::npos) ||
 			(Name.find("Handle") != std::string::npos);
 	}
-
-	// ReadWeakAt / IsSameWeak 已合并到 WidgetUtils (使用 ReadWeakPtrAt / IsSameWeak)
 
 
 	void ResetBackpackCtxCaptureState()
@@ -351,7 +349,6 @@ namespace
 					<< " this=" << (void*)ThisObj << "\n";
 			}
 
-			// 鍙悆 ItemEntry 宸﹂敭鐐瑰嚮浜嬩欢锛屼笂涓€椤?涓嬩竴椤典笉浼氳蛋鍒拌繖閲屻€?
 			const bool IsClickedDelegate =
 				(FuncName.find("JHNeoUIGamepadConfirmButtonClicked__DelegateSignature") != std::string::npos);
 			const bool IsDoubleClickedDelegate =
@@ -436,7 +433,6 @@ namespace
 				const std::string FuncName = Function->GetName();
 				++GBackpackPECallCounts[FuncName];
 
-				// Core path: continuously capture ctx from backpack RenderView.
 				if (FuncName == "EVT_RenderView")
 				{
 					auto* View = static_cast<UJHBackpackViewBase*>(MutableThis);
@@ -662,7 +658,7 @@ namespace
 	{
 		if (Percent < 0.0f) Percent = 0.0f;
 		if (Percent > 100.0f) Percent = 100.0f;
-		return 1.0f + Percent * 0.09f; // [1.0, 10.0]
+		return 1.0f + Percent * 0.09f;
 	}
 
 	template <typename T>
@@ -854,7 +850,6 @@ namespace
 
 			if (Cfg.IgnoreItemRequirements)
 			{
-				// 已改为 AOB 硬改路径，这里不再改表。
 			}
 			RestoreArrayFromVector(Row->Requirements, Original.Requirements);
 
@@ -987,7 +982,6 @@ namespace
 	void ApplyTab1BackpackFeatures(const FTab1RuntimeConfig& Cfg)
 	{
 		const bool EnableNoDecrease = Cfg.ItemNoDecrease;
-		// 鐗╁搧鑾峰緱鍔犲€嶆敼鐢?InlineHook 瀹炵幇锛岄伩鍏嶄笌杩欓噷鐨勮疆璇㈠閲忛€昏緫鍙犲姞銆?
 		const bool EnableGainMultiplier = false;
 		if (!EnableNoDecrease && !EnableGainMultiplier)
 		{
@@ -1059,7 +1053,6 @@ namespace
 
 	void ReadTab1ConfigFromUI(FTab1RuntimeConfig& Cfg)
 	{
-		// 璇诲彇寮€鍏抽€夐」
 		const bool NewItemNoDecrease = ReadToggleValue(GTab1.ItemNoDecreaseToggle, Cfg.ItemNoDecrease);
 		if (NewItemNoDecrease != Cfg.ItemNoDecrease)
 		{
@@ -1109,7 +1102,6 @@ namespace
 			Cfg.IgnoreItemRequirements = NewIgnoreItemRequirements;
 		}
 
-		// Sliders - 鐩存帴璇诲彇婊戝潡鍊?
 		auto ReadSliderValue = [](UBPVE_JHConfigVolumeItem2_C* SliderItem, float DefaultValue) -> float {
 			if (!SliderItem || !IsSafeLiveObject(static_cast<UObject*>(SliderItem)))
 				return DefaultValue;
@@ -1143,7 +1135,6 @@ namespace
 			Cfg.CraftExtraEffectMultiplier = NewExtraValue;
 		}
 
-		// Toggle
 		const bool NewMaxExtraAffixes = ReadToggleValue(GTab1.MaxExtraAffixesToggle, Cfg.MaxExtraAffixes);
 		if (NewMaxExtraAffixes != Cfg.MaxExtraAffixes)
 		{
@@ -1158,7 +1149,6 @@ namespace
 		if (CanReadFromUI)
 			ReadTab1ConfigFromUI(Config);
 
-		// 鏍规嵁寮€鍏崇姸鎬佸姩鎬佸惎鐢?绂佺敤 Hook
 		static bool LastItemNoDecrease = false;
 		if (Config.ItemNoDecrease != LastItemNoDecrease)
 		{
@@ -1169,7 +1159,6 @@ namespace
 			LastItemNoDecrease = Config.ItemNoDecrease;
 		}
 
-		// 鍙湪鍊嶇巼鍊煎彉鍖栨椂鏇存柊
 		static int32 LastItemGainMultiplierValue = 2;
 		if (Config.ItemGainMultiplierValue != LastItemGainMultiplierValue)
 		{
@@ -1202,7 +1191,6 @@ namespace
 			LastItemGainMultiplierHook = WantItemGainMultiplierHook;
 		}
 
-		// 鎵€鏈夌墿鍝佸彲鍑哄敭
 		static bool LastAllItemsSellable = false;
 		if (Config.AllItemsSellable != LastAllItemsSellable)
 		{
@@ -1263,8 +1251,6 @@ namespace
 			LastMaxExtraAffixesHook = Config.MaxExtraAffixes;
 		}
 
-		// 鍖呮嫭浠诲姟鐗╁搧
-		// 鏇存柊鍏ㄥ眬寮€鍏?
 		GItemNoDecreaseEnabled.store(Config.ItemNoDecrease, std::memory_order_release);
 
 		UItemResManager* ResMgr = UManagerFuncLib::GetItemResManager();
@@ -1282,7 +1268,6 @@ namespace
 
         const DWORD NowTick = GetTickCount();
 
-        // 背包数量类能力需要周期同步；无需求时跳过，避免常驻扫描。
         static DWORD LastInventoryTick = 0;
         const bool NeedBackpackSync = Config.ItemNoDecrease || Config.ItemGainMultiplier || !GTab1ItemSnapshots.empty();
         if (NeedBackpackSync && (LastInventoryTick == 0 || (NowTick - LastInventoryTick) >= 80))
@@ -1291,8 +1276,6 @@ namespace
             ApplyTab1BackpackFeatures(Config);
         }
 
-        // 物品定义表改为“状态变化/表切换时”同步一次，避免 300ms 全表轮询。
-        // Drop/Rand/UseCount/Requirements 已走 Hook/硬改路径，这里不再做全表恢复。
         static UDataTable* LastSyncedItemTable = nullptr;
         static bool LastSyncedAllItemsSellable = false;
         static bool HasItemTableSync = false;
@@ -1583,7 +1566,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 {
 	PostRenderInFlightScope InFlightScope;
 
-	// Call original first to preserve normal rendering
 	if (GOriginalPostRender)
 		GOriginalPostRender(This, Canvas);
 
@@ -1611,8 +1593,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		return;
 	}
 
-	// World/level transition guard:
-	// avoid DestroyInternalWidget/ShowInternalWidget in PostRender during unstable frames.
 	static UWorld* LastWorld = nullptr;
 	static ULevel* LastLevel = nullptr;
 	static int32 TransitionGuardFrames = 0;
@@ -1646,7 +1626,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 	EnsureMouseCursorVisible();
 
-	// Edge-trigger HOME so one press toggles once
 	static bool HomeWasDown = false;
 	static bool HomeNeedAnchorCtxRefresh = false;
 	static bool HomeNeedDynTabRestore = false;
@@ -1666,7 +1645,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	HomeWasDown = HomeDown;
 
-	// PGUP: 杈撳嚭褰撳墠涓栫晫鐘舵€?
 	static bool PGUPWasDown = false;
 	const bool PGUPDown = (GetAsyncKeyState(VK_PRIOR) & 0x8000) != 0;
 	if (PGUPDown && !PGUPWasDown)
@@ -1691,7 +1669,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				default: LOGI_STREAM("FrameHook") << "[SDK]   -> Unknown\n"; break;
 			}
 
-			// 鑾峰彇褰撳墠鍏冲崱鍚嶇О
 			FString LevelName = UGameplayStatics::GetCurrentLevelName(World, false);
 			const wchar_t* LevelNameWs = LevelName.CStr();
 			if (LevelNameWs && LevelNameWs[0])
@@ -1703,7 +1680,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				LOGI_STREAM("FrameHook") << "[SDK] LevelName: (empty)\n";
 			}
 
-			// 妫€鏌?PersistentLevel 鏄惁瀛樺湪
 			if (World->PersistentLevel)
 			{
 				LOGI_STREAM("FrameHook") << "[SDK] PersistentLevel: " << (void*)World->PersistentLevel << "\n";
@@ -1738,7 +1714,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	const bool IsCharacterTabActive = (ActiveNativeTabIndex == 0);
 	const bool IsBattleTabActive = (ActiveNativeTabIndex == 2);
 
-	// On each HOME show: run anchor scan; rebuild item manager only when ctx changes.
 	if (HomeNeedAnchorCtxRefresh &&
 		GInternalWidgetVisible &&
 		LiveConfigView &&
@@ -1768,7 +1743,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 	}
 
-	// 面板刚显示时：先回灌记忆值，再短时禁止 realtime 覆写，避免默认值(如 1.0)覆盖缓存。
 	if (HomeNeedSliderRememberRestore &&
 		GInternalWidgetVisible &&
 		LiveInternalWidget &&
@@ -1779,11 +1753,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		RestoreRememberedSliderStatesToLiveWidgets();
 	}
 
-	// Tab0锛堣鑹诧級缂栬緫妗嗭細鎸?Enter 鎻愪氦鍐欏洖骞跺洖濉€?
 	PollTab0CharacterInput(IsCharacterTabActive);
 
-	// Detect BTN_Exit click (edge-triggered).
-	// Only poll while panel is visible and pointer is valid to avoid unreachable UObject asserts.
 	static bool ExitWasPressed = false;
 	bool ExitPressed = false;
 	const bool CanCheckExit =
@@ -1820,11 +1791,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 	}
 	ExitWasPressed = ExitPressed;
 
-	// BackpackView ProcessEvent hook path is intentionally disabled.
 
-	// 鎺т欢鐘舵€佽蹇嗘敼涓轰簨浠堕┍鍔細
-	// 鍦?Hide/Destroy/Recreate 鏃剁粺涓€閲囨牱锛岄伩鍏嶈繖閲屾寔缁疆璇㈠鑷?UI 甯ф姈鍔ㄣ€?
-	// Item browser per-frame polling
 	static DWORD sLastItemUiPollTick = 0;
 	if (GInternalWidgetVisible && LiveInternalWidget && IsItemsTabActive)
 	{
@@ -1901,7 +1868,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				}
 				else
 				{
-					// Use single-item adds to avoid unstable behavior with Num > 1 in this UI context.
 					for (int32 i = 0; i < Quantity; ++i)
 						UItemFuncLib::AddItem(ClickDefId, 1);
 				}
@@ -1948,11 +1914,8 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		GPendingItemEntryClickDefId.store(0, std::memory_order_release);
 		GItemBrowser.PrevWasPressed = false;
 		GItemBrowser.NextWasPressed = false;
-		// Avoid BP_ClearSelection while UMG object is unreachable/destroying.
 	}
 
-	// Battle tab sliders share the same +/- and right-side value mechanism as Tab1.
-	// They are not in the item-tab branch, so poll them separately here.
 	static DWORD sLastBattleSliderPollTick = 0;
 	if (GInternalWidgetVisible && LiveInternalWidget && IsBattleTabActive)
 	{
@@ -1982,9 +1945,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		IsBattleTabActive;
 	PollAndApplyTab2Features(CanReadTab2FromUI);
 
-	// Hover tips polling:
-	// 1) 鐗╁搧 Tab 鍐呴珮棰戣疆璇紙鑺傛祦鍒扮害 60Hz锛?
-	// 2) 闈炵墿鍝?Tab 浠呭湪宸叉湁 tips 娈嬬暀鏃朵綆棰戣疆璇紝鐢ㄤ簬蹇€熸敹鍙ｉ殣钘?
 	bool HoverGridValid = false;
 	if (GItemBrowser.GridPanel)
 	{
@@ -2008,11 +1968,9 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		if (sLastHoverPollTick == 0 || (HoverPollNow - sLastHoverPollTick) >= PollIntervalMs)
 		{
 			sLastHoverPollTick = HoverPollNow;
-			// 涓存椂绂佺敤锛氱敤浜庨獙璇佺墿鍝?Tab 鎮诞 Tip 杞鏄惁涓哄崱椤夸富鍥?
 		}
 	}
 
-	// 閳光偓閳光偓 Dynamic tab button click detection 閳光偓閳光偓
 	if (GInternalWidgetVisible && LiveConfigView)
 	{
 		auto* CV = LiveConfigView;
@@ -2021,9 +1979,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			return IsSafeLiveObject(static_cast<UObject*>(Btn));
 		};
 
-		// Native tabs fully handle themselves via AutoFocusForMouseEntering 閳?
-		// HandleMainBtn() 閳?EVT_SyncTabIndex(). We only manage dynamic tab
-		// content visibility (VBoxes outside the Switcher) and active state.
 		static int32 sActiveDynTab = -1;
 		static int32 sPendingNativeRestoreIdx = -1;
 		static int32 sPendingNativeHighlightSettleFrames = 0;
@@ -2070,7 +2025,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			}
 		}
 
-		// Native tab restore (0-5): keep calling EVT_SyncTabIndex until active index matches.
 		if ((sPendingNativeRestoreIdx >= 0 && sPendingNativeRestoreIdx <= 5) || sPendingNativeHighlightSettleFrames > 0)
 		{
 			const int32 TargetIdx = (sPendingNativeRestoreIdx >= 0 && sPendingNativeRestoreIdx <= 5)
@@ -2104,8 +2058,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			{
 				if (sPendingNativeRestoreIdx >= 0 && sPendingNativeRestoreIdx <= 5)
 				{
-					// Content is already on target tab; keep forcing active visual state
-					// for a few frames to survive blueprint focus/highlight overwrite.
 					sPendingNativeRestoreIdx = -1;
 					sPendingNativeHighlightSettleFrames = 30;
 				}
@@ -2116,7 +2068,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			}
 		}
 
-		// Dynamic tab remembered/active: keep native 0-5 highlight turned off.
 		if (sActiveDynTab >= 6 || sPendingNativeInactiveSettleFrames > 0)
 		{
 			ApplyNativeTabHighlight(-1);
@@ -2131,7 +2082,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 
 		if (dynHoverIdx >= 6 && dynHoverIdx != sActiveDynTab)
 		{
-			// Entering a (different) dynamic tab 閳?show its content
 			ShowDynamicTab(CV, dynHoverIdx);
 			sPendingNativeInactiveSettleFrames = 30;
 			if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
@@ -2141,9 +2091,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 		else if (sActiveDynTab >= 6 && dynHoverIdx == -1)
 		{
-			// Only restore original content when a NATIVE tab is hovered.
-			// Moving mouse to content area or empty space keeps dynamic tab active
-			// 閳?same behavior as native tabs.
 			bool nativeHovered =
 				(CV->BTN_Sound && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Sound)) && CV->BTN_Sound->IsHovered()) ||
 				(CV->BTN_Video && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Video)) && CV->BTN_Video->IsHovered()) ||
@@ -2163,7 +2110,6 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 	}
 
-	// Detect if blueprint logic closed the widget externally
 	if (GInternalWidgetVisible && LiveInternalWidget && !LiveInternalWidget->IsInViewport())
 	{
 		APlayerController* PC = GetFirstLocalPlayerController();
@@ -2171,5 +2117,3 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		LOGI_STREAM("FrameHook") << "[SDK] Widget closed externally, cached instance kept\n";
 	}
 }
-
-// -- Main Thread --

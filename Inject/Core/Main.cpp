@@ -19,7 +19,6 @@ static void RemoveAllHooks()
 
 	DisableItemNoDecreaseHook();
 
-	// 卸载所有 Inline Hook
 	InlineHook::HookManager::UninstallAll();
 }
 
@@ -91,7 +90,6 @@ DWORD MainThread(HMODULE Module)
 		GUnloadCleanupDone.store(false, std::memory_order_release);
 		GIsUnloading.store(true, std::memory_order_release);
 
-		// Phase 1: cleanup must be completed on game thread.
 		bool CleanupDone = false;
 		DWORD WaitStart = GetTickCount();
 		while (!(CleanupDone = GUnloadCleanupDone.load(std::memory_order_acquire)))
@@ -108,7 +106,6 @@ DWORD MainThread(HMODULE Module)
 			continue;
 		}
 
-		// Phase 2: ensure no PostRender call is currently in-flight before unhook.
 		bool PreUnhookDrained = false;
 		WaitStart = GetTickCount();
 		while (!(PreUnhookDrained = (GPostRenderInFlight.load(std::memory_order_acquire) == 0)))
@@ -126,7 +123,6 @@ DWORD MainThread(HMODULE Module)
 
 		RemoveAllHooks();
 
-		// Phase 3: after unhook, there still must be zero in-flight calls.
 		bool PostUnhookDrained = false;
 		WaitStart = GetTickCount();
 		while (!(PostUnhookDrained = (GPostRenderInFlight.load(std::memory_order_acquire) == 0)))
@@ -142,7 +138,6 @@ DWORD MainThread(HMODULE Module)
 			continue;
 		}
 
-		// Hard gate: both conditions must be satisfied, otherwise never unload.
 		if (!GUnloadCleanupDone.load(std::memory_order_acquire) ||
 			GPostRenderInFlight.load(std::memory_order_acquire) != 0)
 		{

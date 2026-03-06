@@ -76,7 +76,6 @@ namespace
 		if (!CV || !IsSafeLiveObject(static_cast<UObject*>(CV)))
 			return -1;
 
-		// 动态Tab优先：6/7/8
 		if (GDynTab.Content6 &&
 			IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content6)) &&
 			GDynTab.Content6->GetVisibility() != ESlateVisibility::Collapsed)
@@ -96,7 +95,6 @@ namespace
 			return 8;
 		}
 
-		// 原生Tab：0~5
 		if (CV->CT_Contents &&
 			IsSafeLiveObject(static_cast<UObject*>(CV->CT_Contents)))
 		{
@@ -157,9 +155,6 @@ void ClearRuntimeWidgetState()
 	GCachedBtnExit = nullptr;
 }
 
-// 鈹€鈹€ Raw widget creation via StaticConstructObject_Internal 鈹€鈹€
-// Found by decompiling UWidgetBlueprintLibrary::Create 鈫?CreateWidget 鈫?StaticConstructObject_Internal
-// RVA 0x17C6140 in JH-Win64-Shipping.exe
 void InitializeConfigView2BySDK(UBPMV_ConfigView2_C* ConfigView)
 {
 	if (!ConfigView)
@@ -173,7 +168,6 @@ void InitializeConfigView2BySDK(UBPMV_ConfigView2_C* ConfigView)
 		LOGI_STREAM("PanelManager") << "[SDK] Init: calling EVT_SetupSubModuleSlots...\n";
 	ConfigView->EVT_SetupSubModuleSlots();
 
-	// Diagnostic: check slot state after setup
 	if (kEnableUIInitLog)
 	{
 		LOGI_STREAM("PanelManager") << "[SDK] Init: VolumeSlot=" << (void*)ConfigView->VolumeSlot
@@ -187,7 +181,6 @@ void InitializeConfigView2BySDK(UBPMV_ConfigView2_C* ConfigView)
 
 	if (kEnableUIInitLog)
 		LOGI_STREAM("PanelManager") << "[SDK] Init: calling EVT_SyncTabIndex(0)...\n";
-	// ConfigView->EVT_SyncTabIndex(0);
 
 	if (kEnableUIInitLog)
 		LOGI_STREAM("PanelManager") << "[SDK] Init: calling EVT_SyncWithGlobalInputMode...\n";
@@ -207,21 +200,17 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 
 	auto* CV = static_cast<UBPMV_ConfigView2_C*>(Widget);
 
-	SetupTab(CV->BTN_Sound,   0, L"角色");   // 角色
-	SetupTab(CV->BTN_Video,   1, L"物品");   // 物品
-	SetupTab(CV->BTN_Keys,    2, L"战斗");   // 战斗
-	SetupTab(CV->BTN_Lan,     3, L"生活");   // 生活
-	SetupTab(CV->BTN_Others,  4, L"社交");   // 社交
-	SetupTab(CV->BTN_Gamepad, 5, L"系统");   // 系统
+	SetupTab(CV->BTN_Sound,   0, L"角色");
+	SetupTab(CV->BTN_Video,   1, L"物品");
+	SetupTab(CV->BTN_Keys,    2, L"战斗");
+	SetupTab(CV->BTN_Lan,     3, L"生活");
+	SetupTab(CV->BTN_Others,  4, L"社交");
+	SetupTab(CV->BTN_Gamepad, 5, L"系统");
 
-	// NOTE: Do NOT call EstablishTabBtns here 鈥?it resets internal click bindings
-	// that EVT_VisualConstructOnce() already established, breaking tab switching.
 
-	// 鈹€鈹€ Hide title image ("娓告垙璁剧疆" is baked into a texture) 鈹€鈹€
 	if (CV->IMG_Title)
 		CV->IMG_Title->SetVisibility(ESlateVisibility::Collapsed);
 
-	// 鈹€鈹€ Hide/remove refresh/reset button from injected panel (restore original behavior) 鈹€鈹€
 	if (CV->Btn_Revert2)
 	{
 		GOriginalResetButton = CV->Btn_Revert2;
@@ -231,14 +220,11 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 		LOGI_STREAM("PanelManager") << "[SDK] Btn_Revert2 removed from injected panel: " << (void*)CV->Btn_Revert2 << "\n";
 	}
 
-	// 鈹€鈹€ Remove tip text (SetVisibility gets overridden by blueprint) 鈹€鈹€
 	if (CV->TXT_EnterTip)
 		CV->TXT_EnterTip->RemoveFromParent();
 
-	// 鈹€鈹€ Cache close button for per-frame click detection 鈹€鈹€
 	GCachedBtnExit = CV->BTN_Exit;
 
-	// 鈹€鈹€ Populate tab contents 鈹€鈹€
 	PopulateTab_Character(CV, PC);
 	PopulateTab_Items(CV, PC);
 	PopulateTab_Battle(CV, PC);
@@ -246,10 +232,8 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 	PopulateTab_Social(CV, PC);
 	PopulateTab_System(CV, PC);
 
-	// 鈹€鈹€ Create dynamic tabs 6/7/8 鈹€鈹€
 	CreateDynamicTabs(CV, PC);
 
-	// Do not force-highlight Tab0 during init; avoid visual conflict with remembered tab restore.
 	if (CV->BTN_Sound)   CV->BTN_Sound->EVT_UpdateActiveStatus(false);
 	if (CV->BTN_Video)   CV->BTN_Video->EVT_UpdateActiveStatus(false);
 	if (CV->BTN_Keys)    CV->BTN_Keys->EVT_UpdateActiveStatus(false);
@@ -264,16 +248,11 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 		LOGI_STREAM("PanelManager") << "[SDK] ConfigView2 patched: 9 tabs populated\n";
 }
 
-// 鈹€鈹€ Tab content population 鈹€鈹€
 
-// Replace game's sub-module panel in a NamedSlot with our own clean VBox.
-// The original sub-module panels have blueprint Tick/animations that crash
-// when we remove their children 鈥?so we detach the entire panel instead.
 void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	if (!CV || !PC) return;
 
-	// Reset dynamic tab state
 	GDynTab.Btn6 = nullptr;
 	GDynTab.Btn7 = nullptr;
 	GDynTab.Btn8 = nullptr;
@@ -286,11 +265,10 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree)
 	                            : static_cast<UObject*>(CV);
 
-	// 鈹€鈹€ Create tab buttons 鈹€鈹€
 	GDynTab.Btn6 = CreateTabButton(PC);
 	if (GDynTab.Btn6)
 	{
-		SetupTab(GDynTab.Btn6, 6, L"\u961F\u53CB"); // 闃熷弸
+		SetupTab(GDynTab.Btn6, 6, L"\u961F\u53CB");
 		PatchTabBtnRuntimeContext(GDynTab.Btn6, CV, "DynTab6");
 		if (CV->CT_TabBtns)
 			CV->CT_TabBtns->AddChild(GDynTab.Btn6);
@@ -301,7 +279,7 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GDynTab.Btn7 = CreateTabButton(PC);
 	if (GDynTab.Btn7)
 	{
-		SetupTab(GDynTab.Btn7, 7, L"\u4EFB\u52A1"); // 浠诲姟
+		SetupTab(GDynTab.Btn7, 7, L"\u4EFB\u52A1");
 		PatchTabBtnRuntimeContext(GDynTab.Btn7, CV, "DynTab7");
 		if (CV->CT_TabBtns)
 			CV->CT_TabBtns->AddChild(GDynTab.Btn7);
@@ -312,7 +290,7 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GDynTab.Btn8 = CreateTabButton(PC);
 	if (GDynTab.Btn8)
 	{
-		SetupTab(GDynTab.Btn8, 8, L"\u63A7\u4EF6"); // 鎺т欢
+		SetupTab(GDynTab.Btn8, 8, L"\u63A7\u4EF6");
 		PatchTabBtnRuntimeContext(GDynTab.Btn8, CV, "DynTab8");
 		if (CV->CT_TabBtns)
 			CV->CT_TabBtns->AddChild(GDynTab.Btn8);
@@ -320,7 +298,6 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab8 button created\n";
 	}
 
-	// 鈹€鈹€ Create content containers (mounted to Switcher's parent, not Switcher itself) 鈹€鈹€
 	UPanelWidget* SwitcherParent = CV->CT_Contents ? CV->CT_Contents->GetParent() : nullptr;
 	if (kEnableUIInitLog)
 		LOGI_STREAM("PanelManager") << "[SDK] DynTab: SwitcherParent=" << (void*)SwitcherParent << "\n";
@@ -355,7 +332,6 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			LOGI_STREAM("PanelManager") << "[SDK] DynTab8 content added to SwitcherParent (Collapsed)\n";
 	}
 
-	// 鈹€鈹€ Populate content 鈹€鈹€
 	PopulateTab_Teammates(CV, PC);
 	PopulateTab_Quests(CV, PC);
 	PopulateTab_Controls(CV, PC);
@@ -607,7 +583,6 @@ void ToggleInternalWidget()
 		ClearRuntimeWidgetState();
 	}
 
-	// Use real widget state instead of our boolean flag
 	bool isShowing = GInternalWidget && IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) && GInternalWidget->IsInViewport();
 	if (isShowing)
 		HideInternalWidget(PlayerController);
@@ -615,7 +590,6 @@ void ToggleInternalWidget()
 		ShowInternalWidget(PlayerController);
 }
 
-// 鈹€鈹€ Dynamic tab visibility helpers (avoid SetActiveWidgetIndex which triggers blueprint crash) 鈹€鈹€
 void ShowDynamicTab(UBPMV_ConfigView2_C* CV, int32 DynIdx)
 {
 	if (CV->CT_Contents)
@@ -647,6 +621,3 @@ void ShowOriginalTab(UBPMV_ConfigView2_C* CV)
 	if (GDynTab.Content7) GDynTab.Content7->SetVisibility(ESlateVisibility::Collapsed);
 	if (GDynTab.Content8) GDynTab.Content8->SetVisibility(ESlateVisibility::Collapsed);
 }
-
-
-

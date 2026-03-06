@@ -30,7 +30,7 @@ void MarkAsGCRoot(UObject* Obj)
 		return;
 
 	auto* FlagsPtr = reinterpret_cast<int32*>(reinterpret_cast<uintptr_t>(Obj) + 0x0008);
-	*FlagsPtr |= 0x80; // RF_MarkAsRootSet
+	*FlagsPtr |= 0x80;
 	if (std::find(GRootedObjects.begin(), GRootedObjects.end(), Obj) == GRootedObjects.end())
 		GRootedObjects.push_back(Obj);
 }
@@ -42,7 +42,7 @@ void ClearGCRoot(UObject* Obj)
 	if (IsPointerInLiveObjectArray(Obj))
 	{
 		auto* FlagsPtr = reinterpret_cast<int32*>(reinterpret_cast<uintptr_t>(Obj) + 0x0008);
-		*FlagsPtr &= ~0x80; // clear RF_MarkAsRootSet
+		*FlagsPtr &= ~0x80;
 	}
 
 	auto it = std::remove(GRootedObjects.begin(), GRootedObjects.end(), Obj);
@@ -59,10 +59,3 @@ void ClearAllGCRoots()
 		ClearGCRoot(Obj);
 	LOGI_STREAM("GCManager") << "[SDK] ClearAllGCRoots: released " << RootedSnapshot.size() << " rooted objects\n";
 }
-
-// ── Delegate clearing ──
-// TMulticastInlineDelegate is 0x10 bytes. Zeroing it removes all blueprint bindings.
-// This prevents cloned widgets from triggering the original game logic
-// (e.g., VolumeItem slider → changes actual game volume).
-
-

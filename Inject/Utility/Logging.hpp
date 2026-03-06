@@ -53,9 +53,8 @@ private:
 	bool Active_;
 	std::ostringstream Buffer_;
 };
-} // namespace Logging
+}
 
-// 统一日志宏: 所有输出必须通过 Logging.cpp
 #define LOGT_STREAM(tag) ::Logging::LogLine(::Logging::LogLevel::Trace, (tag))
 #define LOGD_STREAM(tag) ::Logging::LogLine(::Logging::LogLevel::Debug, (tag))
 #define LOGI_STREAM(tag) ::Logging::LogLine(::Logging::LogLevel::Info, (tag))
@@ -63,13 +62,8 @@ private:
 #define LOGE_STREAM(tag) ::Logging::LogLine(::Logging::LogLevel::Error, (tag))
 #define LOGF_STREAM(tag) ::Logging::LogLine(::Logging::LogLevel::Fatal, (tag))
 
-/// 初始化日志系统: 打开日志文件 (WanderingSword.Inject.runtime.log)，
-/// 后续所有 LOG*_STREAM 会统一写入该文件，并带统一前缀格式。
 void SetupLocalLogging(HMODULE Module);
 
-/// 关闭日志系统: 刷新并关闭日志文件。
 void ShutdownLocalLogging();
 
-/// 未处理异常过滤器: 记录崩溃信息 (异常代码/指令地址/访问地址) 到日志，
-/// 然后交给系统默认处理。注册方式: SetUnhandledExceptionFilter(UnhandledExceptionLogger)。
 LONG WINAPI UnhandledExceptionLogger(EXCEPTION_POINTERS* ExceptionInfo);

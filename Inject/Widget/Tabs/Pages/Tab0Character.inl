@@ -49,18 +49,17 @@ namespace
 		AttrOtherWeaponsExp
 	};
 
-	// ── 静态数据表：统一 ETab0Field 的所有映射关系 ──
 
 	using FAttrDataResolver = FGameplayAttributeData* (*)(UJHAttributeSet*);
 
 	struct FTab0FieldMeta
 	{
 		ETab0Field Field;
-		const char* Tag;            // 调试字符串
-		const wchar_t* Title;       // 中文 UI 标题
-		const wchar_t* AttrName;    // UE4 属性名
-		FAttrDataResolver Resolver; // AttrSet 成员解析器
-		bool bInteger;              // 是否为整数字段
+		const char* Tag;
+		const wchar_t* Title;
+		const wchar_t* AttrName;
+		FAttrDataResolver Resolver;
+		bool bInteger;
 	};
 
 #define TAB0_ATTR(field, tag, title, attrName, member) \
@@ -154,25 +153,21 @@ namespace
 	bool GTab0EnterWasDown = false;
 	UEditableTextBox* GTab0LastFocusedEdit = nullptr;
 
-	// 焦点缓存 (方案2: 减少每帧 HasKeyboardFocus 调用)
-	constexpr ULONGLONG kTab0FocusCacheDurationMs = 200ULL;  // 缓存有效期 200ms
-	UEditableTextBox* GTab0FocusCacheEdit = nullptr;         // 缓存的焦点编辑框
-	ULONGLONG GTab0FocusCacheTick = 0;                       // 缓存时间戳
+	constexpr ULONGLONG kTab0FocusCacheDurationMs = 200ULL;
+	UEditableTextBox* GTab0FocusCacheEdit = nullptr;
+	ULONGLONG GTab0FocusCacheTick = 0;
 
-	// 清理降频: 每500ms运行一次清理
 	constexpr ULONGLONG kTab0CleanupIntervalMs = 500ULL;
 	ULONGLONG GTab0LastCleanupTick = 0;
 
-	// 滑块和下拉框轮询降频: 每100ms运行一次
 	constexpr ULONGLONG kTab0UiPollIntervalMs = 100ULL;
 	ULONGLONG GTab0LastUiPollTick = 0;
 
-	// 角色选择下拉框
 	UBPVE_JHConfigVideoItem2_C* GTab0RoleSelectDD = nullptr;
-	std::vector<int32> GTab0RoleSelectNPCIds;      // 对应每个选项的 NPCId
-	std::vector<std::wstring> GTab0RoleSelectNames; // 角色名字
-	int32 GTab0SelectedRoleIdx = -1;                // 当前选中的角色索引
-	int32 GTab0LastSelectedRoleIdx = -1;            // 上一次选中的角色索引
+	std::vector<int32> GTab0RoleSelectNPCIds;
+	std::vector<std::wstring> GTab0RoleSelectNames;
+	int32 GTab0SelectedRoleIdx = -1;
+	int32 GTab0LastSelectedRoleIdx = -1;
 
 	constexpr bool kTab0VerboseLog = false;
 	UBPVE_JHConfigVolumeItem2_C* GTab0MoneyMultiplierItem = nullptr;
@@ -278,7 +273,6 @@ namespace
 		if (Root->IsA(UEditableTextBox::StaticClass()))
 			return static_cast<UEditableTextBox*>(Root);
 
-		// UUserWidget 不是 PanelWidget，先下钻到 WidgetTree.RootWidget 再递归
 		if (Root->IsA(UUserWidget::StaticClass()))
 		{
 			auto* UserWidget = static_cast<UUserWidget*>(Root);
@@ -416,7 +410,6 @@ namespace
 		return true;
 	}
 
-	// 获取当前队伍所有角色的名字和NPCId列表
 	void RefreshTab0RoleSelectOptions()
 	{
 		GTab0RoleSelectNPCIds.clear();
@@ -443,7 +436,6 @@ namespace
 				if (Info->NPCId < 0)
 					continue;
 
-				// 去重：检查是否已存在相同 NPCId
 				bool bDuplicate = false;
 				for (int32 ExistingId : GTab0RoleSelectNPCIds)
 				{
@@ -456,7 +448,6 @@ namespace
 				if (bDuplicate)
 					continue;
 
-				// 获取角色名字 - 使用和门派一样的方式
 				FText Name = UNPCFuncLib::GetNPCNameById(Info->NPCId);
 				FString NameStr = UKismetTextLibrary::Conv_TextToString(Name);
 				const wchar_t* NameWs = NameStr.CStr();
@@ -468,13 +459,11 @@ namespace
 			}
 		};
 
-		// 先处理队伍列表，再处理战斗队伍列表
 		ProcessTeamArray(TeamManager->TeamInfos, "TeamInfos");
 		ProcessTeamArray(TeamManager->FightTeamInfos, "FightTeamInfos");
 		LOGI_STREAM("Tab0Character") << "[SDK] Total roles found: " << GTab0RoleSelectNPCIds.size() << "\n";
 	}
 
-	// 前向声明
 	void RefreshTab0BindingsText(APlayerController* PC);
 
 	FTab0HeroContext BuildTab0HeroContext(APlayerController* PC)
@@ -483,7 +472,6 @@ namespace
 		Ctx.ItemManager = UManagerFuncLib::GetItemManager();
 		Ctx.NPCManager = UManagerFuncLib::GetNPCManager();
 
-		// 如果用户通过下拉框选择了角色，优先使用选中的 NPCId
 		if (GTab0SelectedRoleIdx >= 0 && GTab0SelectedRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
 		{
 			Ctx.NPCId = GTab0RoleSelectNPCIds[GTab0SelectedRoleIdx];
@@ -534,8 +522,6 @@ namespace
 				Ctx.AttrSet = Ctx.TeamInfo->AttributeSet;
 		}
 
-		// 兜底：部分场景 GetSceneHero/Index0 取到的 NPCId 可能是 0，
-		// 尝试从 TeamManager 的队伍列表里找第一个有效 NPCId。
 		if (Ctx.NPCId < 0)
 		{
 			if (UTeamManager* TeamManager = UManagerFuncLib::GetTeamManager())
@@ -734,7 +720,6 @@ namespace
 				}
 			}
 
-			// RowMap 解析到的 FText 可能是占位文本，补走 helper 路径拿本地化后的门派名
 			if (bNeedFallbackResolve)
 			{
 				TArray<FName> RowNames;
@@ -929,7 +914,6 @@ namespace
 		if (!bTab0Active)
 			return;
 
-		// 检测角色选择下拉框的变化
 		if (GTab0RoleSelectDD && IsValidTab0Dropdown(GTab0RoleSelectDD))
 		{
 			int32 CurRoleIdx = GetComboSelectedIndexFast(GTab0RoleSelectDD->CB_Main);
@@ -937,13 +921,10 @@ namespace
 			{
 				GTab0SelectedRoleIdx = CurRoleIdx;
 				GTab0LastSelectedRoleIdx = CurRoleIdx;
-				// 角色切换时刷新所有数值
 				RefreshTab0BindingsText(PC);
-				// 重置倍率滑块的值，以便重新读取
 				GTab0MoneyMultiplierLastPercent = -1.0f;
 				GTab0SkillExpMultiplierLastPercent = -1.0f;
 				GTab0ManaCostMultiplierLastPercent = -1.0f;
-				// 输出选中的角色信息
 				if (CurRoleIdx >= 0 && CurRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
 				{
 					int32 SelectedNPCId = GTab0RoleSelectNPCIds[CurRoleIdx];
@@ -956,7 +937,6 @@ namespace
 		}
 		else
 		{
-			// 角色选择下拉框不可用，静默处理
 		}
 
 		auto ReadIndex = [](UBPVE_JHConfigVideoItem2_C* Item) -> int32
@@ -1046,7 +1026,7 @@ namespace
 		if (Clamped > 10.0f) Clamped = 10.0f;
 
 		wchar_t Buf[32] = {};
-		swprintf_s(Buf, 32, L"%.1f", Clamped);  // 显示1位小数
+		swprintf_s(Buf, 32, L"%.1f", Clamped);
 		Item->TXT_CurrentValue->SetText(MakeText(Buf));
 	}
 
@@ -1081,7 +1061,7 @@ namespace
 		USlider* Slider = Item->VolumeSlider;
 		Slider->MinValue = 0.0f;
 		Slider->MaxValue = 10.0f;
-		Slider->StepSize = 0.1f;  // 小数步进
+		Slider->StepSize = 0.1f;
 		SetVolumeItemPercent(Item, Slider->GetValue());
 	}
 
@@ -1254,7 +1234,7 @@ namespace
 				return;
 			}
 
-			if (std::fabs(Percent - LastPercent) >= 0.05f)  // 检测小数变化
+			if (std::fabs(Percent - LastPercent) >= 0.05f)
 			{
 				ApplyTab0MultiplierAttribute(Ctx, AttrName, Percent);
 				LastPercent = Percent;
@@ -1394,7 +1374,6 @@ namespace
 				return true;
 			}
 
-			// 读取兜底：实时属性接口失败时回退 AttributeSet，避免 UI 全部显示 -1。
 			if (Ctx.AttrSet)
 			{
 				if (FGameplayAttributeData* AttrData = ResolveAttrData(Ctx.AttrSet, Field))
@@ -1796,7 +1775,6 @@ namespace
 }
 
 
-
 void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	UPanelWidget* Container = GetOrCreateSlotContainer(CV, CV->VolumeSlot, "Tab0(VolumeSlot)");
@@ -1809,15 +1787,15 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0Bindings.clear();
 	GTab0EnterWasDown = false;
 	GTab0LastFocusedEdit = nullptr;
-	GTab0FocusCacheEdit = nullptr;       // 重置焦点缓存
-	GTab0FocusCacheTick = 0;             // 重置缓存时间戳
-	GTab0LastCleanupTick = 0;            // 重置清理时间戳
-	GTab0LastUiPollTick = 0;             // 重置UI轮询时间戳
-	GTab0RoleSelectDD = nullptr;         // 重置角色选择下拉框
-	GTab0RoleSelectNPCIds.clear();        // 清空角色NPCId列表
-	GTab0RoleSelectNames.clear();         // 清空角色名字列表
-	GTab0SelectedRoleIdx = -1;            // 重置选中的角色索引
-	GTab0LastSelectedRoleIdx = -1;       // 重置上一次选中的角色索引
+	GTab0FocusCacheEdit = nullptr;
+	GTab0FocusCacheTick = 0;
+	GTab0LastCleanupTick = 0;
+	GTab0LastUiPollTick = 0;
+	GTab0RoleSelectDD = nullptr;
+	GTab0RoleSelectNPCIds.clear();
+	GTab0RoleSelectNames.clear();
+	GTab0SelectedRoleIdx = -1;
+	GTab0LastSelectedRoleIdx = -1;
 	GTab0MoneyMultiplierItem = nullptr;
 	GTab0SkillExpMultiplierItem = nullptr;
 	GTab0ManaCostMultiplierItem = nullptr;
@@ -1914,20 +1892,17 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		return Item;
 	};
 
-	// 角色选择下拉框 - 放在最上方
 	RefreshTab0RoleSelectOptions();
 	auto* RoleSelectPanel = CreateCollapsiblePanel(PC, L"选择角色");
 	auto* RoleSelectBox = RoleSelectPanel ? RoleSelectPanel->CT_Contents : nullptr;
 	if (!GTab0RoleSelectNames.empty())
 	{
-	// 使用 CreateVideoItemWithOptions 的方式创建带选项的下拉框
 	GTab0RoleSelectDD = CreateVideoItemWithOptions(PC, L"当前角色", {});
 	if (GTab0RoleSelectDD && GTab0RoleSelectDD->CB_Main)
 	{
 		GTab0RoleSelectDD->CB_Main->ClearOptions();
 		for (const auto& Name : GTab0RoleSelectNames)
 		{
-			// Name 已经是 std::wstring，直接使用
 			GTab0RoleSelectDD->CB_Main->AddOption(FString(Name.c_str()));
 		}
 		if (GetComboOptionCountFast(GTab0RoleSelectDD->CB_Main) > 0)
@@ -1945,7 +1920,6 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	}
 	AddPanelWithFixedGap(RoleSelectPanel, 0.0f, 10.0f);
 
-	// 角色选项面板 - 放在基础数值之前
 	auto* RolePanel = CreateCollapsiblePanel(PC, L"角色选项");
 	auto* RoleBox = RolePanel ? RolePanel->CT_Contents : nullptr;
 	GTab0ExtraNeiGongLimitDD = AddDropdown(RoleBox, L"额外心法栏", { L"0", L"1", L"2" });
@@ -2069,7 +2043,6 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 void PollTab0CharacterInput(bool bTab0Active)
 {
 
-	// 方案1: 清理降频 - 每500ms运行一次清理，而不是每帧都运行
 	const ULONGLONG Now = GetTickCount64();
 	const bool bDoCleanup = !GTab0LastCleanupTick || (Now - GTab0LastCleanupTick) >= kTab0CleanupIntervalMs;
 	if (bDoCleanup)
@@ -2089,7 +2062,6 @@ void PollTab0CharacterInput(bool bTab0Active)
 		{
 			GTab0LastFocusedEdit = nullptr;
 		}
-		// 同时清理焦点缓存中无效的条目
 		if (GTab0FocusCacheEdit && !IsSafeLiveObject(static_cast<UObject*>(GTab0FocusCacheEdit)))
 		{
 			GTab0FocusCacheEdit = nullptr;
@@ -2104,7 +2076,7 @@ void PollTab0CharacterInput(bool bTab0Active)
 		PollTab0RoleDropdowns(nullptr, false);
 		GTab0EnterWasDown = EnterDown;
 		GTab0LastFocusedEdit = nullptr;
-		GTab0FocusCacheEdit = nullptr;  // Tab 不活跃时清空焦点缓存
+		GTab0FocusCacheEdit = nullptr;
 		return;
 	}
 
@@ -2112,29 +2084,21 @@ void PollTab0CharacterInput(bool bTab0Active)
 	if (UWorld* World = UWorld::GetWorld())
 		PC = UGameplayStatics::GetPlayerController(World, 0);
 
-	// 降频轮询: 每100ms运行一次下拉框和滑块轮询
 	const bool bDoUiPoll = !GTab0LastUiPollTick || (Now - GTab0LastUiPollTick) >= kTab0UiPollIntervalMs;
 	if (bDoUiPoll)
 	{
-		// 下拉框轮询
 		PollTab0RoleDropdowns(PC, true);
-		// Tab0 三个倍率滑块：实时同步到游戏属性
 		PollTab0RatioSliders(PC);
 		GTab0LastUiPollTick = Now;
 	}
 
-	// 方案2: 焦点缓存 - 只有在 EnterTriggered 或缓存过期时才扫描焦点
-	// 计算缓存是否过期
 	const bool bCacheExpired = !GTab0FocusCacheTick || (Now - GTab0FocusCacheTick) >= kTab0FocusCacheDurationMs;
-	// 检查缓存的编辑框是否仍然有效
 	const bool bCachedEditValid = GTab0FocusCacheEdit && IsSafeLiveObject(static_cast<UObject*>(GTab0FocusCacheEdit));
-	// 是否需要进行焦点扫描: EnterTriggered 时必须扫描，或者缓存已过期，或者缓存的编辑框已失效
 	const bool bNeedFocusScan = EnterTriggered || bCacheExpired || !bCachedEditValid;
 
 	FTab0Binding* Focused = nullptr;
 	if (bNeedFocusScan)
 	{
-		// 执行真正的焦点扫描
 		for (auto& Binding : GTab0Bindings)
 		{
 			if (!Binding.Edit || !IsSafeLiveObject(static_cast<UObject*>(Binding.Edit)))
@@ -2145,17 +2109,14 @@ void PollTab0CharacterInput(bool bTab0Active)
 				break;
 			}
 		}
-		// 更新缓存
 		GTab0FocusCacheEdit = Focused ? Focused->Edit : nullptr;
 		GTab0FocusCacheTick = Now;
 	}
 	else
 	{
-		// 使用缓存的结果
 		Focused = FindTab0BindingByEdit(GTab0FocusCacheEdit);
 	}
 
-	// 某些编辑框按下回车瞬间会丢失键盘焦点，回车提交时回退到“上一次有焦点的编辑框”。
 	if (EnterTriggered && !Focused && GTab0LastFocusedEdit)
 	{
 		Focused = FindTab0BindingByEdit(GTab0LastFocusedEdit);

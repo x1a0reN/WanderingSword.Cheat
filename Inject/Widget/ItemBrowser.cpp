@@ -31,7 +31,6 @@ namespace
 	std::wstring GItemSearchKeyword;
 	std::wstring GItemSearchKeywordFolded;
 
-	// VisName 已移除，统一使用 WidgetUtils 中的 ToVisName
 
 	int32 SanitizeItemQuality(uint8 RawQuality)
 	{
@@ -89,11 +88,9 @@ namespace
 	constexpr uintptr_t kNeoTileInitWeakOffsetB = 0x8A0;
 	constexpr int32 kGridSearchAnchorIndex = 59720;
 	constexpr int32 kGridSearchWindow = 10;
-	constexpr bool kEnableEntryInitSearch = true;    // Enable anchor-window search path.
-	constexpr bool kEnableFullScanFallback = false;  // 澶囩敤鍏ㄩ噺鎵紝榛樿鍏抽棴
+	constexpr bool kEnableEntryInitSearch = true;
+	constexpr bool kEnableFullScanFallback = false;
 
-	// ReadWeakPtrAt / WriteWeakPtrAt / IsWeakPtrFilled / IsSameWeak / ResolveWeakPtrLoose
-	// 已合并到 WidgetUtils.hpp/cpp
 
 FWeakObjectPtr GCachedEntryInitWeakB{};
 bool GHasCachedEntryInitWeakB = false;
@@ -188,7 +185,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 			return true;
 		};
 
-		// 1) 闈炴悳绱㈣矾寰勶細浼樺厛鍚冪紦瀛?		if (GHasCachedEntryInitWeakB && IsWeakPtrFilled(GCachedEntryInitWeakB))
 		{
 			UObject* CachedBO = ResolveWeakPtrLoose(GCachedEntryInitWeakB);
 			if (IsSafeLiveObjectOfClass(CachedBO, UNeoUIUniversalModuleVMBase::StaticClass()))
@@ -203,7 +199,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 			}
 		}
 
-		// 2) 搜索逻辑默认禁用，只依赖 EVT_RenderView 注入缓存。
 		if (!kEnableEntryInitSearch)
 			return false;
 
@@ -213,7 +208,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 
 		const int32 Num = ObjArray->Num();
 
-		// 3) 涓绘悳绱細閿氱偣绐楀彛鎵弿
 		if (Num > 0)
 		{
 			int32 Start = kGridSearchAnchorIndex - kGridSearchWindow;
@@ -228,7 +222,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 			}
 		}
 
-		// 4) 澶囩敤锛氬叏閲忔壂锛堥粯璁ゅ叧闂級
 		if (!kEnableFullScanFallback)
 			return false;
 
@@ -331,7 +324,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 			return Texture;
 		}
 
-		// 閺夌儐鍓欏┃鈧柡鍫㈠枛濡潡寮垫径澶屾槀閻犙冨缁喗瀵煎顐㈩槻闁哄啯婀圭粭澶愬矗椤栨粍鏆忛柨娑樼焷椤旀洜绱旈鈧崳鍝ユ嫚閺囩姷宕堕柛娆欑秮娴尖晠宕楀鍡橆攳濞?missing 婵厜鍓濋悡瀣Υ?
 		sMissingIconRetryUntil[Key] = NowTick + 2500;
 		LOGI_STREAM("ItemBrowser") << "[SDK] ItemIconMissing: " << AssetPathName->GetRawString() << "\n";
 		return nullptr;
@@ -354,7 +346,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 		if (UWorld* World = UWorld::GetWorld())
 			WorldCtx = static_cast<UObject*>(World);
 
-		// Fallback 1: compare mouse and widget rect in viewport coordinates.
 		const FVector2D LocalSize = USlateBlueprintLibrary::GetLocalSize(Geo);
 		if (LocalSize.X > 1.0f && LocalSize.Y > 1.0f)
 		{
@@ -377,7 +368,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 			}
 		}
 
-		// Fallback 2: convert screen to widget-local and test local bounds.
 		FVector2D LocalPos{};
 		USlateBlueprintLibrary::ScreenToWidgetLocal(WorldCtx, Geo, MouseAbs, &LocalPos, true);
 		if (LocalPos.X >= 0.0f && LocalPos.Y >= 0.0f &&
@@ -422,7 +412,6 @@ UListView* GEntryInitPreparedListView = nullptr;
 		Created->SetAlignmentInViewport(FVector2D{ 0.0f, 0.0f });
 		Created->SetDesiredSizeInViewport(FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight });
 
-		// 閺夆晜鐟ょ花娲礌閸濆嫮鍘甸柛锔哄妿鐎氼厾绮╃€ｎ剙鈷栭柛?Tip 濞戞搩鍘煎ù鎰偓瑙勫哺濞堬綁鎸婅箛銉х闁告瑯浜滃﹢顏堝礆濠靛棭娼楅柛鏍ㄧ墬濡炲倻鎷嬮崜褏鏋傚☉鎾亾婵炲枴鎵冲亾?
 		if (Created->VE_Effects)
 			Created->VE_Effects->SetVisibility(ESlateVisibility::Collapsed);
 		if (Created->VE_Additional)
@@ -503,17 +492,14 @@ void BuildItemCache()
 	if (GItemBrowser.CacheBuilt) return;
 	LOGI_STREAM("ItemBrowser") << "[SDK] Building item cache...\n";
 
-	// Resolve class for fallback scan path
 	UClass* ResMgrClass = UObject::FindClassFast("ItemResManager");
 	if (!ResMgrClass)
 		ResMgrClass = BasicFilesImpleUtils::FindClassByName("ItemResManager");
 
-	// Primary path: use SDK static function (preferred over raw object scan)
 	UItemResManager* ResMgr = UManagerFuncLib::GetItemResManager();
 	if (ResMgr)
 		LOGI_STREAM("ItemBrowser") << "[SDK] ItemResManager from ManagerFuncLib: " << (void*)ResMgr << "\n";
 
-	// Fallback path: scan GObjects for a live instance
 	if (!ResMgr && ResMgrClass)
 		ResMgr = static_cast<UItemResManager*>(FindFirstObjectOfClass(ResMgrClass));
 
@@ -523,11 +509,8 @@ void BuildItemCache()
 	}
 	LOGI_STREAM("ItemBrowser") << "[SDK] ItemResManager at " << (void*)ResMgr << "\n";
 
-	// ItemDataTable at UItemResManager+0x30
 	UDataTable* DataTable = GetItemDataTableFromManager(ResMgr);
 
-	// If table is null, scan all instances to find one with a valid table.
-	// This avoids accidentally using a stale subsystem instance.
 	if (!DataTable && ResMgrClass)
 	{
 		auto* ObjArray = UObject::GObjects.GetTypedPtr();
@@ -560,7 +543,6 @@ void BuildItemCache()
 	}
 	LOGI_STREAM("ItemBrowser") << "[SDK] ItemDataTable at " << (void*)DataTable
 	          << ", RowStruct=" << (void*)DataTable->RowStruct << "\n";
-    // RowMap: use SDK container layout directly (no raw pointer arithmetic)
     auto& RowMap = DataTable->RowMap;
     if (!RowMap.IsValid())
     {
@@ -593,12 +575,6 @@ void BuildItemCache()
         if (!RowData) continue;
 
 		CachedItem Item = {};
-		// FItemInfoSetting (inherits FTableRowBase at +0x00):
-		//   +0x08: int32 ID
-		//   +0x10: FText Name (0x18 bytes, first 8 = TextData*)
-		//   +0x40: EItemSubType (1 byte)
-		//   +0x50: TSoftObjectPtr<UTexture2D> Icon (0x28 bytes)
-		//   +0x80: EItemQuality (1 byte)
 		Item.DefId   = *reinterpret_cast<int32*>(RowData + 0x08);
 		Item.SubType = *reinterpret_cast<uint8*>(RowData + 0x40);
 		const uint8 RawQuality = *reinterpret_cast<uint8*>(RowData + 0x80);
@@ -609,7 +585,6 @@ void BuildItemCache()
 		if (Quality >= 0 && Quality < 8)
 			++QualityHistogram[Quality];
 
-		// Read Name from FText at +0x10
 		auto* TextData = *reinterpret_cast<FTextImpl::FTextData**>(RowData + 0x10);
 		if (TextData) {
 			const wchar_t* WStr = TextData->TextSource.CStr();
@@ -617,7 +592,6 @@ void BuildItemCache()
 				wcsncpy_s(Item.Name, 64, WStr, _TRUNCATE);
 		}
 
-		// Read Description from FText at +0x28
 		auto* DescData = *reinterpret_cast<FTextImpl::FTextData**>(RowData + 0x28);
 		if (DescData) {
 			const wchar_t* WDesc = DescData->TextSource.CStr();
@@ -625,9 +599,7 @@ void BuildItemCache()
 				wcsncpy_s(Item.Desc, 256, WDesc, _TRUNCATE);
 		}
 
-		// Read Icon (raw 0x28 bytes of TSoftObjectPtr)
 		memcpy(Item.IconData, RowData + 0x50, 0x28);
-		// Check if icon FName is valid (FSoftObjectPath.AssetPathName at TSoftObjectPtr+0x10)
 		FName* IconAssetName = reinterpret_cast<FName*>(Item.IconData + 0x10);
 		Item.HasIcon = !IconAssetName->IsNone();
 
@@ -637,7 +609,6 @@ void BuildItemCache()
 		}
 	}
 
-	// Sort by DefId for consistent display
 	std::sort(GItemBrowser.AllItems.begin(), GItemBrowser.AllItems.end(),
 		[](const CachedItem& a, const CachedItem& b) { return a.DefId < b.DefId; });
 
@@ -654,7 +625,6 @@ void BuildItemCache()
 	          << " invalid=" << InvalidQualityCount << "\n";
 }
 
-// Set icon brush through SDK wrapper (UImage::SetBrushFromSoftTexture)
 void SetImageFromSoftTextureBySDK(UImage* ImageWidget, const uint8* SoftTextureData28)
 {
 	if (!SoftTextureData28 || !IsSafeLiveObjectOfClass(static_cast<UObject*>(ImageWidget), UImage::StaticClass()))
@@ -703,7 +673,6 @@ static UJHNeoUISubsystem* GetJHNeoUISubsystem()
 
 	Cached = nullptr;
 
-	// Primary path: query subsystem from current GI/world context.
 	if (CurrentGI)
 	{
 		auto* SubObj = USubsystemBlueprintLibrary::GetGameInstanceSubsystem(
@@ -733,7 +702,6 @@ static UJHNeoUISubsystem* GetJHNeoUISubsystem()
 		}
 	}
 
-	// Fallback: scan live objects and pick runtime instance only.
 	auto* ObjArray = UObject::GObjects.GetTypedPtr();
 	if (ObjArray)
 	{
@@ -781,7 +749,6 @@ static void HideCurrentItemTips()
 	}
 }
 
-// Filter items by category, rebuild GItemBrowser.FilteredIndices
 void FilterItems(int32 category)
 {
 	GUIRememberState.ItemCategoryIndex = category;
@@ -792,11 +759,11 @@ void FilterItems(int32 category)
 		bool match = false;
 		uint8 st = GItemBrowser.AllItems[i].SubType;
 		switch (category) {
-		case 0: match = true; break;                          // 闁稿繈鍔戦崕?
-		case 1: match = (st >= 1 && st <= 6); break;         // 婵繐绠戝▍?
-		case 2: match = (st >= 10 && st <= 13); break;       // 闂傚啯褰冮崣?
-		case 3: match = (st >= 14 && st <= 17); break;       // 婵炴垵鐗愰埀顒侇殔閹?
-		default: match = (st == 0 || st > 17); break;        // 闁稿繑婀圭划?
+		case 0: match = true; break;
+		case 1: match = (st >= 1 && st <= 6); break;
+		case 2: match = (st >= 10 && st <= 13); break;
+		case 3: match = (st >= 14 && st <= 17); break;
+		default: match = (st == 0 || st > 17); break;
 		}
 		if (match && !GItemSearchKeywordFolded.empty())
 		{
@@ -821,7 +788,6 @@ void FilterItems(int32 category)
 	          << " items, " << GItemBrowser.TotalPages << " pages\n";
 }
 
-// Refresh item grid to show the current page
 void RefreshItemPage()
 {
 	if (GItemBrowser.CurrentPage >= GItemBrowser.TotalPages)
@@ -947,7 +913,6 @@ void RefreshItemPage()
 			if (ClassOk) ++SpecClassOkAtFeed;
 
 			const int32 BeforeNum = InListItems.Num();
-			// Spec 闁革负鍔岄崹鍗烆嚈濞差亝鈻夋繛鍫ユ涧閸戯繝宕?IsSafeLiveObjectOfClass 闁哄稄绻濋悰娆撴晬瀹€鍐闂佹彃鐬煎ú鍧楀箳閵夈儱寮抽柛鎺擃殣缁?			// 闂侇剙鐏濋崢銈夋煂瀹ュ拋妲?validity 婵☆偀鍋撻柡灞诲劚濠€顏堝蓟閹邦亞鏄傞柡鍐煐濠р偓閻庝絻澹堥崵褏鎷犻姘伈濞?invalid闁?			if (Spec)
 				InListItems.Add(static_cast<UObject*>(Spec));
 			const int32 AfterNum = InListItems.Num();
 
@@ -1051,7 +1016,6 @@ void RefreshItemPage()
 		int32 LayoutRetryCount = 0;
 		if (NumItemsInList > 0 && DisplayedNum == 0)
 		{
-			// 闁告帗绻傞～鎰板礌閺嶎厽鈻夋繛鍫㈡暩缁紕鏁粙鍨弗闁哥姴鍊归弳鐔煎箲椤旇　鍋撴担鍛婂€甸悗鐟版湰閸ㄦ氨鏁崘銊ф拱闁挎稒绋栬棢闁告垹濮鹃悿?prepass/refresh 閻?entry 闁活亞鍠愰婊呪偓鍦仒缁躲儵宕犻弽銉㈠亾?			for (int32 Retry = 0; Retry < 3 && DisplayedNum == 0; ++Retry)
 			{
 				++LayoutRetryCount;
 				if (GItemBrowser.GridPanel && IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.GridPanel)))
@@ -1120,7 +1084,6 @@ void RefreshItemPage()
 			if (ItemIdx < 0 || ItemIdx >= static_cast<int32>(GItemBrowser.AllItems.size()))
 				return false;
 
-			// 鐎殿喖鎼崺妤冩喆閿曗偓瑜?ListEntry 闁轰胶澧楀畵浣虹磼閹存繄鏆板☉鎾冲鐟曞棝寮婚幘瑙勭ギ闁硅婢佺槐婵嬫焼閸喖甯抽柡灞惧姃缁?WDT 閻犱警鍨扮欢鐐哄矗椤忓棙鏅搁柟瀛樺姇閿涙挾鈧稒鍔掔粭澶愬礆瀹勬澘鏁堕悗鐟扮畭閳?			if (ListItemObj && EntryWidget->IsA(IUserObjectListEntry::StaticClass()))
 			{
 				auto* ObjEntry = reinterpret_cast<IUserObjectListEntry*>(EntryWidget);
 				ObjEntry->OnListItemObjectSet(ListItemObj);
@@ -1263,7 +1226,6 @@ void RefreshItemPage()
 				++SlotCount;
 		}
 
-		// Scan fallback removed: only trust ListView displayed/pool entries.
 		LOGI_STREAM("ItemBrowser")
 			<< "[SDK] ItemGrid refresh: page=" << (GItemBrowser.CurrentPage + 1)
 			<< "/" << GItemBrowser.TotalPages
@@ -1326,7 +1288,6 @@ void PollItemBrowserHoverTips()
 	int32 HoverByGridFallbackCount = 0;
 
 	int32 HoveredSlot = -1;
-	// 濞村吋锚閸樻稒鎷呯捄銊︽殢缂傚啯鍨堕悧鎼佸锤閹邦厾鍨奸柛娑欏灊閼垫垿鏁嶅畝鍕級闁稿繐绉甸惁鈩冩姜椤曗偓閸忔﹢宕?24 闁哄秴鍚嬬换浣规償?IsHovered 闁规亽鍨虹粊鎾Υ?
 	if (IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.GridPanel)))
 	{
 		UObject* WorldCtx = nullptr;
@@ -1390,7 +1351,6 @@ void PollItemBrowserHoverTips()
 		}
 	}
 
-	// 缂傚啯鍨堕悧鎼佸川閹存帟鍘鎯扮簿鐟欙箓寮拋鍦濞达絽閰ｉ。鍓佹導閻楀牏绠掗幖杈鹃檮鐢澘霉鐎ｎ亜骞戦幖瀛樻穿缁辨繈宕楅悡搴晣闁绘顫夐悾鈺冩暜閸愩劎婀伴柕?
 	if (HoveredSlot < 0)
 	{
 		static DWORD sLastDeepProbeTick = 0;
@@ -1524,7 +1484,6 @@ void PollItemBrowserHoverTips()
 		return;
 	}
 
-	// 闁诡噮鍓氱拠鐐哄礆閸ャ劌搴婄紒瀣珪閳ь兛绀侀崹鐣屸偓瑙勭啲缁辩増螚閻樺磭鍨奸煫鍥跺亰閳ь剛鍠愭竟鍌涙交閸ャ劎澹愰悗娑欏姈濡炲倿鏁嶇仦鑲╃憹閻熸洑鐒﹂惁锛勬暜瑜旈崗姗€鏌屽鍛处 Tip 闁告劕鎳庨鎰板Υ?
 	const bool HoverTargetChanged = (HoveredSlot != GItemBrowser.HoveredSlot);
 	if (HoverTargetChanged)
 	{
@@ -1571,7 +1530,6 @@ void PollItemBrowserHoverTips()
 		return;
 	}
 
-	// Hover target changed: build a fresh game-native tips widget.
 	const bool NeedRebuildTips =
 		(HoveredSlot != GItemBrowser.HoveredSlot) ||
 		(!GItemBrowser.HoverTipsWidget) ||
@@ -1587,7 +1545,6 @@ void PollItemBrowserHoverTips()
 			GItemBrowser.HoverTipsWidget = static_cast<UJHNeoUITipsVEBase*>(GStandaloneItemTipWidget);
 		else
 			GItemBrowser.HoverTipsWidget = nullptr;
-		// 濞寸姴鎳嶆繛鍥偨閵娿劌娈扮€?StandaloneGameTip闁挎稑濂旂粭澶愬礃瀹ュ牏娈堕柣顫妽閻栧爼骞嬭箛鎾虫枾闁?Tip VM 闁规亽鍎辫ぐ娑㈠Υ?
 		if (!GItemBrowser.HoverTipsWidget || !IsSafeLiveObject(static_cast<UObject*>(GItemBrowser.HoverTipsWidget)))
 		{
 			const bool StandaloneOK = UpdateStandaloneItemTipContent(CI);
@@ -1623,7 +1580,6 @@ void PollItemBrowserHoverTips()
 		}
 	}
 
-	// Keep the tips anchored to the currently hovered backpack entry widget.
 	auto* Anchor = GItemBrowser.SlotEntryWidgets[HoveredSlot];
 	const bool IsStandaloneTip =
 		(GStandaloneItemTipWidget &&
@@ -1656,7 +1612,6 @@ void PollItemBrowserHoverTips()
 		FVector2D TipSize{};
 		if (IsStandaloneTip)
 		{
-			// UBPVE_JHTips_Item_C 闁哄秶鎳撹ぐ鏌ユ嚄閼恒儲笑闁轰焦娼欓惈鍡欌偓鍦嚀濞呮帡鏁嶇€涚灜andalone 闁搞儱鎼悾楣冩偨閵娿儱骞㈤柣妤€娲ら弰鍌溾偓鐢殿焾瀵剚绋夋惔锛勬毎濞达絽绉查埀?
 			TipSize = FVector2D{ kItemTipDefaultWidth, kItemTipDefaultHeight };
 		}
 		else
@@ -1879,7 +1834,6 @@ bool UpdateItemSearchKeywordFromEdit()
 	return true;
 }
 
-// Clear item browser widget state (called when panel closes)
 void ClearItemBrowserState()
 {
 	for (UItemInfoSpec* Spec : GCurrentPageSpecs)
@@ -1930,5 +1884,3 @@ void ClearItemBrowserState()
 	GItemBrowser.CurrentPage = 0;
 	GItemBrowser.TotalPages = 0;
 }
-
-

@@ -11,10 +11,8 @@ std::atomic<bool> GConsoleClosed = false;
 std::atomic<int32> GPostRenderInFlight = 0;
 UIRememberState GUIRememberState{};
 
-// 物品不减功能开关
 std::atomic<bool> GItemNoDecreaseEnabled = false;
 
-// 物品不减 Inline Hook 变量
 uintptr_t GChangeItemNumAddr = 0;
 unsigned char GOriginalChangeItemNumBytes[5] = {};
 void* GHookTrampoline = nullptr;

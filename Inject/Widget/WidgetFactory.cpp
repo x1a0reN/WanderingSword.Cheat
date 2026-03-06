@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <algorithm>
 #include <cwctype>
 #include <cstdint>
@@ -62,7 +62,6 @@ namespace
 		if (!Title)
 			return {};
 		std::wstring Key = Title;
-		// 去掉前后空白，避免同名控件因空格不一致导致无法命中记忆
 		while (!Key.empty() && std::iswspace(static_cast<wint_t>(Key.front())))
 			Key.erase(Key.begin());
 		while (!Key.empty() && std::iswspace(static_cast<wint_t>(Key.back())))
@@ -224,15 +223,8 @@ void PatchTabBtnRuntimeContext(UJHNeoUIConfigV2TabBtn* TabBtn, UBPMV_ConfigView2
 	*reinterpret_cast<void**>(
 		reinterpret_cast<uintptr_t>(TabBtn) + kConfigTabBtnParentCtxOffset) = ParentCtx;
 
-	// Enable hover-to-switch: NeoUI focus system calls HandleMainBtn() on mouse enter,
-	// which triggers EVT_SyncTabIndex(TabIndex) — same as native tabs.
 	TabBtn->AutoFocusForMouseEntering = true;
 
-	// NOTE: Do NOT clamp TabIndex to Switcher range.
-	// Dynamic tabs use index 6/7/8 which are out of Switcher range — that's intentional.
-	// EVT_SyncTabIndex(6+) will silently fail on SetActiveWidgetIndex (no crash),
-	// but it correctly deactivates all native tabs via EVT_UpdateActiveStatus.
-	// FrameHook handles the content switch for dynamic tabs.
 
 	if (TabBtn->BTN_Normal)
 		TabBtn->RegisterMainInteractiveWidget(TabBtn->BTN_Normal);
@@ -267,10 +259,6 @@ UBP_JHConfigTabBtn_C* CreateTabButton(APlayerController* PC)
 	}
 	return Tab;
 }
-
-// ── GC Root prevention ──
-// EObjectFlags::MarkAsRootSet = 0x80, at UObject offset 0x0008
-// Prevents UE4 garbage collector from reclaiming dynamically created widgets
 
 
 UJHCommon_Btn_Free_C* CreateGameStyleButton(
@@ -446,12 +434,10 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItem(APlayerController* PC, const wchar_t
 		return nullptr;
 	}
 
-	MarkAsGCRoot(Item); // Prevent GC from reclaiming
+	MarkAsGCRoot(Item);
 
-	// Call Construct() directly — BPVE_JHConfigVideoItem2_functions.cpp is now compiled
 	Item->Construct();
 
-	// Only clear the game-effect delegate — keeps dropdown UI fully functional
 	ClearComboBoxGameBinding(Item->CB_Main);
 
 	if (Item->TXT_Title)
@@ -470,7 +456,6 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItem(APlayerController* PC, const wchar_t
 	return Item;
 }
 
-// Create a dropdown item with preset options (for toggle on/off or selection)
 UBPVE_JHConfigVideoItem2_C* CreateVideoItemWithOptions(
 	APlayerController* PC, const wchar_t* Title,
 	std::initializer_list<const wchar_t*> Options)
@@ -485,7 +470,6 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItemWithOptions(
 	for (const wchar_t* Opt : Options)
 		Item->CB_Main->AddOption(FString(Opt));
 
-	// Select first option by default
 	if (Item->CB_Main->GetOptionCount() > 0)
 		Item->CB_Main->SetSelectedIndex(0);
 
@@ -494,13 +478,11 @@ UBPVE_JHConfigVideoItem2_C* CreateVideoItemWithOptions(
 	return Item;
 }
 
-// Create a toggle (on/off dropdown)
 UBPVE_JHConfigVideoItem2_C* CreateToggleItem(APlayerController* PC, const wchar_t* Title)
 {
-	return CreateVideoItemWithOptions(PC, Title, { L"\u5173", L"\u5F00" }); // 关, 开
+	return CreateVideoItemWithOptions(PC, Title, { L"\u5173", L"\u5F00" });
 }
 
-// Create a slider/volume item for numeric values
 UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar_t* Title)
 {
 	static UClass* Cls = UBPVE_JHConfigVolumeItem2_C::StaticClass();
@@ -526,7 +508,7 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 		return nullptr;
 	}
 
-	MarkAsGCRoot(Item); // Prevent GC from reclaiming
+	MarkAsGCRoot(Item);
 
 	Item->Construct();
 	Item->SoundCls = EJHSoundClass::PlaceHolder;
@@ -538,7 +520,6 @@ UBPVE_JHConfigVolumeItem2_C* CreateVolumeItem(APlayerController* PC, const wchar
 		ClearButtonBindings(static_cast<UWidget*>(Item->BTN_Plus));
 	if (Item->VolumeSlider)
 	{
-		// 统一滑块基准范围：0~10，所有倍率类控件按原值显示，不做百分比换算。
 		Item->VolumeSlider->MinValue = 0.0f;
 		Item->VolumeSlider->MaxValue = 10.0f;
 		if (Item->VolumeSlider->StepSize <= 0.0001f)
@@ -627,7 +608,6 @@ namespace
 			Item->TXT_Title->SetRenderTranslation(FVector2D{ kEditRowTitleOffsetX, kEditRowTitleOffsetY });
 		}
 
-		// 该行只用于编辑框展示，不参与滑块轮询接管
 		auto It = std::find(GVolumeItems.begin(), GVolumeItems.end(), Item);
 		if (It != GVolumeItems.end())
 		{
@@ -688,7 +668,6 @@ namespace
 			return C;
 		};
 
-		// 输入框透明，让底部保留原滑块行黑底样式
 		Edit->ForegroundColor = FLinearColor{ 0.95f, 0.95f, 0.95f, 1.0f };
 		Edit->BackgroundColor = FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f };
 		Edit->WidgetStyle.ForegroundColor = MakeSlateColor(0.95f, 0.95f, 0.95f, 1.0f);
@@ -759,7 +738,6 @@ namespace
 			}
 		};
 
-		// 优先从数值文本链路找右侧容器，避免误拿到根 Canvas 导致输入框落在左侧(0,0)。
 		ProbeParentChain(Item->TXT_CurrentValue, "TXT_CurrentValue");
 		ProbeParentChain(static_cast<UWidget*>(Item->BTN_Plus), "BTN_Plus");
 		ProbeParentChain(static_cast<UWidget*>(Item->BTN_Minus), "BTN_Minus");
@@ -843,7 +821,6 @@ namespace
 		}
 		else if (FallbackContainer)
 		{
-			// 兜底：仅在完全找不到内部面板时才加到外层容器，并做右移避免压到左侧标题
 			FallbackContainer->AddChild(InputWidget);
 			InputWidget->SetRenderTranslation(FVector2D{ 260.0f, 0.0f });
 			if (kEnableUICreateLog)
@@ -907,7 +884,6 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 	}
 	MarkAsGCRoot(Panel);
 
-	// 先执行 Construct，确保蓝图子控件(txt/CT_Contents/SlotContents)已创建
 	Panel->Construct();
 
 	const FText TitleText = MakeText(Title ? Title : L"");
@@ -924,7 +900,6 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 	}
 	else if (Panel->SlotContents)
 	{
-		// 兜底：若蓝图没有正确赋值 CT_Contents，则手动创建并挂到 NamedSlot
 		auto* FallbackContents = static_cast<UNeoUIVerticalBox*>(
 			CreateRawWidget(UNeoUIVerticalBox::StaticClass(), Panel));
 		if (FallbackContents)
@@ -955,7 +930,6 @@ UVE_JHVideoPanel2_C* CreateCollapsiblePanel(APlayerController* PC, const wchar_t
 
 void RememberUIControlStatesFromLiveWidgets()
 {
-	// 下拉/开关
 	GRememberVideoItems.erase(
 		std::remove_if(
 			GRememberVideoItems.begin(),
@@ -974,7 +948,6 @@ void RememberUIControlStatesFromLiveWidgets()
 			}),
 		GRememberVideoItems.end());
 
-	// 滑块
 	GRememberVolumeItems.erase(
 		std::remove_if(
 			GRememberVolumeItems.begin(),
@@ -1000,7 +973,6 @@ void RememberUIControlStatesFromLiveWidgets()
 			}),
 		GRememberVolumeItems.end());
 
-	// 编辑框
 	GRememberEditBoxes.erase(
 		std::remove_if(
 			GRememberEditBoxes.begin(),
@@ -1128,10 +1100,8 @@ void ResetRuntimeControlStateBindings()
 
 void PollCollapsiblePanelsInput()
 {
-	// 临时停用：不再监听/切换 CollapsibleToggle，降低每帧轮询负担。
 	return;
 
-	// 数字输入框硬过滤：剔除中文和非数值字符。
 	GNumericOnlyEditBoxes.erase(
 		std::remove_if(
 			GNumericOnlyEditBoxes.begin(),
@@ -1183,7 +1153,6 @@ void PollCollapsiblePanelsInput()
 	const bool PressedEdge = LmbDown && !GCollapsibleLmbWasDown;
 	const bool ReleasedEdge = !LmbDown && GCollapsibleLmbWasDown;
 
-	// 清理无效引用，避免后续访问僵尸对象
 	GCollapsiblePanels.erase(
 		std::remove_if(
 			GCollapsiblePanels.begin(),
@@ -1194,7 +1163,6 @@ void PollCollapsiblePanelsInput()
 			}),
 		GCollapsiblePanels.end());
 
-	// 清理状态表中已失效或已不在活动列表内的面板
 	for (auto It = GCollapsibleStates.begin(); It != GCollapsibleStates.end(); )
 	{
 		auto* P = It->first;
@@ -1241,7 +1209,6 @@ void PollCollapsiblePanelsInput()
 		if (!IsWidgetVisibleInHierarchy(W))
 			return false;
 
-		// NeoUI 某些控件 IsHovered() 不稳定，这里改用几何命中检测作为主判定。
 		const FGeometry Geo = W->GetCachedGeometry();
 		if (USlateBlueprintLibrary::IsUnderLocation(Geo, MouseAbs))
 			return true;
@@ -1286,7 +1253,6 @@ void PollCollapsiblePanelsInput()
 		          << " collapsed=" << (NextCollapsed ? 1 : 0) << "\n";
 	};
 
-	// 单击语义：按下沿立即切换，避免抬起判定导致的双击/漏触发问题。
 	if (PressedEdge)
 	{
 		GCollapsiblePressedPanel = nullptr;

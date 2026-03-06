@@ -119,7 +119,7 @@ std::string NormalizeMessage(std::string Message)
 		Message.pop_back();
 	return Message;
 }
-} // namespace
+}
 
 namespace Logging
 {
@@ -240,7 +240,7 @@ LogLine& LogLine::operator<<(std::ios_base& (*Manip)(std::ios_base&))
 	Manip(Buffer_);
 	return *this;
 }
-} // namespace Logging
+}
 
 void SetupLocalLogging(HMODULE Module)
 {

@@ -35,8 +35,6 @@ UPanelWidget* GetOrCreateSlotContainer(UBPMV_ConfigView2_C* CV, UNeoUINamedSlot*
 	}
 
 	
-	
-	
 	while (Slot->GetChildrenCount() > 0)
 	{
 		UWidget* Child = Slot->GetChildAt(0);
@@ -66,7 +64,6 @@ UPanelWidget* GetOrCreateSlotContainer(UBPMV_ConfigView2_C* CV, UNeoUINamedSlot*
 	
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
-
 
 
 	UILog("CreateSlot", "[SDK] ", SlotName, ": creating UVerticalBox (WidgetTree=", (void*)WidgetTree, ")");

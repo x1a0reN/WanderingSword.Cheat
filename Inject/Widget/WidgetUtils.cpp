@@ -47,7 +47,6 @@ bool IsSafeLiveObjectOfClass(UObject* Obj, UClass* ExpectedClass)
 	return Obj->IsA(ExpectedClass);
 }
 
-// ── Weak Pointer 辅助函数 ──
 
 FWeakObjectPtr ReadWeakPtrAt(UObject* Obj, uintptr_t Offset)
 {
@@ -125,99 +124,84 @@ int32 GetItemAddQuantityFromEdit()
 	return V;
 }
 
-// ── Tab helpers ──
 void ClearDelegate(void* DelegatePtr)
 {
 	if (DelegatePtr)
 		memset(DelegatePtr, 0, 0x10);
 }
 
-// Clear all blueprint event bindings from a USlider
-// USlider::OnValueChanged at 0x04D8
 void ClearSliderBindings(USlider* Slider)
 {
 	if (!Slider) return;
 	auto base = reinterpret_cast<uintptr_t>(Slider);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0498)); // OnMouseCaptureBegin
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04A8)); // OnMouseCaptureEnd
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04B8)); // OnControllerCaptureBegin
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04C8)); // OnControllerCaptureEnd
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8)); // OnValueChanged
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0498));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04A8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04B8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04C8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8));
 }
 
-// Only clear the game-effect delegate, keep UI interaction delegates intact.
 void ClearSliderGameBinding(USlider* Slider)
 {
 	if (!Slider) return;
 	auto base = reinterpret_cast<uintptr_t>(Slider);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04A8)); // OnMouseCaptureEnd
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04C8)); // OnControllerCaptureEnd
-	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8)); // OnValueChanged
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04A8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04C8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x04D8));
 }
 
-// Clear all blueprint event bindings from a UButton (or UNeoUIButtonBase)
-// UButton::OnClicked at 0x03C8, OnPressed at 0x03D8, OnReleased at 0x03E8
 void ClearButtonBindings(UWidget* Btn)
 {
 	if (!Btn) return;
 	auto base = reinterpret_cast<uintptr_t>(Btn);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x03C8)); // OnClicked
-	ClearDelegate(reinterpret_cast<void*>(base + 0x03D8)); // OnPressed
-	ClearDelegate(reinterpret_cast<void*>(base + 0x03E8)); // OnReleased
-	ClearDelegate(reinterpret_cast<void*>(base + 0x03F8)); // OnHovered
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0408)); // OnUnhovered
+	ClearDelegate(reinterpret_cast<void*>(base + 0x03C8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x03D8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x03E8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x03F8));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0408));
 }
 
-// Clear all blueprint event bindings from a UComboBoxString
-// UComboBoxString::OnSelectionChanged at 0x0D90
 void ClearComboBoxBindings(UComboBoxString* CB)
 {
 	if (!CB) return;
 	auto base = reinterpret_cast<uintptr_t>(CB);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0D90)); // OnSelectionChanged
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0DA0)); // OnOpening
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0D90));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0DA0));
 }
 
-// Only clear the game-effect delegate, keep dropdown UI working.
 void ClearComboBoxGameBinding(UComboBoxString* CB)
 {
 	if (!CB) return;
 	auto base = reinterpret_cast<uintptr_t>(CB);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0D90)); // OnSelectionChanged only
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0D90));
 }
 
-// Clear all blueprint event bindings from a UEditableTextBox
-// UEditableTextBox::OnTextChanged at 0x0A08, OnTextCommitted at 0x0A18
 void ClearEditableTextBindings(UEditableTextBox* Edit)
 {
 	if (!Edit) return;
 	auto base = reinterpret_cast<uintptr_t>(Edit);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0A08)); // OnTextChanged
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0A18)); // OnTextCommitted
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0A08));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0A18));
 }
 
-// Clear all blueprint event bindings from a UUserWidget
-// UUserWidget::OnVisibilityChanged at 0x0168
 void ClearUserWidgetBindings(UUserWidget* UserWidget)
 {
 	if (!UserWidget) return;
 	auto base = reinterpret_cast<uintptr_t>(UserWidget);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0168)); // OnVisibilityChanged
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0168));
 }
 
-// Clear delegates declared on NeoUICommonButton (not covered by UButton offsets).
 void ClearNeoUICommonButtonBindings(UWidget* Btn)
 {
 	if (!Btn || !Btn->IsA(UNeoUICommonButton::StaticClass()))
 		return;
 	auto base = reinterpret_cast<uintptr_t>(Btn);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0270)); // SingleClick
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0280)); // DoubleClick
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0290)); // MouseEneter
-	ClearDelegate(reinterpret_cast<void*>(base + 0x02A0)); // MouseLeave
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0270));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0280));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0290));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x02A0));
 }
 
-// Clear delegates declared on JH's wrapper button class.
 void ClearJHGamepadConfirmButtonBindings(UWidget* Btn)
 {
 	if (!Btn || !Btn->IsA(UJHNeoUIGamepadConfirmButton::StaticClass()))
@@ -225,23 +209,21 @@ void ClearJHGamepadConfirmButtonBindings(UWidget* Btn)
 
 	auto* JHBtn = static_cast<UJHNeoUIGamepadConfirmButton*>(Btn);
 	auto base = reinterpret_cast<uintptr_t>(JHBtn);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0540)); // OnBtnMouseEnter
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0550)); // OnBtnMouseLeave
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0560)); // OnBtnClicked
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0570)); // OnBtnDoubleClicked
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0540));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0550));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0560));
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0570));
 
-	// The wrapped native button can also have base UButton delegates bound.
 	if (JHBtn->BtnMain)
 		ClearButtonBindings(static_cast<UWidget*>(JHBtn->BtnMain));
 }
 
-// Clear extra blueprint delegates on JHCommon_Btn_Free_C.
 void ClearJHCommonBtnFreeBindings(UWidget* Widget)
 {
 	if (!Widget || !Widget->IsA(UJHCommon_Btn_Free_C::StaticClass()))
 		return;
 	auto base = reinterpret_cast<uintptr_t>(Widget);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0590)); // BtnClick
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0590));
 }
 
 static UClass* GetRegionTitleClass()
@@ -258,14 +240,13 @@ static UClass* GetRegionTitleClass()
 	return Cached;
 }
 
-// Clear extra blueprint delegates on BPVE_RegionTitle_C.
 void ClearRegionTitleBindings(UWidget* Widget)
 {
 	UClass* RegionTitleClass = GetRegionTitleClass();
 	if (!Widget || !RegionTitleClass || !Widget->IsA(RegionTitleClass))
 		return;
 	auto base = reinterpret_cast<uintptr_t>(Widget);
-	ClearDelegate(reinterpret_cast<void*>(base + 0x0318)); // BtnClick
+	ClearDelegate(reinterpret_cast<void*>(base + 0x0318));
 }
 void SanitizeSingleWidget(UWidget* Widget, bool bDisableInteraction)
 {
@@ -303,8 +284,6 @@ void SanitizeSingleWidget(UWidget* Widget, bool bDisableInteraction)
 
 	if (bDisableInteraction)
 	{
-		// NeoUI controls may still query VM/focus paths when entering a tab.
-		// Force display-only visual mode and disable interaction path.
 		if (Widget->IsA(UNeoUIVisualBase::StaticClass()) || Widget->IsA(UNeoUIButtonBase::StaticClass()))
 		{
 			UJHNeoUIUtilLib::SetVisual_PureDisplay(Widget, true);
@@ -381,35 +360,33 @@ UWidget* CreateRawWidget(UClass* WidgetClass, UObject* Outer)
 
 	static uintptr_t Base = (uintptr_t)GetModuleHandle(nullptr);
 
-	// StaticConstructObject_Internal takes a const FStaticConstructObjectParameters*
 	using StaticConstructObjectFn = UObject* (__fastcall*)(const void*);
 	static auto StaticConstructObject = reinterpret_cast<StaticConstructObjectFn>(Base + 0x17C6140);
 
-	// FStaticConstructObjectParameters (0x40 bytes, see sub_1417AA210 for layout)
 	struct alignas(8) FParams {
-		UClass*  Class;           // +0x00
-		UObject* Outer;           // +0x08
-		uint64_t Name;            // +0x10  FName (0 = NAME_None)
-		uint32_t SetFlags;        // +0x18  EObjectFlags
-		uint32_t InternalFlags;   // +0x1C  EInternalObjectFlags
-		uint8_t  bCopyTransients; // +0x20
-		uint8_t  bAssumeTemplate; // +0x21
-		uint8_t  Pad[6];         // +0x22
-		UObject* Template;        // +0x28
-		void*    InstanceGraph;   // +0x30
-		void*    ExternalPkg;     // +0x38
+		UClass*  Class;
+		UObject* Outer;
+		uint64_t Name;
+		uint32_t SetFlags;
+		uint32_t InternalFlags;
+		uint8_t  bCopyTransients;
+		uint8_t  bAssumeTemplate;
+		uint8_t  Pad[6];
+		UObject* Template;
+		void*    InstanceGraph;
+		void*    ExternalPkg;
 	};
 	static_assert(sizeof(FParams) == 0x40, "FStaticConstructObjectParameters size mismatch");
 
 	FParams Params = {};
 	Params.Class = WidgetClass;
 	Params.Outer = Outer;
-	Params.SetFlags = 8; // RF_Transactional (matches UWidgetTree::ConstructWidget)
+	Params.SetFlags = 8;
 
 	UObject* Obj = StaticConstructObject(&Params);
 	if (Obj)
 	{
-		MarkAsGCRoot(Obj); // Prevent GC from reclaiming
+		MarkAsGCRoot(Obj);
 		if (kEnableUICreateLog)
 			LOGI_STREAM("WidgetUtils") << "[SDK] CreateRawWidget: created widget at " << (void*)Obj << " (GC rooted)\n";
 	}
@@ -430,17 +407,17 @@ UWidget* CreateRawWidgetFromTemplate(UClass* WidgetClass, UObject* Outer, UObjec
 	static auto StaticConstructObject = reinterpret_cast<StaticConstructObjectFn>(Base + 0x17C6140);
 
 	struct alignas(8) FParams {
-		UClass*  Class;           // +0x00
-		UObject* Outer;           // +0x08
-		uint64_t Name;            // +0x10
-		uint32_t SetFlags;        // +0x18
-		uint32_t InternalFlags;   // +0x1C
-		uint8_t  bCopyTransients; // +0x20
-		uint8_t  bAssumeTemplate; // +0x21
-		uint8_t  Pad[6];          // +0x22
-		UObject* Template;        // +0x28
-		void*    InstanceGraph;   // +0x30
-		void*    ExternalPkg;     // +0x38
+		UClass*  Class;
+		UObject* Outer;
+		uint64_t Name;
+		uint32_t SetFlags;
+		uint32_t InternalFlags;
+		uint8_t  bCopyTransients;
+		uint8_t  bAssumeTemplate;
+		uint8_t  Pad[6];
+		UObject* Template;
+		void*    InstanceGraph;
+		void*    ExternalPkg;
 	};
 	static_assert(sizeof(FParams) == 0x40, "FStaticConstructObjectParameters size mismatch");
 
@@ -481,6 +458,3 @@ UTextBlock* CreateRawTextLabel(UObject* Outer, const wchar_t* Text)
 	Label->SetAutoWrapText(true);
 	return Label;
 }
-
-// ── Slot content helpers ──
-
