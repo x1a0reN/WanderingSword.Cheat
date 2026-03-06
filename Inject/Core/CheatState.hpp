@@ -270,6 +270,8 @@ extern Tab2Controls             GTab2;
 extern Tab3Controls             GTab3;
 extern Tab4Controls             GTab4;
 extern Tab5Controls             GTab5;
+extern std::vector<int32>       GTab5MountOptionIds;
+extern std::vector<std::wstring> GTab5MountOptionLabels;
 extern DynTabState              GDynTab;
 extern TeammateTabControls      GTeammate;
 extern QuestTabControls         GQuest;

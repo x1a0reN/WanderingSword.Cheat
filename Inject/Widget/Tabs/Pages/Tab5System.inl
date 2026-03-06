@@ -1,3 +1,104 @@
+// ── 坐骑下拉动态选项 ──
+std::vector<int32> GTab5MountOptionIds;
+std::vector<std::wstring> GTab5MountOptionLabels;
+
+void ResolveMountOptionsFromTable()
+{
+	GTab5MountOptionIds.clear();
+	GTab5MountOptionLabels.clear();
+
+	UMountResManager* MountResMgr = UManagerFuncLib::GetMountResManager();
+	UDataTable* MountTable = MountResMgr ? MountResMgr->MountResourceTable : nullptr;
+	LOGI_STREAM("Tab5System") << "[SDK][Tab5] ResolveMountOptions mgr=" << (void*)MountResMgr
+	          << " table=" << (void*)MountTable << "\n";
+
+	if (!MountTable || !IsSafeLiveObject(static_cast<UObject*>(MountTable)))
+		return;
+
+	// FMountInfoSetting layout: ID at 0x08 (int32), Description at 0x80 (FText)
+	std::vector<std::pair<int32, std::wstring>> Entries;
+
+	auto& RowMap = MountTable->RowMap;
+	const int32 AllocatedSlots = RowMap.IsValid() ? RowMap.NumAllocated() : 0;
+	const int32 RowCount = RowMap.IsValid() ? RowMap.Num() : 0;
+
+	if (RowMap.IsValid() && AllocatedSlots > 0 && RowCount > 0)
+	{
+		for (int32 i = 0; i < AllocatedSlots; ++i)
+		{
+			if (!RowMap.IsValidIndex(i))
+				continue;
+			uint8* RowData = RowMap[i].Value();
+			if (!RowData)
+				continue;
+
+			const int32 MountId = *reinterpret_cast<int32*>(RowData + 0x08);
+			std::wstring Label;
+
+			// Read Description (FText at offset 0x80)
+			auto* TextData = *reinterpret_cast<FTextImpl::FTextData**>(RowData + 0x80);
+			if (TextData)
+			{
+				const wchar_t* WStr = TextData->TextSource.CStr();
+				if (WStr && WStr[0])
+					Label.assign(WStr);
+			}
+			if (Label.empty())
+			{
+				wchar_t Buf[32] = {};
+				swprintf_s(Buf, 32, L"Mount_%d", MountId);
+				Label.assign(Buf);
+			}
+			Entries.emplace_back(MountId, Label);
+		}
+	}
+
+	// Fallback: use GetDataTableRowNames + GetDataTableRowFromName
+	if (Entries.empty())
+	{
+		TArray<FName> RowNames;
+		UDataTableFunctionLibrary::GetDataTableRowNames(MountTable, &RowNames);
+		for (const FName& RowName : RowNames)
+		{
+			FMountInfoSetting Row{};
+			if (!UDataTableFunctionLibrary::GetDataTableRowFromName(
+				MountTable, RowName, reinterpret_cast<FTableRowBase*>(&Row)))
+				continue;
+
+			FString DescStr = UKismetTextLibrary::Conv_TextToString(Row.Description);
+			const wchar_t* DescWs = DescStr.CStr();
+			std::wstring Label = (DescWs && DescWs[0]) ? std::wstring(DescWs) : std::wstring();
+			if (Label.empty())
+			{
+				wchar_t Buf[32] = {};
+				swprintf_s(Buf, 32, L"Mount_%d", Row.ID);
+				Label.assign(Buf);
+			}
+			Entries.emplace_back(Row.ID, Label);
+		}
+	}
+
+	std::sort(Entries.begin(), Entries.end(),
+		[](const std::pair<int32, std::wstring>& A, const std::pair<int32, std::wstring>& B)
+		{ return A.first < B.first; });
+
+	GTab5MountOptionIds.reserve(Entries.size());
+	GTab5MountOptionLabels.reserve(Entries.size());
+	for (const auto& It : Entries)
+	{
+		GTab5MountOptionIds.push_back(It.first);
+		GTab5MountOptionLabels.push_back(It.second);
+	}
+
+	LOGI_STREAM("Tab5System") << "[SDK][Tab5] ResolveMountOptions count=" << GTab5MountOptionIds.size();
+	for (size_t i = 0; i < GTab5MountOptionIds.size(); ++i)
+	{
+		LOGI_STREAM("Tab5System") << L" [" << i << L"]=" << GTab5MountOptionIds[i]
+		           << L":" << GTab5MountOptionLabels[i].c_str();
+	}
+	LOGI_STREAM("Tab5System") << "\n";
+}
+
 void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	UPanelWidget* Container = GetOrCreateSlotContainer(CV, CV->OthersSlot, "Tab5(OthersSlot)");
@@ -110,14 +211,30 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (GTab5.RunMountSpeedSlider->TXT_CurrentValue)
 			GTab5.RunMountSpeedSlider->TXT_CurrentValue->SetText(MakeText(L"2"));
 	}
-	AddSlider(MoveBox, L"世界移动速度");
-	AddSlider(MoveBox, L"场景移动速度");
 	AddPanelWithFixedGap(MovePanel, 0.0f, 10.0f);
 
 	auto* MountPanel = CreateCollapsiblePanel(PC, L"坐骑设置");
 	auto* MountBox = MountPanel ? MountPanel->CT_Contents : nullptr;
 	AddToggleStored(MountBox, L"坐骑替换", GTab5.MountReplaceToggle);
-	AddDropdownStored(MountBox, L"指定坐骑", { L"黑马", L"白马", L"棕马", L"小毛驴" }, GTab5.MountSelectDD);
+	AddDropdownStored(MountBox, L"指定坐骑", { L"..." }, GTab5.MountSelectDD);
+	// Dynamically populate mount dropdown from game DataTable
+	ResolveMountOptionsFromTable();
+	if (GTab5.MountSelectDD && GTab5.MountSelectDD->CB_Main &&
+		IsSafeLiveObject(static_cast<UObject*>(GTab5.MountSelectDD->CB_Main)))
+	{
+		UComboBoxString* Combo = GTab5.MountSelectDD->CB_Main;
+		Combo->ClearOptions();
+		if (!GTab5MountOptionLabels.empty())
+		{
+			for (const auto& Label : GTab5MountOptionLabels)
+				Combo->AddOption(FString(Label.c_str()));
+		}
+		else
+		{
+			Combo->AddOption(FString(L"马"));
+		}
+		Combo->SetSelectedIndex(0);
+	}
 	AddPanelWithFixedGap(MountPanel, 0.0f, 10.0f);
 
 	auto* StoryPanel = CreateCollapsiblePanel(PC, L"开档与解锁");

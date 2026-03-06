@@ -222,6 +222,8 @@ namespace
 	UBPVE_JHConfigVolumeItem2_C* GTab0SkillExpMultiplierItem = nullptr;
 	UBPVE_JHConfigVolumeItem2_C* GTab0ManaCostMultiplierItem = nullptr;
 	UBPVE_JHConfigVolumeItem2_C* GTab0EscapeSuccrateItem = nullptr;
+	UBPVE_JHConfigVolumeItem2_C* GTab0WorldMoveSpeedItem = nullptr;
+	UBPVE_JHConfigVolumeItem2_C* GTab0SceneMoveSpeedItem = nullptr;
 	UBPVE_JHConfigVideoItem2_C* GTab0ExtraNeiGongLimitDD = nullptr;
 	UBPVE_JHConfigVideoItem2_C* GTab0GuildDD = nullptr;
 	int32 GTab0ExtraNeiGongLimitLastIdx = -1;
@@ -234,6 +236,8 @@ namespace
 	float GTab0SkillExpMultiplierLastPercent = -1.0f;
 	float GTab0ManaCostMultiplierLastPercent = -1.0f;
 	float GTab0EscapeSuccrateLastPercent = -1.0f;
+	float GTab0WorldMoveSpeedLastPercent = -1.0f;
+	float GTab0SceneMoveSpeedLastPercent = -1.0f;
 	bool GTab0MoneyMinusWasPressed = false;
 	bool GTab0MoneyPlusWasPressed = false;
 	bool GTab0SkillExpMinusWasPressed = false;
@@ -242,6 +246,10 @@ namespace
 	bool GTab0ManaCostPlusWasPressed = false;
 	bool GTab0EscapeSuccrateMinusWasPressed = false;
 	bool GTab0EscapeSuccratePlusWasPressed = false;
+	bool GTab0WorldMoveSpeedMinusWasPressed = false;
+	bool GTab0WorldMoveSpeedPlusWasPressed = false;
+	bool GTab0SceneMoveSpeedMinusWasPressed = false;
+	bool GTab0SceneMoveSpeedPlusWasPressed = false;
 
 
 	const char* Tab0FieldToString(ETab0Field Field)
@@ -1139,6 +1147,16 @@ namespace
 			*OutValue = Ctx.AttrSet->EscapeSuccrate.CurrentValue;
 			return true;
 		}
+		if (wcscmp(AttrName, L"WorldMoveSpeed") == 0)
+		{
+			*OutValue = Ctx.AttrSet->WorldMoveSpeed.CurrentValue;
+			return true;
+		}
+		if (wcscmp(AttrName, L"SceneMoveSpeed") == 0)
+		{
+			*OutValue = Ctx.AttrSet->SceneMoveSpeed.CurrentValue;
+			return true;
+		}
 		return false;
 	}
 
@@ -1158,6 +1176,10 @@ namespace
 			Data = &Ctx.AttrSet->ManaCostMultiplier;
 		else if (wcscmp(AttrName, L"EscapeSuccrate") == 0)
 			Data = &Ctx.AttrSet->EscapeSuccrate;
+		else if (wcscmp(AttrName, L"WorldMoveSpeed") == 0)
+			Data = &Ctx.AttrSet->WorldMoveSpeed;
+		else if (wcscmp(AttrName, L"SceneMoveSpeed") == 0)
+			Data = &Ctx.AttrSet->SceneMoveSpeed;
 		else
 			return false;
 
@@ -1293,6 +1315,8 @@ namespace
 		PollOne(GTab0SkillExpMultiplierItem, GTab0SkillExpMultiplierLastPercent, L"SExpMultiplier", GTab0SkillExpMinusWasPressed, GTab0SkillExpPlusWasPressed);
 		PollOne(GTab0ManaCostMultiplierItem, GTab0ManaCostMultiplierLastPercent, L"ManaCostMultiplier", GTab0ManaCostMinusWasPressed, GTab0ManaCostPlusWasPressed);
 		PollOne(GTab0EscapeSuccrateItem, GTab0EscapeSuccrateLastPercent, L"EscapeSuccrate", GTab0EscapeSuccrateMinusWasPressed, GTab0EscapeSuccratePlusWasPressed);
+		PollOne(GTab0WorldMoveSpeedItem, GTab0WorldMoveSpeedLastPercent, L"WorldMoveSpeed", GTab0WorldMoveSpeedMinusWasPressed, GTab0WorldMoveSpeedPlusWasPressed);
+		PollOne(GTab0SceneMoveSpeedItem, GTab0SceneMoveSpeedLastPercent, L"SceneMoveSpeed", GTab0SceneMoveSpeedMinusWasPressed, GTab0SceneMoveSpeedPlusWasPressed);
 	}
 
 	bool TryGetTab0FieldValue(const FTab0HeroContext& Ctx, ETab0Field Field, double* OutValue)
@@ -1848,6 +1872,8 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0SkillExpMultiplierItem = nullptr;
 	GTab0ManaCostMultiplierItem = nullptr;
 	GTab0EscapeSuccrateItem = nullptr;
+	GTab0WorldMoveSpeedItem = nullptr;
+	GTab0SceneMoveSpeedItem = nullptr;
 	GTab0ExtraNeiGongLimitDD = nullptr;
 	GTab0GuildDD = nullptr;
 	GTab0ExtraNeiGongLimitLastIdx = -1;
@@ -1858,6 +1884,8 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0SkillExpMultiplierLastPercent = -1.0f;
 	GTab0ManaCostMultiplierLastPercent = -1.0f;
 	GTab0EscapeSuccrateLastPercent = -1.0f;
+	GTab0WorldMoveSpeedLastPercent = -1.0f;
+	GTab0SceneMoveSpeedLastPercent = -1.0f;
 	GTab0MoneyMinusWasPressed = false;
 	GTab0MoneyPlusWasPressed = false;
 	GTab0SkillExpMinusWasPressed = false;
@@ -1866,6 +1894,10 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0ManaCostPlusWasPressed = false;
 	GTab0EscapeSuccrateMinusWasPressed = false;
 	GTab0EscapeSuccratePlusWasPressed = false;
+	GTab0WorldMoveSpeedMinusWasPressed = false;
+	GTab0WorldMoveSpeedPlusWasPressed = false;
+	GTab0SceneMoveSpeedMinusWasPressed = false;
+	GTab0SceneMoveSpeedPlusWasPressed = false;
 	int Count = 0;
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
@@ -2027,14 +2059,20 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0SkillExpMultiplierItem = AddSlider(RatioBox, L"武学点倍率");
 	GTab0ManaCostMultiplierItem = AddSlider(RatioBox, L"真气消耗倍率");
 	GTab0EscapeSuccrateItem = AddSlider(RatioBox, L"逃跑成功率");
+	GTab0WorldMoveSpeedItem = AddSlider(RatioBox, L"世界移动速度");
+	GTab0SceneMoveSpeedItem = AddSlider(RatioBox, L"场景移动速度");
 	ConfigureTab0RatioSlider(GTab0MoneyMultiplierItem);
 	ConfigureTab0RatioSlider(GTab0SkillExpMultiplierItem);
 	ConfigureTab0RatioSlider(GTab0ManaCostMultiplierItem);
 	ConfigureTab0RatioSlider(GTab0EscapeSuccrateItem);
+	ConfigureTab0RatioSlider(GTab0WorldMoveSpeedItem);
+	ConfigureTab0RatioSlider(GTab0SceneMoveSpeedItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0MoneyMultiplierItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0SkillExpMultiplierItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0ManaCostMultiplierItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0EscapeSuccrateItem);
+	RemoveVolumeItemFromGlobalPoll(GTab0WorldMoveSpeedItem);
+	RemoveVolumeItemFromGlobalPoll(GTab0SceneMoveSpeedItem);
 	{
 		FTab0HeroContext RatioCtx = BuildTab0HeroContext(PC);
 			float Pct = 1.0f;
@@ -2065,6 +2103,20 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		else
 				SetVolumeItemPercent(GTab0EscapeSuccrateItem, 1.0f);
 		GTab0EscapeSuccrateLastPercent = GetVolumeItemPercent(GTab0EscapeSuccrateItem);
+
+			Pct = 1.0f;
+		if (TryGetTab0MultiplierPercent(RatioCtx, L"WorldMoveSpeed", &Pct))
+			SetVolumeItemPercent(GTab0WorldMoveSpeedItem, Pct);
+		else
+				SetVolumeItemPercent(GTab0WorldMoveSpeedItem, 1.0f);
+		GTab0WorldMoveSpeedLastPercent = GetVolumeItemPercent(GTab0WorldMoveSpeedItem);
+
+			Pct = 1.0f;
+		if (TryGetTab0MultiplierPercent(RatioCtx, L"SceneMoveSpeed", &Pct))
+			SetVolumeItemPercent(GTab0SceneMoveSpeedItem, Pct);
+		else
+				SetVolumeItemPercent(GTab0SceneMoveSpeedItem, 1.0f);
+		GTab0SceneMoveSpeedLastPercent = GetVolumeItemPercent(GTab0SceneMoveSpeedItem);
 	}
 	AddPanelWithFixedGap(RatioPanel, 0.0f, 10.0f);
 

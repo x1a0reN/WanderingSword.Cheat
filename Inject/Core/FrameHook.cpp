@@ -1731,8 +1731,10 @@ struct PostRenderInFlightScope final
 			const int32 Idx = GTab5.MountSelectDD->CB_Main->GetSelectedIndex();
 			if (Idx >= 0)
 			{
-				constexpr int32 kMountIds[] = { 9, 10, 11, 12 };
-				Cfg.MountReplaceId = (Idx < 4) ? kMountIds[Idx] : 9;
+				if (Idx < static_cast<int32>(GTab5MountOptionIds.size()))
+					Cfg.MountReplaceId = GTab5MountOptionIds[Idx];
+				else if (!GTab5MountOptionIds.empty())
+					Cfg.MountReplaceId = GTab5MountOptionIds[0];
 			}
 		}
 	}
