@@ -1705,7 +1705,9 @@ struct PostRenderInFlightScope final
 		Cfg.FirstPlayInherit = ReadToggleValue(GTab5.FirstPlayInheritToggle, Cfg.FirstPlayInherit);
 		Cfg.PostStation = ReadToggleValue(GTab5.PostStationToggle, Cfg.PostStation);
 
-		if (GTab5.MountSelectDD && GTab5.MountSelectDD->CB_Main &&
+		if (GTab5.MountSelectDD &&
+			IsSafeLiveObject(static_cast<UObject*>(GTab5.MountSelectDD)) &&
+			GTab5.MountSelectDD->CB_Main &&
 			IsSafeLiveObject(static_cast<UObject*>(GTab5.MountSelectDD->CB_Main)))
 		{
 			const int32 Idx = GTab5.MountSelectDD->CB_Main->GetSelectedIndex();
@@ -1773,7 +1775,9 @@ struct PostRenderInFlightScope final
 		Cfg.FollowerCountValue = ReadIntegerEditValue(GetRuntimeEditBoxByTitle(L"跟随数量"), Cfg.FollowerCountValue, 1, 99);
 		Cfg.ReplaceTeammateEnabled = ReadToggleValue(GTeammate.ReplaceToggle, Cfg.ReplaceTeammateEnabled);
 
-		if (GTeammate.ReplaceDD && GTeammate.ReplaceDD->CB_Main &&
+		if (GTeammate.ReplaceDD &&
+			IsSafeLiveObject(static_cast<UObject*>(GTeammate.ReplaceDD)) &&
+			GTeammate.ReplaceDD->CB_Main &&
 			IsSafeLiveObject(static_cast<UObject*>(GTeammate.ReplaceDD->CB_Main)))
 		{
 			const int32 Idx = GTeammate.ReplaceDD->CB_Main->GetSelectedIndex();
