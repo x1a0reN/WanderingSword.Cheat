@@ -1765,28 +1765,36 @@ struct PostRenderInFlightScope final
 	{
 		bool FollowerCountEnabled = false;
 		int32 FollowerCountValue = 99;
+		int32 AddTeammateIdx = 0;
 		bool ReplaceTeammateEnabled = false;
 		int32 ReplaceTeammateId = 30;
 	};
+
+	constexpr int32 kTeammateNpcIds[] = { 0, 30, 31, 32, 33, 34, 35, 36 };
+
+	int32 ReadSafeDropdownIndex(UBPVE_JHConfigVideoItem2_C* DD)
+	{
+		if (!DD || !IsSafeLiveObject(static_cast<UObject*>(DD)))
+			return -1;
+		if (!DD->CB_Main || !IsSafeLiveObject(static_cast<UObject*>(DD->CB_Main)))
+			return -1;
+		return DD->CB_Main->GetSelectedIndex();
+	}
 
 	void ReadTab6ConfigFromUI(FTab6RuntimeConfig& Cfg)
 	{
 		Cfg.FollowerCountEnabled = ReadToggleValue(GTeammate.FollowToggle, Cfg.FollowerCountEnabled);
 		Cfg.FollowerCountValue = ReadIntegerEditValue(GetRuntimeEditBoxByTitle(L"跟随数量"), Cfg.FollowerCountValue, 1, 99);
+
+		const int32 AddIdx = ReadSafeDropdownIndex(GTeammate.AddDD);
+		if (AddIdx >= 0)
+			Cfg.AddTeammateIdx = AddIdx;
+
 		Cfg.ReplaceTeammateEnabled = ReadToggleValue(GTeammate.ReplaceToggle, Cfg.ReplaceTeammateEnabled);
 
-		if (GTeammate.ReplaceDD &&
-			IsSafeLiveObject(static_cast<UObject*>(GTeammate.ReplaceDD)) &&
-			GTeammate.ReplaceDD->CB_Main &&
-			IsSafeLiveObject(static_cast<UObject*>(GTeammate.ReplaceDD->CB_Main)))
-		{
-			const int32 Idx = GTeammate.ReplaceDD->CB_Main->GetSelectedIndex();
-			if (Idx > 0)
-			{
-				constexpr int32 kRoleIds[] = { 0, 30, 31, 32, 33, 34, 35, 36 };
-				Cfg.ReplaceTeammateId = (Idx < 8) ? kRoleIds[Idx] : 30;
-			}
-		}
+		const int32 ReplaceIdx = ReadSafeDropdownIndex(GTeammate.ReplaceDD);
+		if (ReplaceIdx > 0 && ReplaceIdx < 8)
+			Cfg.ReplaceTeammateId = kTeammateNpcIds[ReplaceIdx];
 	}
 
 	void PollAndApplyTab6Features(bool CanReadFromUI)
@@ -1803,6 +1811,22 @@ struct PostRenderInFlightScope final
 		}
 		if (Config.FollowerCountEnabled)
 			SetFollowerCountValue(Config.FollowerCountValue);
+
+		static int32 LastAddTeammateIdx = 0;
+		if (Config.AddTeammateIdx != LastAddTeammateIdx && Config.AddTeammateIdx > 0)
+		{
+			const int32 NpcId = (Config.AddTeammateIdx < 8) ? kTeammateNpcIds[Config.AddTeammateIdx] : 0;
+			if (NpcId > 0)
+			{
+				UTeamManager* TeamMgr = UManagerFuncLib::GetTeamManager();
+				if (TeamMgr && IsSafeLiveObject(static_cast<UObject*>(TeamMgr)))
+				{
+					TeamMgr->AddTeamInfo(NpcId, true, true, true);
+					LOGI_STREAM("FrameHook") << "[SDK] AddTeammate: npcId=" << NpcId << "\n";
+				}
+			}
+		}
+		LastAddTeammateIdx = Config.AddTeammateIdx;
 
 		static bool LastReplaceTeammate = false;
 		if (Config.ReplaceTeammateEnabled != LastReplaceTeammate)
