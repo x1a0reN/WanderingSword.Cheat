@@ -197,22 +197,26 @@ uintptr_t GMountReplaceOffset = 0;
 volatile LONG GMountReplaceId = 9;
 const char* kMountReplacePattern = "83 B9 ?? ?? 00 00 00 7E ?? 48 89 ?? 24 ?? E8";
 
-// 读取 [rcx+offset] 中的偏移量，然后替换 mount id
+// CT pattern: write new mount, then re-execute original cmp for correct flags.
+// Original instruction: 83 B9 [disp32] 00 = cmp dword [rcx+disp32], 0 (7 bytes)
+// Trampoline: push/load mount id → mov [rcx+disp32],eax → pop → cmp [rcx+disp32],0
 const unsigned char kMountReplaceTrampolineTemplate[] = {
-	0x41, 0x53,                                       // push r11
-	0x50,                                             // push rax
+	0x50,                                             // push rax          offset 0
+	0x41, 0x53,                                       // push r11          offset 1
 	0x49, 0xBB,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&GMountReplaceId)
-	0x41, 0x8B, 0x03,                                 // mov eax, dword [r11]
-	0x49, 0xBB,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (offset placeholder, filled at runtime)
-	0x4D, 0x63, 0xDB,                                 // movsxd r11, r11d (sign extend)
-	0x42, 0x89, 0x04, 0x19,                           // mov [rcx+r11], eax
-	0x58,                                             // pop rax
-	0x41, 0x5B,                                       // pop r11
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&GMountReplaceId)  offset 3
+	0x41, 0x8B, 0x03,                                 // mov eax, dword [r11]               offset 13
+	0x89, 0x81,
+	0x00, 0x00, 0x00, 0x00,                           // mov [rcx+disp32], eax              offset 16
+	0x41, 0x5B,                                       // pop r11                            offset 22
+	0x58,                                             // pop rax                            offset 24
+	0x83, 0xB9,
+	0x00, 0x00, 0x00, 0x00,                           // cmp dword [rcx+disp32], 0          offset 25
+	0x00,                                             //   imm8 = 0                         offset 31
 };
 constexpr size_t kMountReplaceIdImm64Offset = 5;
-constexpr size_t kMountReplaceOffImm64Offset = 18;
+constexpr size_t kMountReplaceMovDisp32Offset = 18;
+constexpr size_t kMountReplaceCmpDisp32Offset = 27;
 
 // ── 一周目可选极难 ──
 uintptr_t GFirstPlayHardAddr = 0;
@@ -355,6 +359,10 @@ void EnableMountReplacePatch()
 {
 	if (GMountReplaceHookId != UINT32_MAX) return;
 
+	HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+	if (!hModule) return;
+	const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(hModule);
+
 	if (GMountReplaceOffset == 0)
 	{
 		const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
@@ -364,39 +372,29 @@ void EnableMountReplacePatch()
 			LOGE_STREAM("Tab5System") << "[SDK] MountReplace AobScan failed\n";
 			return;
 		}
-		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
-		if (!hModule) return;
-		GMountReplaceOffset = found - reinterpret_cast<uintptr_t>(hModule);
-
-		int32 cmpOffset = 0;
-		InlineHook::HookManager::ReadValue(found + 2, cmpOffset);
-		LOGI_STREAM("Tab5System") << "[SDK] MountReplace found, field offset=0x"
-			<< std::hex << cmpOffset << std::dec << "\n";
+		GMountReplaceOffset = found - moduleBase;
 	}
+
+	const uintptr_t foundAddr = moduleBase + GMountReplaceOffset;
+	int32 fieldDisp32 = 0;
+	InlineHook::HookManager::ReadValue(foundAddr + 2, fieldDisp32);
+	LOGI_STREAM("Tab5System") << "[SDK] MountReplace found, field disp32=0x"
+		<< std::hex << fieldDisp32 << std::dec << "\n";
 
 	unsigned char code[sizeof(kMountReplaceTrampolineTemplate)];
 	std::memcpy(code, kMountReplaceTrampolineTemplate, sizeof(code));
+
 	const uintptr_t idAddr = reinterpret_cast<uintptr_t>(&GMountReplaceId);
 	std::memcpy(code + kMountReplaceIdImm64Offset, &idAddr, sizeof(idAddr));
-
-	uintptr_t foundAddr = 0;
-	{
-		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
-		if (hModule) foundAddr = reinterpret_cast<uintptr_t>(hModule) + GMountReplaceOffset;
-	}
-	if (foundAddr != 0)
-	{
-		int32 fieldOffset = 0;
-		InlineHook::HookManager::ReadValue(foundAddr + 2, fieldOffset);
-		uintptr_t offsetVal = static_cast<uintptr_t>(fieldOffset);
-		std::memcpy(code + kMountReplaceOffImm64Offset, &offsetVal, sizeof(offsetVal));
-	}
+	std::memcpy(code + kMountReplaceMovDisp32Offset, &fieldDisp32, sizeof(fieldDisp32));
+	std::memcpy(code + kMountReplaceCmpDisp32Offset, &fieldDisp32, sizeof(fieldDisp32));
 
 	uint32_t hookId = UINT32_MAX;
 	if (!InlineHook::HookManager::InstallHook(
 		"JH-Win64-Shipping.exe",
 		static_cast<uint32_t>(GMountReplaceOffset),
-		code, sizeof(code), hookId))
+		code, sizeof(code), hookId,
+		false, true, false))
 	{
 		LOGE_STREAM("Tab5System") << "[SDK] MountReplace hook install failed\n";
 		return;

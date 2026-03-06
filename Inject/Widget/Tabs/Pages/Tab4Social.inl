@@ -299,7 +299,8 @@ void EnableSparIgnoreFavor()
 		"JH-Win64-Shipping.exe",
 		static_cast<uint32_t>(GQieCuoFriendlinessOffset),
 		kQieCuoTrampolineCode, sizeof(kQieCuoTrampolineCode),
-		hookId))
+		hookId,
+		true))
 	{
 		LOGE_STREAM("Tab4Social") << "[SDK] SparIgnoreFavor hook install failed\n";
 		return;

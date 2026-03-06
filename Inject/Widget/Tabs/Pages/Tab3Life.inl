@@ -625,7 +625,8 @@ void EnableFishAlwaysCatchHook()
 		if (!InlineHook::HookManager::InstallHook(
 			"JH-Win64-Shipping.exe",
 			static_cast<uint32_t>(GFishAlwaysCatchOffset2),
-			code2, sizeof(code2), hookId))
+			code2, sizeof(code2), hookId,
+			true))
 		{
 			InlineHook::HookManager::UninstallHook(GFishAlwaysCatchHookId1);
 			GFishAlwaysCatchHookId1 = UINT32_MAX;
