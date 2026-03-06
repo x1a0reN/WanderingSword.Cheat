@@ -1,11 +1,20 @@
 #pragma once
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  CheatState.hpp  —  逸剑风云决 内部作弊模块 · 全局状态声明
+//
+//  本头文件集中管理所有运行时跨模块共享的全局变量、结构体定义
+//  与 Inline Hook 功能接口。各 Tab 页面、FrameHook 帧轮询、
+//  面板管理器等模块均依赖此处的声明。
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// ── 标准库 ──
 #include <Windows.h>
 #include <atomic>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+// ── SDK 引用 ──
 #include "SDK/Engine_classes.hpp"
 #include "SDK/UMG_classes.hpp"
 #include "SDK/NeoUI_classes.hpp"
@@ -21,217 +30,263 @@
 
 using namespace SDK;
 
-using GVCPostRenderFn = void(__fastcall*)(void* , void* );
+// ┌─────────────────────────────────────────────────────────────┐
+// │                    类型别名 · 全局常量                       │
+// └─────────────────────────────────────────────────────────────┘
 
+/// PostRender 渲染回调的原始函数签名 (x64 __fastcall)
+using GVCPostRenderFn = void(__fastcall*)(void* /* this */, void* /* Canvas */);
+
+/// 作弊面板相对于游戏原生设置面板的整体缩放比例
 inline constexpr float kInternalPanelScale = 1.1f;
 
+/// UBP_JHConfigTabBtn_C 内部指向父级 ConfigView 实例的偏移量
 inline constexpr uintptr_t kConfigTabBtnParentCtxOffset = 0x02E0;
 
+/// 子模块面板 (如 VideoPanel2) 内部指向父级 ConfigView 的偏移量
 inline constexpr uintptr_t kConfigModuleView2ParentCtxOffset = 0x03B0;
 
-struct CachedItem {
-	int32 DefId;
-	wchar_t Name[64];
-	wchar_t Desc[256];
-	uint8 Quality;
-	uint8 SubType;
-	uint8 IconData[0x28];
-	bool HasIcon;
+/// 物品浏览器每页网格的列数、行数与单页总槽位数
+inline constexpr int32 kItemGridCols   = 8;
+inline constexpr int32 kItemGridRows   = 5;
+inline constexpr int32 kItemsPerPage   = kItemGridCols * kItemGridRows;  // 40
+
+// ┌─────────────────────────────────────────────────────────────┐
+// │                    核心数据结构定义                          │
+// └─────────────────────────────────────────────────────────────┘
+
+/// 从游戏 DataTable 解析并缓存的单条物品信息
+struct CachedItem
+{
+    int32    DefId;            // 物品定义 ID
+    wchar_t  Name[64];        // 显示名称
+    wchar_t  Desc[256];       // 描述文本
+    uint8    Quality;         // 品质等级 (白/绿/蓝/紫/金)
+    uint8    SubType;         // 子类型 (用于分类筛选)
+    uint8    IconData[0x28];  // TSoftObjectPtr<UTexture2D> 原始字节
+    bool     HasIcon;         // 是否包含有效图标引用
 };
 
+/// 面板关闭后的 UI 状态记忆快照 (不落盘，仅进程内)
 struct UIRememberState
 {
-	std::unordered_map<std::wstring, int32> ComboIndexByTitle;
-	std::unordered_map<std::wstring, float> SliderValueByTitle;
-	std::unordered_map<std::wstring, std::wstring> EditTextByTitle;
+    // 通用控件状态 —— 以控件标题为键
+    std::unordered_map<std::wstring, int32>        ComboIndexByTitle;
+    std::unordered_map<std::wstring, float>        SliderValueByTitle;
+    std::unordered_map<std::wstring, std::wstring> EditTextByTitle;
 
-	int32 ItemCategoryIndex = 0;
-	int32 ItemCurrentPage = 0;
-	int32 ItemAddQuantity = 1;
-	std::wstring ItemSearchText;
+    // 物品浏览器专用记忆
+    int32        ItemCategoryIndex = 0;
+    int32        ItemCurrentPage   = 0;
+    int32        ItemAddQuantity   = 1;
+    std::wstring ItemSearchText;
 };
 
-inline constexpr int32 kItemGridCols = 8;
-inline constexpr int32 kItemGridRows = 5;
-inline constexpr int32 kItemsPerPage = kItemGridCols * kItemGridRows;
+/// 物品浏览器完整运行时状态
+struct ItemBrowserState
+{
+    // ── 数据层 ──
+    std::vector<CachedItem> AllItems;          // 全量物品缓存
+    std::vector<int32>      FilteredIndices;   // 当前筛选结果索引
+    bool                    CacheBuilt = false;
+    int32                   CurrentPage = 0;
+    int32                   TotalPages  = 0;
 
+    // ── 控件引用 ──
+    UBPVE_JHConfigVideoItem2_C* CategoryDD   = nullptr;   // 分类下拉框
+    int32                       LastCatIdx   = -1;
+    UHorizontalBox*             PagerRow     = nullptr;    // 翻页栏容器
+    UJHCommon_Btn_Free_C*       PrevPageBtn  = nullptr;
+    UJHCommon_Btn_Free_C*       NextPageBtn  = nullptr;
+    UTextBlock*                 PageLabel    = nullptr;
+    bool                        PrevWasPressed = false;
+    bool                        NextWasPressed = false;
+    UHorizontalBox*             QuantityRow  = nullptr;    // 数量输入栏
+    UEditableTextBox*           QuantityEdit = nullptr;
+    int32                       AddQuantity  = 1;
+    UWidget*                    GridPanel    = nullptr;    // 网格面板根
+    UListView*                  ListView     = nullptr;
 
-extern GVCPostRenderFn GOriginalPostRender;
-extern VTableHook GVCPostRenderHook;
-extern UUserWidget* GInternalWidget;
-extern bool GInternalWidgetVisible;
-extern std::atomic<bool> GIsUnloading;
-extern std::atomic<bool> GUnloadCleanupDone;
-extern std::atomic<bool> GHooksRemoved;
-extern std::atomic<bool> GConsoleClosed;
-extern std::atomic<int32> GPostRenderInFlight;
-extern UIRememberState GUIRememberState;
+    // ── 槽位数组 (固定 kItemsPerPage 大小) ──
+    UButton*      SlotButtons       [kItemsPerPage] = {};
+    UImage*       SlotImages        [kItemsPerPage] = {};
+    UImage*       SlotQualityBorders[kItemsPerPage] = {};
+    UUserWidget*  SlotEntryWidgets  [kItemsPerPage] = {};
+    int32         SlotItemIndices   [kItemsPerPage] = {};
+    bool          SlotWasPressed    [kItemsPerPage] = {};
 
-
-extern UNeoUIButtonBase* GCachedBtnExit;
-extern std::vector<UObject*> GRootedObjects;
-extern UWidget* GOriginalLanPanel;
-extern UWidget* GOriginalInputMappingPanel;
-extern UJHCommon_Btn_Free_C* GOriginalResetButton;
-
-
-struct ItemBrowserState {
-    std::vector<CachedItem> AllItems;
-    std::vector<int32> FilteredIndices;
-    bool CacheBuilt = false;
-    int32 CurrentPage = 0;
-    int32 TotalPages = 0;
-
-    UBPVE_JHConfigVideoItem2_C* CategoryDD = nullptr;
-    int32 LastCatIdx = -1;
-    UHorizontalBox* PagerRow = nullptr;
-    UJHCommon_Btn_Free_C* PrevPageBtn = nullptr;
-    UJHCommon_Btn_Free_C* NextPageBtn = nullptr;
-    UTextBlock* PageLabel = nullptr;
-    bool PrevWasPressed = false;
-    bool NextWasPressed = false;
-    UHorizontalBox* QuantityRow = nullptr;
-    UEditableTextBox* QuantityEdit = nullptr;
-    int32 AddQuantity = 1;
-    UWidget* GridPanel = nullptr;
-    UListView* ListView = nullptr;
-    UButton* SlotButtons[kItemsPerPage] = {};
-    UImage* SlotImages[kItemsPerPage] = {};
-    UImage* SlotQualityBorders[kItemsPerPage] = {};
-    UUserWidget* SlotEntryWidgets[kItemsPerPage] = {};
-    int32 SlotItemIndices[kItemsPerPage] = {};
-    bool SlotWasPressed[kItemsPerPage] = {};
-    int32 HoveredSlot = -1;
-    UJHNeoUITipsVEBase* HoverTipsWidget = nullptr;
-    UItemInfoSpec* HoverTempSpec = nullptr;
+    // ── 悬浮提示 ──
+    int32                HoveredSlot      = -1;
+    UJHNeoUITipsVEBase*  HoverTipsWidget  = nullptr;
+    UItemInfoSpec*       HoverTempSpec    = nullptr;
 };
 
-extern ItemBrowserState GItemBrowser;
+// ┌─────────────────────────────────────────────────────────────┐
+// │               Tab 页面 UI 控件引用结构体                    │
+// └─────────────────────────────────────────────────────────────┘
 
+/// Tab1「物品」页功能开关与滑块
+struct Tab1Controls
+{
+    UBPVE_JHConfigVideoItem2_C*  ItemNoDecreaseToggle         = nullptr;  // 物品不减
+    UBPVE_JHConfigVideoItem2_C*  ItemGainMultiplierToggle     = nullptr;  // 获取倍数开关
+    UBPVE_JHConfigVolumeItem2_C* ItemGainMultiplierSlider     = nullptr;  // 获取倍数滑块
+    UBPVE_JHConfigVideoItem2_C*  AllItemsSellableToggle       = nullptr;  // 全部可售
+    UBPVE_JHConfigVideoItem2_C*  DropRate100Toggle            = nullptr;  // 掉率 100%
+    UBPVE_JHConfigVideoItem2_C*  CraftEffectMultiplierToggle  = nullptr;  // 制造倍率开关
+    UBPVE_JHConfigVolumeItem2_C* CraftItemIncrementSlider     = nullptr;  // 制造数量滑块
+    UBPVE_JHConfigVolumeItem2_C* CraftExtraEffectSlider       = nullptr;  // 额外效果滑块
+    UBPVE_JHConfigVideoItem2_C*  MaxExtraAffixesToggle        = nullptr;  // 最大额外词条
+    UBPVE_JHConfigVideoItem2_C*  IgnoreItemUseCountToggle     = nullptr;  // 无视使用次数
+    UBPVE_JHConfigVideoItem2_C*  IgnoreItemRequirementsToggle = nullptr;  // 无视使用条件
+};
 
+/// Tab2「战斗」页功能开关与滑块
+struct Tab2Controls
+{
+    UBPVE_JHConfigVideoItem2_C*  DamageBoostToggle          = nullptr;  // 伤害加倍
+    UBPVE_JHConfigVideoItem2_C*  SkillNoCooldownToggle      = nullptr;  // 招式无 CD
+    UBPVE_JHConfigVideoItem2_C*  NoEncounterToggle           = nullptr;  // 不遇敌
+    UBPVE_JHConfigVideoItem2_C*  AllTeammatesInFightToggle   = nullptr;  // 全员参战
+    UBPVE_JHConfigVideoItem2_C*  DefeatAsVictoryToggle       = nullptr;  // 败犹为胜
+    UBPVE_JHConfigVideoItem2_C*  NeiGongFillLastSlotToggle   = nullptr;  // 心法破限
+    UBPVE_JHConfigVideoItem2_C*  AutoRecoverHpMpToggle       = nullptr;  // 自动回复
+    UBPVE_JHConfigVideoItem2_C*  TotalMoveSpeedToggle        = nullptr;  // 移速加倍
+    UBPVE_JHConfigVideoItem2_C*  DamageFriendlyOnlyToggle    = nullptr;  // 仅友方加速
+    UBPVE_JHConfigVolumeItem2_C* DamageMultiplierSlider      = nullptr;  // 伤害倍率
+    UBPVE_JHConfigVolumeItem2_C* MoveSpeedMultiplierSlider   = nullptr;  // 移速倍率
+};
+
+/// 动态扩展 Tab (6/7/8) 的按钮与内容容器
+struct DynTabState
+{
+    UBP_JHConfigTabBtn_C* Btn6     = nullptr;   // 队友页按钮
+    UBP_JHConfigTabBtn_C* Btn7     = nullptr;   // 任务页按钮
+    UBP_JHConfigTabBtn_C* Btn8     = nullptr;   // 预留页按钮
+    UVerticalBox*         Content6 = nullptr;   // 队友内容区
+    UVerticalBox*         Content7 = nullptr;   // 任务内容区
+    UVerticalBox*         Content8 = nullptr;   // 预留内容区
+};
+
+/// Tab6「队友」页控件
+struct TeammateTabControls
+{
+    UBPVE_JHConfigVideoItem2_C*  FollowToggle  = nullptr;  // 强制跟随开关
+    UBPVE_JHConfigVolumeItem2_C* FollowCount   = nullptr;  // 跟随人数滑块
+    UBPVE_JHConfigVideoItem2_C*  AddDD         = nullptr;  // 添加队友下拉
+    UBPVE_JHConfigVideoItem2_C*  ReplaceToggle = nullptr;  // 替换队友开关
+    UBPVE_JHConfigVideoItem2_C*  ReplaceDD     = nullptr;  // 替换目标下拉
+};
+
+/// Tab7「任务」页控件
+struct QuestTabControls
+{
+    UBPVE_JHConfigVideoItem2_C* Toggle = nullptr;  // 任务操作开关
+    UBPVE_JHConfigVideoItem2_C* TypeDD = nullptr;  // 操作类型 (接取/完成)
+};
+
+// ┌─────────────────────────────────────────────────────────────┐
+// │                   全局变量 extern 声明                      │
+// └─────────────────────────────────────────────────────────────┘
+
+// ── Hook 与核心运行状态 ──
+extern GVCPostRenderFn          GOriginalPostRender;    // 原始 PostRender 函数指针
+extern VTableHook               GVCPostRenderHook;      // VTable 虚表 Hook 实例
+extern UUserWidget*             GInternalWidget;        // 作弊面板 Widget 实例
+extern bool                     GInternalWidgetVisible; // 面板可见性标志
+extern std::atomic<bool>        GIsUnloading;           // DLL 正在卸载
+extern std::atomic<bool>        GUnloadCleanupDone;     // 游戏线程清理完毕
+extern std::atomic<bool>        GHooksRemoved;          // 所有 Hook 已还原
+extern std::atomic<bool>        GConsoleClosed;         // 调试控制台已关闭
+extern std::atomic<int32>       GPostRenderInFlight;    // 当前渲染回调嵌套计数
+extern UIRememberState          GUIRememberState;       // UI 状态记忆快照
+
+// ── 劫持的原生面板引用 ──
+extern UNeoUIButtonBase*        GCachedBtnExit;         // 面板"关闭"按钮
+extern std::vector<UObject*>    GRootedObjects;         // GC Root 托管列表
+extern UWidget*                 GOriginalLanPanel;      // 原始语言设置面板
+extern UWidget*                 GOriginalInputMappingPanel; // 原始按键映射面板
+extern UJHCommon_Btn_Free_C*    GOriginalResetButton;   // 原始"重置"按钮
+
+// ── 物品浏览器 ──
+extern ItemBrowserState         GItemBrowser;
+
+// ── 滑块控件缓存 (跨 Tab 通用) ──
 extern std::vector<UBPVE_JHConfigVolumeItem2_C*> GVolumeItems;
-extern std::vector<float> GVolumeLastValues;
-extern std::vector<bool> GVolumeMinusWasPressed;
-extern std::vector<bool> GVolumePlusWasPressed;
+extern std::vector<float>       GVolumeLastValues;
+extern std::vector<bool>        GVolumeMinusWasPressed;
+extern std::vector<bool>        GVolumePlusWasPressed;
 
+// ── Tab 页面控件实例 ──
+extern Tab1Controls             GTab1;
+extern Tab2Controls             GTab2;
+extern DynTabState              GDynTab;
+extern TeammateTabControls      GTeammate;
+extern QuestTabControls         GQuest;
 
-struct Tab1Controls {
-    UBPVE_JHConfigVideoItem2_C* ItemNoDecreaseToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* ItemGainMultiplierToggle = nullptr;
-    UBPVE_JHConfigVolumeItem2_C* ItemGainMultiplierSlider = nullptr;
-    UBPVE_JHConfigVideoItem2_C* AllItemsSellableToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* DropRate100Toggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* CraftEffectMultiplierToggle = nullptr;
-    UBPVE_JHConfigVolumeItem2_C* CraftItemIncrementSlider = nullptr;
-    UBPVE_JHConfigVolumeItem2_C* CraftExtraEffectSlider = nullptr;
-    UBPVE_JHConfigVideoItem2_C* MaxExtraAffixesToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* IgnoreItemUseCountToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* IgnoreItemRequirementsToggle = nullptr;
-};
+// ── 物品不减 Inline Hook 底层变量 ──
+extern std::atomic<bool>        GItemNoDecreaseEnabled; // 功能总开关
+extern uintptr_t                GChangeItemNumAddr;     // 被 Hook 函数地址
+extern unsigned char            GOriginalChangeItemNumBytes[5]; // 原始指令备份
+extern void*                    GHookTrampoline;        // 跳板缓冲区
+extern bool                     GInlineHookInstalled;   // Hook 安装状态
 
-extern Tab1Controls GTab1;
+// ┌─────────────────────────────────────────────────────────────┐
+// │              Inline Hook 功能接口 (Enable/Disable)          │
+// └─────────────────────────────────────────────────────────────┘
 
-
-struct Tab2Controls {
-    UBPVE_JHConfigVideoItem2_C* DamageBoostToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* SkillNoCooldownToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* NoEncounterToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* AllTeammatesInFightToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* DefeatAsVictoryToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* NeiGongFillLastSlotToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* AutoRecoverHpMpToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* TotalMoveSpeedToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* DamageFriendlyOnlyToggle = nullptr;
-    UBPVE_JHConfigVolumeItem2_C* DamageMultiplierSlider = nullptr;
-    UBPVE_JHConfigVolumeItem2_C* MoveSpeedMultiplierSlider = nullptr;
-};
-
-extern Tab2Controls GTab2;
-
-struct DynTabState {
-    UBP_JHConfigTabBtn_C* Btn6 = nullptr;
-    UBP_JHConfigTabBtn_C* Btn7 = nullptr;
-    UBP_JHConfigTabBtn_C* Btn8 = nullptr;
-    UVerticalBox* Content6 = nullptr;
-    UVerticalBox* Content7 = nullptr;
-    UVerticalBox* Content8 = nullptr;
-};
-
-extern DynTabState GDynTab;
-
-
-struct TeammateTabControls {
-    UBPVE_JHConfigVideoItem2_C* FollowToggle = nullptr;
-    UBPVE_JHConfigVolumeItem2_C* FollowCount = nullptr;
-    UBPVE_JHConfigVideoItem2_C* AddDD = nullptr;
-    UBPVE_JHConfigVideoItem2_C* ReplaceToggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* ReplaceDD = nullptr;
-};
-
-extern TeammateTabControls GTeammate;
-
-
-struct QuestTabControls {
-    UBPVE_JHConfigVideoItem2_C* Toggle = nullptr;
-    UBPVE_JHConfigVideoItem2_C* TypeDD = nullptr;
-};
-
-extern QuestTabControls GQuest;
-
-extern std::atomic<bool> GItemNoDecreaseEnabled;
-
-extern uintptr_t GChangeItemNumAddr;
-extern unsigned char GOriginalChangeItemNumBytes[5];
-extern void* GHookTrampoline;
-extern bool GInlineHookInstalled;
-
-void EnableItemNoDecreaseHook();
+// ── Tab1: 物品系统 ──
+void EnableItemNoDecreaseHook();               // 物品数量不减
 void DisableItemNoDecreaseHook();
 
-void SetItemGainMultiplierHookValue(int32 Value);
+void SetItemGainMultiplierHookValue(int32 Value); // 物品获取倍率
 void EnableItemGainMultiplierHook();
 void DisableItemGainMultiplierHook();
 
-void SetCraftItemIncrementHookValue(float Value);
+void SetCraftItemIncrementHookValue(float Value); // 制造产出提升
 void SetCraftExtraEffectHookValue(float Value);
 void EnableCraftEffectMultiplierHook();
 void DisableCraftEffectMultiplierHook();
 
-void EnableMaxExtraAffixesHooks();
+void EnableMaxExtraAffixesHooks();              // 最大额外词条
 void DisableMaxExtraAffixesHooks();
 
-void EnableAllItemsSellable();
+void EnableAllItemsSellable();                  // 全物品可售
 void DisableAllItemsSellable();
-void EnableDropRate100Patch();
+
+void EnableDropRate100Patch();                  // 掉率 100%
 void DisableDropRate100Patch();
-void EnableIgnoreItemUseCountFeature();
+
+void EnableIgnoreItemUseCountFeature();         // 无视使用次数
 void DisableIgnoreItemUseCountFeature();
-void EnableIgnoreItemRequirementsPatch();
+
+void EnableIgnoreItemRequirementsPatch();       // 无视使用条件
 void DisableIgnoreItemRequirementsPatch();
 
-void EnableSkillNoCooldownHooks();
+// ── Tab2: 战斗系统 ──
+void EnableSkillNoCooldownHooks();              // 招式无 CD
 void DisableSkillNoCooldownHooks();
 
-void EnableNoEncounterPatch();
+void EnableNoEncounterPatch();                  // 不遇敌
 void DisableNoEncounterPatch();
 
-void EnableDefeatAsVictoryHook();
+void EnableDefeatAsVictoryHook();               // 败犹为胜
 void DisableDefeatAsVictoryHook();
 
-void EnableAllTeammatesInFightHooks();
+void EnableAllTeammatesInFightHooks();          // 全员参战
 void DisableAllTeammatesInFightHooks();
 
-void EnableNeiGongFillLastSlotFeature();
+void EnableNeiGongFillLastSlotFeature();        // 心法破限
 void DisableNeiGongFillLastSlotFeature();
 
-void EnableBattleSpeedHooks();
+void EnableBattleSpeedHooks();                  // 战斗加速
 void DisableBattleSpeedHooks();
 void SetBattleSpeedHookMultiplier(float Value);
 
-void EnableAutoRecoverHpMpHook();
+void EnableAutoRecoverHpMpHook();               // 自动恢复气血/真气
 void DisableAutoRecoverHpMpHook();
 
-void EnableTotalMoveSpeedHook();
+void EnableTotalMoveSpeedHook();                // 总移速倍率
 void DisableTotalMoveSpeedHook();
 void SetTotalMoveSpeedMultiplier(float Value);
 void SetTotalMoveSpeedFriendlyOnly(bool Enabled);

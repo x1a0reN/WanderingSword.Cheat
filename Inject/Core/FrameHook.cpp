@@ -1,3 +1,20 @@
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  FrameHook.cpp  —  帧回调核心逻辑 (2000+ 行)
+//
+//  本文件是作弊模块的心脏：通过 VTable Hook 挂载在引擎 PostRender
+//  回调上，每帧执行一次。内部按逻辑分为以下几大区块：
+//
+//    §1  辅助工具        RAII 作用域、存活性检查、FPS 叠加
+//    §2  内部数据结构    运行时配置快照、DataTable 原始状态备份
+//    §3  ItemEntry Hook  物品槽位点击事件拦截 (VTable ProcessEvent)
+//    §4  BackpackView    背包视图上下文捕获 (用于添加物品)
+//    §5  UI 读取工具     ComboBox / Toggle / Slider / EditText 安全读取
+//    §6  TArray 工具     UE4 TArray ↔ std::vector 双向转换
+//    §7  Tab1 物品逻辑   DataTable 行遍历、补丁应用、功能轮询
+//    §8  Tab2 战斗逻辑   各类 Inline Hook 启停控制
+//    §9  滑块通用轮询    VolumeItem 按钮点击与文本标签同步
+//    §10 主回调入口      HookedGVCPostRender — 统揽全局
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #include <Windows.h>
 #include <cmath>
 #include <algorithm>
@@ -23,7 +40,12 @@
 
 namespace
 {
-	struct PostRenderInFlightScope final
+	// ┌─────────────────────────────────────────────────────────────┐
+// │  §1  辅助工具 — RAII 作用域 · 存活性检查 · FPS 叠加        │
+// └─────────────────────────────────────────────────────────────┘
+
+/// RAII 守卫：构造时 +1、析构时 -1 GPostRenderInFlight 计数
+struct PostRenderInFlightScope final
 	{
 		PostRenderInFlightScope()
 		{
@@ -36,6 +58,8 @@ namespace
 		}
 	};
 
+	/// 检查作弊面板 Widget 指针是否仍指向有效的存活对象，
+	/// 若已被引擎回收则重置全局状态并返回 false。
 	bool EnsureLiveInternalWidgetForFrame()
 	{
 		if (!GInternalWidget)
@@ -53,6 +77,7 @@ namespace
 		return false;
 	}
 
+	/// 在屏幕左上角绘制实时 FPS 计数 (250ms 滑动窗口采样)
 	void DrawFpsOverlay(UCanvas* CanvasObj)
 	{
 		if (!CanvasObj || !IsSafeLiveObjectOfClass(static_cast<UObject*>(CanvasObj), UCanvas::StaticClass()))
@@ -98,6 +123,11 @@ namespace
 			FLinearColor{ 0.0f, 0.0f, 0.0f, 1.0f });
 	}
 
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §2  内部数据结构 — 运行时配置快照 · DataTable 原始备份    │
+	// └─────────────────────────────────────────────────────────────┘
+
+	/// 用于物品 GUID 哈希表的键类型
 	struct FGuidKey final
 	{
 		int32 A = 0;
@@ -283,6 +313,11 @@ namespace
 		GBackpackPECallCounts.clear();
 	}
 
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §3  ItemEntry Hook — 物品槽位点击事件拦截                 │
+	// └─────────────────────────────────────────────────────────────┘
+
+	/// 尝试从 ItemEntry 控件中提取物品 DefId 并入队等待主线程消费
 	bool TryQueueDefIdFromItemEntry(UObject* EntryObj, const std::string& TriggerFunc)
 	{
 		if (!IsSafeLiveObjectOfClass(EntryObj, UJHNeoUIItemEntryWDT::StaticClass()))
@@ -423,6 +458,11 @@ namespace
 		return OutDefId > 0;
 	}
 
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §4  BackpackView — 背包视图上下文捕获                     │
+	// └─────────────────────────────────────────────────────────────┘
+
+	/// 被挂钩的背包视图 ProcessEvent，持续捕获 Ctx 弱引用
 	void __fastcall HookedBackpackViewProcessEvent(const UObject* ThisObj, UFunction* Function, void* Params)
 	{
 		if (ThisObj && Function)
@@ -596,6 +636,11 @@ namespace
 		ResetBackpackCtxCaptureState();
 	}
 
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §5  UI 读取工具 — ComboBox / Toggle / Slider 安全读取     │
+	// └─────────────────────────────────────────────────────────────┘
+
+	/// 检查 ComboBox 控件是否仍然存活且未被引擎标记为待销毁
 	bool IsLiveComboBox(UComboBoxString* Combo)
 	{
 		return Combo &&
@@ -661,6 +706,10 @@ namespace
 		return 1.0f + Percent * 0.09f;
 	}
 
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §6  TArray 工具 — UE4 TArray ↔ std::vector 双向转换       │
+	// └─────────────────────────────────────────────────────────────┘
+
 	template <typename T>
 	std::vector<T> CopyArrayToVector(const TArray<T>& Array)
 	{
@@ -698,6 +747,11 @@ namespace
 		return Key;
 	}
 
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §7  Tab1 物品逻辑 — DataTable 遍历 · 补丁应用 · 功能轮询   │
+	// └─────────────────────────────────────────────────────────────┘
+
+	/// 当 DataTable 指针发生变化时清空对应的原始状态缓存
 	void ResetTab1TableCachesIfNeeded(UDataTable* ItemTable, UDataTable* DropTable, UDataTable* RandTable)
 	{
 		if (GTab1CachedItemTable != ItemTable)
@@ -1301,6 +1355,11 @@ namespace
             }
         }
 		}
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §8  Tab2 战斗逻辑 — Inline Hook 启停 · 倍率设置           │
+	// └─────────────────────────────────────────────────────────────┘
+
+	/// 从 Tab2 UI 控件读取当前战斗功能配置快照
 	void ReadTab2ConfigFromUI(FTab2RuntimeConfig& Cfg)
 	{
 		const bool NewSkillNoCooldown = ReadToggleValue(GTab2.SkillNoCooldownToggle, Cfg.SkillNoCooldown);
@@ -1484,6 +1543,11 @@ namespace
 		}
 	}
 
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §9  滑块通用轮询 — 按钮点击增减 · 文本标签同步             │
+	// └─────────────────────────────────────────────────────────────┘
+
+	/// 轮询所有 VolumeItem 滑块控件的 +/- 按钮和数值标签
 	void PollVolumeItemsButtonsAndText()
 	{
 		if (GVolumeLastValues.size() != GVolumeItems.size())
@@ -1562,6 +1626,12 @@ namespace
 	}
 }
 
+// ┌─────────────────────────────────────────────────────────────┐
+// │  §10  主回调入口 — HookedGVCPostRender                     │
+// └─────────────────────────────────────────────────────────────┘
+
+/// 每帧由引擎渲染线程调用的顶层分发函数。
+/// 按序执行：快捷键 → 面板生命周期 → Tab1 → Tab2 → 动态Tab → 滑块 → FPS
 void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 {
 	PostRenderInFlightScope InFlightScope;
