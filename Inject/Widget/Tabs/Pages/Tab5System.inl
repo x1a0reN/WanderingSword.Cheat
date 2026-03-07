@@ -339,8 +339,267 @@ uintptr_t GFirstPlayHardAddr = 0;
 const char* kFirstPlayHardPattern = "48 8B C8 E8 ?? ?? ?? ?? 83 F8 64 7F";
 
 // ── 一周目可选传承 ──
-uintptr_t GFirstPlayInheritAddr = 0;
-const char* kFirstPlayInheritPattern = "48 8D 55 D0 48 8B ?? FF 90 70 03 00 00 84 C0 0F 85 ?? ?? ?? ?? ?? ?? ?? 48 8D 45";
+struct FFirstPlayInheritSnapshot
+{
+	bool Captured = false;
+	UJHNeoUISubsystem* NeoUISubsystem = nullptr;
+	UDomainUtil_NGP* UtilNGP = nullptr;
+	UJHNeoUIMetadataConfig* MetadataConfig = nullptr;
+	USaveManager* SaveManager = nullptr;
+	UJHSaveGameConfig* SaveGameConfig = nullptr;
+	UJHSaveGame* SaveData = nullptr;
+	int32 InitialInheritancePoint = 0;
+	FJHNeoUINGP_InheritanceDataConfig InheritanceConfig{};
+	TArray<FName> InheritanceKeys{};
+	int32 Score = 0;
+	TSet<int32> EndingIds{};
+	TSet<int32> InheritIds{};
+	int32 ED9Level = 0;
+	bool bED9Locked = false;
+	bool bED10Locked = false;
+	bool bExitedHeTu = false;
+	bool bExitedLuoShu = false;
+	int32 SaveDataED9Level = 0;
+	bool bSaveDataED9Locked = false;
+	bool bSaveDataED10Locked = false;
+	bool bSaveDataCompletedHeTu = false;
+	bool bSaveDataCompletedLuoShu = false;
+};
+
+struct FFirstPlayInheritRuntimeRefs
+{
+	UJHNeoUISubsystem* NeoUISubsystem = nullptr;
+	UDomainUtil_NGP* UtilNGP = nullptr;
+	UJHNeoUIMetadataConfig* MetadataConfig = nullptr;
+	USaveManager* SaveManager = nullptr;
+	UJHSaveGameConfig* SaveGameConfig = nullptr;
+	UJHSaveGame* SaveData = nullptr;
+};
+
+FFirstPlayInheritSnapshot GFirstPlayInheritSnapshot;
+bool GFirstPlayInheritSdkActive = false;
+
+UGameInstance* GetCurrentGameInstanceForTab5()
+{
+	UWorld* World = UWorld::GetWorld();
+	if (!World)
+		return nullptr;
+
+	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+	if (PC && IsSafeLiveObject(static_cast<UObject*>(PC)))
+		return UGameplayStatics::GetGameInstance(PC);
+
+	return World->OwningGameInstance;
+}
+
+UJHNeoUISubsystem* GetJHNeoUISubsystemForTab5()
+{
+	static UJHNeoUISubsystem* Cached = nullptr;
+	UGameInstance* CurrentGI = GetCurrentGameInstanceForTab5();
+
+	auto IsRuntimeSubsystem = [&](UJHNeoUISubsystem* Subsystem) -> bool
+	{
+		if (!Subsystem)
+			return false;
+		auto* Obj = static_cast<UObject*>(Subsystem);
+		if (!Obj || Obj->IsDefaultObject())
+			return false;
+		if ((static_cast<int32>(Obj->Flags) &
+			static_cast<int32>(EObjectFlags::ClassDefaultObject)) != 0)
+			return false;
+		if (!IsSafeLiveObject(Obj))
+			return false;
+		if (!CurrentGI)
+			return true;
+		return Obj->Outer == static_cast<UObject*>(CurrentGI);
+	};
+
+	if (IsRuntimeSubsystem(Cached))
+		return Cached;
+
+	Cached = nullptr;
+
+	if (CurrentGI)
+	{
+		auto* SubObj = USubsystemBlueprintLibrary::GetGameInstanceSubsystem(
+			static_cast<UObject*>(CurrentGI),
+			UJHNeoUISubsystem::StaticClass());
+		auto* Sub = static_cast<UJHNeoUISubsystem*>(SubObj);
+		if (IsRuntimeSubsystem(Sub))
+		{
+			Cached = Sub;
+			return Cached;
+		}
+	}
+
+	if (!Cached)
+	{
+		if (UWorld* World = UWorld::GetWorld())
+		{
+			auto* SubObj = USubsystemBlueprintLibrary::GetGameInstanceSubsystem(
+				static_cast<UObject*>(World),
+				UJHNeoUISubsystem::StaticClass());
+			auto* Sub = static_cast<UJHNeoUISubsystem*>(SubObj);
+			if (IsRuntimeSubsystem(Sub))
+			{
+				Cached = Sub;
+				return Cached;
+			}
+		}
+	}
+
+	auto* ObjArray = UObject::GObjects.GetTypedPtr();
+	if (ObjArray)
+	{
+		const int32 Num = ObjArray->Num();
+		for (int32 i = 0; i < Num; ++i)
+		{
+			UObject* Obj = ObjArray->GetByIndex(i);
+			if (!Obj || !Obj->IsA(UJHNeoUISubsystem::StaticClass()))
+				continue;
+
+			auto* Candidate = static_cast<UJHNeoUISubsystem*>(Obj);
+			if (IsRuntimeSubsystem(Candidate))
+			{
+				Cached = Candidate;
+				break;
+			}
+		}
+	}
+
+	return Cached;
+}
+
+FFirstPlayInheritRuntimeRefs ResolveFirstPlayInheritRuntimeRefs()
+{
+	FFirstPlayInheritRuntimeRefs Refs{};
+	Refs.NeoUISubsystem = GetJHNeoUISubsystemForTab5();
+	if (Refs.NeoUISubsystem && IsSafeLiveObject(static_cast<UObject*>(Refs.NeoUISubsystem)))
+	{
+		Refs.UtilNGP = Refs.NeoUISubsystem->Util_NGP;
+		Refs.MetadataConfig = Refs.NeoUISubsystem->MetadataConfig;
+	}
+
+	Refs.SaveManager = UManagerFuncLib::GetSaveManager();
+	if (Refs.SaveManager && IsSafeLiveObject(static_cast<UObject*>(Refs.SaveManager)))
+	{
+		Refs.SaveGameConfig = Refs.SaveManager->GameSaveConfig;
+		Refs.SaveData = Refs.SaveManager->LastLoadSaveData;
+	}
+
+	return Refs;
+}
+
+bool IsCapturedFirstPlayInheritObject(UObject* Current, UObject* Captured)
+{
+	return Current && Captured && Current == Captured && IsSafeLiveObject(Current);
+}
+
+bool CanRestoreFirstPlayInheritSaveRuntimeState(const FFirstPlayInheritRuntimeRefs& Refs)
+{
+	return Refs.SaveManager == GFirstPlayInheritSnapshot.SaveManager &&
+		Refs.SaveData == GFirstPlayInheritSnapshot.SaveData;
+}
+
+void RebuildFirstPlayInheritKeysFromConfig(UDomainUtil_NGP* UtilNGP, FJHNeoUINGP_InheritanceDataConfig& Config)
+{
+	if (!UtilNGP || !IsSafeLiveObject(static_cast<UObject*>(UtilNGP)))
+		return;
+
+	auto& SourceMap =
+		(Config.Items.IsValid() && Config.Items.Num() > 0) ? Config.Items : Config.IntermediateItems;
+	TArray<FName> Keys{};
+
+	if (SourceMap.IsValid() && SourceMap.NumAllocated() > 0 && SourceMap.Num() > 0)
+	{
+		for (int32 i = 0; i < SourceMap.NumAllocated(); ++i)
+		{
+			if (!SourceMap.IsValidIndex(i))
+				continue;
+			const FJHNeoUINGP_InheritanceDataConfigItem& Item = SourceMap[i].Value();
+			Keys.Add(Item.ItemKey);
+		}
+	}
+
+	UtilNGP->InheritanceKeys = Keys;
+}
+
+void AddAllSettlementEndingIdsForFirstPlayInherit()
+{
+	USettlementResManager* SettlementMgr = UManagerFuncLib::GetSettlementResManager();
+	UDataTable* Table = SettlementMgr ? SettlementMgr->SettlementDataTable : nullptr;
+	if (!Table || !IsSafeLiveObject(static_cast<UObject*>(Table)))
+	{
+		LOGE_STREAM("Tab5System") << "[SDK] FirstPlayInherit: SettlementDataTable is null\n";
+		return;
+	}
+
+	auto& RowMap = Table->RowMap;
+	const int32 AllocatedSlots = RowMap.IsValid() ? RowMap.NumAllocated() : 0;
+	if (AllocatedSlots <= 0)
+		return;
+
+	for (int32 i = 0; i < AllocatedSlots; ++i)
+	{
+		if (!RowMap.IsValidIndex(i))
+			continue;
+		uint8* RowData = RowMap[i].Value();
+		if (!RowData)
+			continue;
+
+		const FSettlementSetting* Row = reinterpret_cast<const FSettlementSetting*>(RowData);
+		if (Row->SettlementType != ESettlementType::Ending)
+			continue;
+
+		UQuestFuncLib::AddEndingId(Row->ID);
+	}
+}
+
+bool CaptureFirstPlayInheritSnapshot(const FFirstPlayInheritRuntimeRefs& Refs)
+{
+	if (GFirstPlayInheritSnapshot.Captured)
+		return true;
+
+	if (!Refs.NeoUISubsystem || !IsSafeLiveObject(static_cast<UObject*>(Refs.NeoUISubsystem)) ||
+		!Refs.UtilNGP || !IsSafeLiveObject(static_cast<UObject*>(Refs.UtilNGP)) ||
+		!Refs.MetadataConfig || !IsSafeLiveObject(static_cast<UObject*>(Refs.MetadataConfig)) ||
+		!Refs.SaveManager || !IsSafeLiveObject(static_cast<UObject*>(Refs.SaveManager)) ||
+		!Refs.SaveGameConfig || !IsSafeLiveObject(static_cast<UObject*>(Refs.SaveGameConfig)))
+	{
+		return false;
+	}
+
+	GFirstPlayInheritSnapshot = {};
+	GFirstPlayInheritSnapshot.Captured = true;
+	GFirstPlayInheritSnapshot.NeoUISubsystem = Refs.NeoUISubsystem;
+	GFirstPlayInheritSnapshot.UtilNGP = Refs.UtilNGP;
+	GFirstPlayInheritSnapshot.MetadataConfig = Refs.MetadataConfig;
+	GFirstPlayInheritSnapshot.SaveManager = Refs.SaveManager;
+	GFirstPlayInheritSnapshot.SaveGameConfig = Refs.SaveGameConfig;
+	GFirstPlayInheritSnapshot.SaveData = Refs.SaveData;
+	GFirstPlayInheritSnapshot.InitialInheritancePoint = Refs.MetadataConfig->InitialInheritancePoint;
+	GFirstPlayInheritSnapshot.InheritanceConfig = Refs.MetadataConfig->NGPInheritanceConfig;
+	GFirstPlayInheritSnapshot.InheritanceKeys = Refs.UtilNGP->InheritanceKeys;
+	GFirstPlayInheritSnapshot.Score = Refs.SaveGameConfig->Score;
+	GFirstPlayInheritSnapshot.EndingIds = Refs.SaveGameConfig->EndingIds;
+	GFirstPlayInheritSnapshot.InheritIds = Refs.SaveGameConfig->InheritIds;
+	GFirstPlayInheritSnapshot.ED9Level = Refs.SaveManager->GetED9Level();
+	GFirstPlayInheritSnapshot.bED9Locked = Refs.SaveManager->GetED9Locked();
+	GFirstPlayInheritSnapshot.bED10Locked = Refs.SaveManager->GetED10Locked();
+	GFirstPlayInheritSnapshot.bExitedHeTu = Refs.SaveManager->GetExitedHeTu();
+	GFirstPlayInheritSnapshot.bExitedLuoShu = Refs.SaveManager->GetExitedLuoShu();
+
+	if (Refs.SaveData && IsSafeLiveObject(static_cast<UObject*>(Refs.SaveData)))
+	{
+		GFirstPlayInheritSnapshot.SaveDataED9Level = Refs.SaveData->ED9Level;
+		GFirstPlayInheritSnapshot.bSaveDataED9Locked = Refs.SaveData->bED9Locked;
+		GFirstPlayInheritSnapshot.bSaveDataED10Locked = Refs.SaveData->bED10Locked;
+		GFirstPlayInheritSnapshot.bSaveDataCompletedHeTu = Refs.SaveData->bCompletedHeTu;
+		GFirstPlayInheritSnapshot.bSaveDataCompletedLuoShu = Refs.SaveData->bCompletedLuoShu;
+	}
+
+	return true;
+}
 
 // ── 未交互驿站可用 ──
 uintptr_t GPostStationAddr = 0;
@@ -559,24 +818,104 @@ void DisableFirstPlayHardPatch()
 
 void EnableFirstPlayInheritPatch()
 {
-	if (GFirstPlayInheritAddr == 0)
+	if (GFirstPlayInheritSdkActive)
+		return;
+
+	const FFirstPlayInheritRuntimeRefs Refs = ResolveFirstPlayInheritRuntimeRefs();
+	if (!CaptureFirstPlayInheritSnapshot(Refs))
 	{
-		const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
-			"JH-Win64-Shipping.exe", kFirstPlayInheritPattern);
-		if (found == 0) { LOGE_STREAM("Tab5System") << "[SDK] FirstPlayInherit AobScan failed\n"; return; }
-		GFirstPlayInheritAddr = found + 0xD;
+		LOGE_STREAM("Tab5System") << "[SDK] FirstPlayInherit: runtime refs unavailable\n";
+		return;
 	}
-	const unsigned char enable[] = { 0x24, 0x00 };
-	InlineHook::HookManager::WriteMemory(GFirstPlayInheritAddr, enable, 2);
-	LOGI_STREAM("Tab5System") << "[SDK] FirstPlayInherit enabled\n";
+
+	Refs.MetadataConfig->InitialInheritancePoint =
+		(std::max)(Refs.MetadataConfig->InitialInheritancePoint, 999999);
+	if (Refs.MetadataConfig->NGPInheritanceConfig.Items.IsValid() &&
+		Refs.MetadataConfig->NGPInheritanceConfig.Items.Num() > 0)
+	{
+		Refs.MetadataConfig->NGPInheritanceConfig.IntermediateItems =
+			Refs.MetadataConfig->NGPInheritanceConfig.Items;
+	}
+	RebuildFirstPlayInheritKeysFromConfig(Refs.UtilNGP, Refs.MetadataConfig->NGPInheritanceConfig);
+
+	Refs.SaveManager->SetScore(999999, true);
+	Refs.SaveManager->SetED9Level((std::max)(Refs.SaveManager->GetED9Level(), 1));
+	Refs.SaveManager->SetED9Locked(false);
+	Refs.SaveManager->SetED10Locked(false);
+	Refs.SaveManager->SetExitedHeTu(true);
+	Refs.SaveManager->SetExitedLuoShu(true);
+
+	if (Refs.SaveData && IsSafeLiveObject(static_cast<UObject*>(Refs.SaveData)))
+	{
+		Refs.SaveData->ED9Level = (std::max)(Refs.SaveData->ED9Level, 1);
+		Refs.SaveData->bED9Locked = false;
+		Refs.SaveData->bED10Locked = false;
+		Refs.SaveData->bCompletedHeTu = true;
+		Refs.SaveData->bCompletedLuoShu = true;
+	}
+
+	AddAllSettlementEndingIdsForFirstPlayInherit();
+	UQuestFuncLib::RefreshInheritIds();
+	RebuildFirstPlayInheritKeysFromConfig(Refs.UtilNGP, Refs.MetadataConfig->NGPInheritanceConfig);
+
+	GFirstPlayInheritSdkActive = true;
+	LOGI_STREAM("Tab5System") << "[SDK] FirstPlayInherit enabled via runtime SDK session\n";
 }
 
 void DisableFirstPlayInheritPatch()
 {
-	if (GFirstPlayInheritAddr == 0) return;
-	const unsigned char disable[] = { 0x84, 0xC0 };
-	InlineHook::HookManager::WriteMemory(GFirstPlayInheritAddr, disable, 2);
-	LOGI_STREAM("Tab5System") << "[SDK] FirstPlayInherit disabled\n";
+	if (!GFirstPlayInheritSnapshot.Captured)
+		return;
+
+	const FFirstPlayInheritRuntimeRefs Refs = ResolveFirstPlayInheritRuntimeRefs();
+	const bool CanRestoreSaveRuntime = CanRestoreFirstPlayInheritSaveRuntimeState(Refs);
+
+	if (IsCapturedFirstPlayInheritObject(
+		static_cast<UObject*>(Refs.MetadataConfig),
+		static_cast<UObject*>(GFirstPlayInheritSnapshot.MetadataConfig)))
+	{
+		Refs.MetadataConfig->InitialInheritancePoint = GFirstPlayInheritSnapshot.InitialInheritancePoint;
+		Refs.MetadataConfig->NGPInheritanceConfig = GFirstPlayInheritSnapshot.InheritanceConfig;
+	}
+
+	if (IsCapturedFirstPlayInheritObject(
+		static_cast<UObject*>(Refs.UtilNGP),
+		static_cast<UObject*>(GFirstPlayInheritSnapshot.UtilNGP)))
+	{
+		Refs.UtilNGP->InheritanceKeys = GFirstPlayInheritSnapshot.InheritanceKeys;
+	}
+
+	if (IsCapturedFirstPlayInheritObject(
+		static_cast<UObject*>(Refs.SaveGameConfig),
+		static_cast<UObject*>(GFirstPlayInheritSnapshot.SaveGameConfig)))
+	{
+		Refs.SaveManager->SetScore(GFirstPlayInheritSnapshot.Score, true);
+		Refs.SaveGameConfig->EndingIds = GFirstPlayInheritSnapshot.EndingIds;
+		Refs.SaveGameConfig->InheritIds = GFirstPlayInheritSnapshot.InheritIds;
+	}
+
+	if (CanRestoreSaveRuntime && Refs.SaveManager &&
+		IsSafeLiveObject(static_cast<UObject*>(Refs.SaveManager)))
+	{
+		Refs.SaveManager->SetED9Level(GFirstPlayInheritSnapshot.ED9Level);
+		Refs.SaveManager->SetED9Locked(GFirstPlayInheritSnapshot.bED9Locked);
+		Refs.SaveManager->SetED10Locked(GFirstPlayInheritSnapshot.bED10Locked);
+		Refs.SaveManager->SetExitedHeTu(GFirstPlayInheritSnapshot.bExitedHeTu);
+		Refs.SaveManager->SetExitedLuoShu(GFirstPlayInheritSnapshot.bExitedLuoShu);
+
+		if (Refs.SaveData && IsSafeLiveObject(static_cast<UObject*>(Refs.SaveData)))
+		{
+			Refs.SaveData->ED9Level = GFirstPlayInheritSnapshot.SaveDataED9Level;
+			Refs.SaveData->bED9Locked = GFirstPlayInheritSnapshot.bSaveDataED9Locked;
+			Refs.SaveData->bED10Locked = GFirstPlayInheritSnapshot.bSaveDataED10Locked;
+			Refs.SaveData->bCompletedHeTu = GFirstPlayInheritSnapshot.bSaveDataCompletedHeTu;
+			Refs.SaveData->bCompletedLuoShu = GFirstPlayInheritSnapshot.bSaveDataCompletedLuoShu;
+		}
+	}
+
+	GFirstPlayInheritSnapshot = {};
+	GFirstPlayInheritSdkActive = false;
+	LOGI_STREAM("Tab5System") << "[SDK] FirstPlayInherit runtime session restored\n";
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
