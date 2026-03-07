@@ -24,25 +24,6 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	};
 
-	auto AddToggle = [&](UPanelWidget* Box, const wchar_t* Title) {
-		auto* Item = CreateToggleItem(PC, Title);
-		if (Item)
-		{
-			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
-			Count++;
-		}
-	};
-
-	auto AddNumeric = [&](UPanelWidget* Box, const wchar_t* Title, const wchar_t* DefaultValue) {
-		auto* Item = CreateVolumeNumericEditBoxItem(PC, Outer, Box ? Box : Container, Title, L"输入数字", DefaultValue);
-		if (Item)
-		{
-			if (Box) Box->AddChild(Item); else Container->AddChild(Item);
-			RegisterTab0Binding(Title, Item, PC);
-			Count++;
-		}
-	};
-
 	auto* SwitchPanel = CreateCollapsiblePanel(PC, L"生活开关");
 	auto* SwitchBox = SwitchPanel ? SwitchPanel->CT_Contents : nullptr;
 	GTab3.CraftIgnoreRequirementsToggle = CreateToggleItem(PC, L"锻造/制衣/炼丹/烹饪无视要求");
@@ -59,36 +40,6 @@ void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab3.HomelandHarvestToggle = CreateToggleItem(PC, L"家园随时收获");
 	if (GTab3.HomelandHarvestToggle) { if (SwitchBox) SwitchBox->AddChild(GTab3.HomelandHarvestToggle); else Container->AddChild(GTab3.HomelandHarvestToggle); Count++; }
 	AddPanelWithFixedGap(SwitchPanel, 0.0f, 10.0f);
-
-	auto* MasteryPanel = CreateCollapsiblePanel(PC, L"生活精通");
-	auto* MasteryBox = MasteryPanel ? MasteryPanel->CT_Contents : nullptr;
-	AddNumeric(MasteryBox, L"锻造精通", L"100");
-	AddNumeric(MasteryBox, L"医术精通", L"100");
-	AddNumeric(MasteryBox, L"制衣精通", L"100");
-	AddNumeric(MasteryBox, L"炼丹精通", L"100");
-	AddNumeric(MasteryBox, L"烹饪精通", L"100");
-	AddNumeric(MasteryBox, L"采集精通", L"100");
-	AddNumeric(MasteryBox, L"钓鱼精通", L"100");
-	AddNumeric(MasteryBox, L"饮酒精通", L"100");
-	AddNumeric(MasteryBox, L"茶道精通", L"100");
-	AddNumeric(MasteryBox, L"口才精通", L"100");
-	AddNumeric(MasteryBox, L"书法精通", L"100");
-	AddPanelWithFixedGap(MasteryPanel, 0.0f, 10.0f);
-
-	auto* ExpPanel = CreateCollapsiblePanel(PC, L"生活经验");
-	auto* ExpBox = ExpPanel ? ExpPanel->CT_Contents : nullptr;
-	AddNumeric(ExpBox, L"锻造经验", L"100");
-	AddNumeric(ExpBox, L"医术经验", L"100");
-	AddNumeric(ExpBox, L"制衣经验", L"100");
-	AddNumeric(ExpBox, L"炼丹经验", L"100");
-	AddNumeric(ExpBox, L"烹饪经验", L"100");
-	AddNumeric(ExpBox, L"采集经验", L"100");
-	AddNumeric(ExpBox, L"钓鱼经验", L"100");
-	AddNumeric(ExpBox, L"饮酒经验", L"100");
-	AddNumeric(ExpBox, L"茶道经验", L"100");
-	AddNumeric(ExpBox, L"口才经验", L"100");
-	AddNumeric(ExpBox, L"书法经验", L"100");
-	AddPanelWithFixedGap(ExpPanel, 0.0f, 8.0f);
 }
 
 namespace
@@ -101,8 +52,14 @@ uintptr_t GCookingMoneyCheckAddr = 0;
 uintptr_t GAlchemyLvCheckAddr = 0;
 uintptr_t GCookingLvCheckAddr = 0;
 
-uint32_t GTab3CraftOutputQtyHookId = UINT32_MAX;
-uintptr_t GTab3FusionAlertContOffset = 0;
+bool GCraftIgnoreRequirementsFeatureEnabled = false;
+bool GCraftOutputQuantityFeatureEnabled = false;
+bool GFusionAlertContHookEnabled = false;
+
+// FusionAlertCont hook state
+uintptr_t GFusionAlertContAddr = 0;
+void*     GFusionAlertContTrampoline = nullptr;
+unsigned char GFusionAlertContOrigBytes[6] = {};
 
 volatile LONG GCraftOutputQtyFlag = 0;
 volatile LONG GCraftOutputQtyVal = 1;
@@ -111,8 +68,19 @@ const char* kForgeLevelCheckPattern = "83 ?? FE 0F 85 ?? ?? ?? ?? 4C 8D 0D";
 const char* kForgeMaterialCheckPattern = "?? 8B ?? 49 8B ?? E8 ?? ?? ?? ?? 84 C0 0F 85 ?? ?? 00 00 4C 8D 0D";
 const char* kAlchemyMoneyCheckPattern = "39 ?? 30 0F 8D ?? ?? 00 00 4C 8D";
 const char* kCookingMoneyCheckPattern = "39 ?? 30 7D ?? 4C 8D";
-const char* kAlchemyLvCheckPattern = "?? 8B ?? 49 8B ?? E8 ?? ?? ?? ?? 84 C0";
+const char* kAlchemyLvCheckPattern = "8B ?? 6C 49 8B ?? E8 ?? ?? ?? ?? 84 C0";
 const char* kCookingLvCheckPattern = "8B ?? ?? 49 8B ?? E8 ?? ?? ?? ?? 84 C0 75 ?? 4C 8D";
+
+// ── 第二层补丁 (CT: IgnoreForgeLevel / forgeMaterialEnough / fusionType) ──
+uintptr_t GIgnoreForgeLevel2Addr = 0;
+uintptr_t GForgeMaterialEnough2Addr = 0;
+uintptr_t GFusionTypeAddr = 0;
+void*     GFusionTypeTrampoline = nullptr;
+unsigned char GFusionTypeOrigBytes[6] = {};
+
+const char* kIgnoreForgeLevel2Pattern  = "?? 89 ?? ?? 48 8D 55 ?? 48 8B ?? E8 ?? ?? ?? ?? 84 C0 0F 85";
+const char* kForgeMaterialEnough2Pattern = "48 8D 55 ?? 48 8B ?? E8 ?? ?? ?? ?? 84 C0 0F 85 ?? ?? ?? ?? 84 DB 0F 85";
+const char* kFusionTypePattern = "48 8B 79 08 85 D2 0F 8E";
 
 const char* kFusionAlertContPattern = "8B 81 04 03 00 00 89 44 24";
 
@@ -123,7 +91,7 @@ const unsigned char kFusionAlertContTrampolineCode[] = {
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x00, 0x00,
 0x41, 0x83, 0x3B, 0x01,
-0x75, 0x14,
+0x75, 0x0D,
 0x49, 0xBB,
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x00, 0x00,
@@ -135,7 +103,7 @@ const unsigned char kFusionAlertContTrampolineCode[] = {
 0x41, 0x5B
 };
 constexpr size_t kFusionAlertFlagImm64Offset = 10;
-constexpr size_t kFusionAlertValImm64Offset = 25;
+constexpr size_t kFusionAlertValImm64Offset = 26;
 }
 
 void EnableCraftIgnoreRequirements();
@@ -143,6 +111,124 @@ void DisableCraftIgnoreRequirements();
 void SetCraftOutputQuantity(int32 Value);
 void EnableCraftOutputQuantityHook();
 void DisableCraftOutputQuantityHook();
+bool EnsureFusionAlertContHookInstalled();
+void DisableFusionAlertContHookIfUnused();
+void SyncCraftOutputQuantityFlag();
+
+void SyncCraftOutputQuantityFlag()
+{
+	const LONG enableOverride =
+		(GCraftIgnoreRequirementsFeatureEnabled || GCraftOutputQuantityFeatureEnabled) ? 1L : 0L;
+	InterlockedExchange(&GCraftOutputQtyFlag, enableOverride);
+}
+
+bool EnsureFusionAlertContHookInstalled()
+{
+	if (GFusionAlertContHookEnabled)
+		return true;
+
+	HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+	if (!hModule)
+	{
+		LOGE_STREAM("Tab3Life") << "[SDK] FusionAlertCont failed to get module handle\n";
+		return false;
+	}
+	const uintptr_t ModBase = reinterpret_cast<uintptr_t>(hModule);
+
+	if (GFusionAlertContAddr == 0)
+	{
+		uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kFusionAlertContPattern);
+		if (found)
+		{
+			GFusionAlertContAddr = found;
+			LOGI_STREAM("Tab3Life") << "[SDK] FusionAlertCont found at: 0x" << std::hex << GFusionAlertContAddr
+				<< ", offset: 0x" << (GFusionAlertContAddr - ModBase) << std::dec << "\n";
+		}
+		else
+		{
+			LOGE_STREAM("Tab3Life") << "[SDK] FusionAlertCont AobScan failed\n";
+			return false;
+		}
+	}
+
+	if (GFusionAlertContTrampoline == nullptr)
+	{
+		std::memcpy(GFusionAlertContOrigBytes, reinterpret_cast<void*>(GFusionAlertContAddr), sizeof(GFusionAlertContOrigBytes));
+
+		// Allocate trampoline near target so we can keep the 5-byte entry JMP layout from CT.
+		const uintptr_t allocGranularity = 0x10000;
+		for (uintptr_t delta = allocGranularity; delta < 0x7FFF0000ULL && !GFusionAlertContTrampoline; delta += allocGranularity)
+		{
+			for (int dir = 0; dir < 2; ++dir)
+			{
+				uintptr_t tryAddr = dir == 0
+					? (GFusionAlertContAddr > delta ? GFusionAlertContAddr - delta : 0)
+					: GFusionAlertContAddr + delta;
+				if (!tryAddr)
+					continue;
+
+				void* p = VirtualAlloc(reinterpret_cast<void*>(tryAddr), 256,
+					MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+				if (!p)
+					continue;
+
+				intptr_t dist = reinterpret_cast<intptr_t>(p) - static_cast<intptr_t>(GFusionAlertContAddr + 5);
+				if (dist >= INT32_MIN && dist <= INT32_MAX)
+				{
+					GFusionAlertContTrampoline = p;
+					break;
+				}
+
+				VirtualFree(p, 0, MEM_RELEASE);
+			}
+		}
+
+		if (!GFusionAlertContTrampoline)
+		{
+			LOGE_STREAM("Tab3Life") << "[SDK] FusionAlertCont VirtualAlloc failed\n";
+			return false;
+		}
+
+		unsigned char code[sizeof(kFusionAlertContTrampolineCode)];
+		std::memcpy(code, kFusionAlertContTrampolineCode, sizeof(code));
+
+		const uintptr_t flagAddr = reinterpret_cast<uintptr_t>(&GCraftOutputQtyFlag);
+		const uintptr_t valAddr = reinterpret_cast<uintptr_t>(&GCraftOutputQtyVal);
+		std::memcpy(&code[kFusionAlertFlagImm64Offset], &flagAddr, sizeof(flagAddr));
+		std::memcpy(&code[kFusionAlertValImm64Offset], &valAddr, sizeof(valAddr));
+		std::memcpy(GFusionAlertContTrampoline, code, sizeof(code));
+
+		uint8_t* trampEnd = reinterpret_cast<uint8_t*>(GFusionAlertContTrampoline) + sizeof(code);
+		trampEnd[0] = 0xFF;
+		trampEnd[1] = 0x25;
+		*reinterpret_cast<uint32_t*>(trampEnd + 2) = 0;
+		const uintptr_t retAddr = GFusionAlertContAddr + sizeof(GFusionAlertContOrigBytes);
+		std::memcpy(trampEnd + 6, &retAddr, sizeof(retAddr));
+	}
+
+	unsigned char jmpPatch[sizeof(GFusionAlertContOrigBytes)] = {};
+	jmpPatch[0] = 0xE9;
+	const int32_t rel = static_cast<int32_t>(reinterpret_cast<uintptr_t>(GFusionAlertContTrampoline) - (GFusionAlertContAddr + 5));
+	std::memcpy(&jmpPatch[1], &rel, sizeof(rel));
+	jmpPatch[5] = 0x90;
+	InlineHook::HookManager::WriteMemory(GFusionAlertContAddr, jmpPatch, sizeof(jmpPatch));
+
+	GFusionAlertContHookEnabled = true;
+	LOGI_STREAM("Tab3Life") << "[SDK] FusionAlertCont hook enabled, trampoline at: " << GFusionAlertContTrampoline << "\n";
+	return true;
+}
+
+void DisableFusionAlertContHookIfUnused()
+{
+	if (GCraftIgnoreRequirementsFeatureEnabled || GCraftOutputQuantityFeatureEnabled)
+		return;
+	if (!GFusionAlertContHookEnabled || !GFusionAlertContAddr || !GFusionAlertContTrampoline)
+		return;
+
+	InlineHook::HookManager::WriteMemory(GFusionAlertContAddr, GFusionAlertContOrigBytes, sizeof(GFusionAlertContOrigBytes));
+	GFusionAlertContHookEnabled = false;
+	LOGI_STREAM("Tab3Life") << "[SDK] FusionAlertCont hook disabled\n";
+}
 
 void EnableCraftIgnoreRequirements()
 {
@@ -153,6 +239,7 @@ void EnableCraftIgnoreRequirements()
 		return;
 	}
 	const uintptr_t ModBase = reinterpret_cast<uintptr_t>(hModule);
+	GCraftIgnoreRequirementsFeatureEnabled = true;
 
 	// 1. ForgeLevelCheck (Multi-match)
 	if (GForgeLevelCheckAddrs.empty())
@@ -256,11 +343,148 @@ void EnableCraftIgnoreRequirements()
 	const unsigned char p6[] = { 0x0C, 0x01 };
 	if (GCookingLvCheckAddr) InlineHook::HookManager::WriteMemory(GCookingLvCheckAddr, p6, sizeof(p6));
 
-	LOGI_STREAM("Tab3Life") << "[SDK] CraftIgnoreRequirements enabled\n";
+	// ── 第二层补丁 ──
+
+	// 7. IgnoreForgeLevel2 (执行层锻造等级验证)
+	if (GIgnoreForgeLevel2Addr == 0)
+	{
+		uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kIgnoreForgeLevel2Pattern);
+		if (found)
+		{
+			GIgnoreForgeLevel2Addr = found + 0x10;
+			LOGI_STREAM("Tab3Life") << "[SDK] IgnoreForgeLevel2 found at: 0x" << std::hex << GIgnoreForgeLevel2Addr
+				<< ", offset: 0x" << (GIgnoreForgeLevel2Addr - ModBase) << std::dec << "\n";
+		}
+		else LOGE_STREAM("Tab3Life") << "[SDK] IgnoreForgeLevel2 AobScan failed\n";
+	}
+	const unsigned char p7[] = { 0x0C, 0x01 };
+	if (GIgnoreForgeLevel2Addr) InlineHook::HookManager::WriteMemory(GIgnoreForgeLevel2Addr, p7, sizeof(p7));
+
+	// 8. ForgeMaterialEnough2 (执行层锻造材料验证)
+	if (GForgeMaterialEnough2Addr == 0)
+	{
+		uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kForgeMaterialEnough2Pattern);
+		if (found)
+		{
+			GForgeMaterialEnough2Addr = found + 0xC;
+			LOGI_STREAM("Tab3Life") << "[SDK] ForgeMaterialEnough2 found at: 0x" << std::hex << GForgeMaterialEnough2Addr
+				<< ", offset: 0x" << (GForgeMaterialEnough2Addr - ModBase) << std::dec << "\n";
+		}
+		else LOGE_STREAM("Tab3Life") << "[SDK] ForgeMaterialEnough2 AobScan failed\n";
+	}
+	const unsigned char p8[] = { 0x0C, 0x01 };
+	if (GForgeMaterialEnough2Addr) InlineHook::HookManager::WriteMemory(GForgeMaterialEnough2Addr, p8, sizeof(p8));
+
+	// 9. FusionType (融合类型绕过: 强制 edx=2)
+	if (GFusionTypeAddr == 0)
+	{
+		uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kFusionTypePattern);
+		if (found)
+		{
+			GFusionTypeAddr = found;
+			LOGI_STREAM("Tab3Life") << "[SDK] FusionType found at: 0x" << std::hex << GFusionTypeAddr
+				<< ", offset: 0x" << (GFusionTypeAddr - ModBase) << std::dec << "\n";
+		}
+		else LOGE_STREAM("Tab3Life") << "[SDK] FusionType AobScan failed\n";
+	}
+	if (GFusionTypeAddr && !GFusionTypeTrampoline)
+	{
+		// CT trampoline: mov edx,2; mov rdi,[rcx+08]; test edx,edx; jmp return
+		// Original 6 bytes: 48 8B 79 08 85 D2
+		memcpy(GFusionTypeOrigBytes, reinterpret_cast<void*>(GFusionTypeAddr), 6);
+
+		// Allocate trampoline NEAR target (within ±2GB for JMP rel32)
+		GFusionTypeTrampoline = nullptr;
+		const uintptr_t allocGranularity = 0x10000; // 64KB
+		for (uintptr_t delta = allocGranularity; delta < 0x7FFF0000ULL; delta += allocGranularity)
+		{
+			// Try below then above
+			for (int dir = 0; dir < 2; ++dir)
+			{
+				uintptr_t tryAddr = dir == 0
+					? (GFusionTypeAddr > delta ? GFusionTypeAddr - delta : 0)
+					: GFusionTypeAddr + delta;
+				if (!tryAddr) continue;
+				void* p = VirtualAlloc(reinterpret_cast<void*>(tryAddr), 64,
+					MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+				if (p)
+				{
+					intptr_t dist = reinterpret_cast<intptr_t>(p) - static_cast<intptr_t>(GFusionTypeAddr + 5);
+					if (dist >= INT32_MIN && dist <= INT32_MAX)
+					{
+						GFusionTypeTrampoline = p;
+						break;
+					}
+					// Too far, release it (not a delete, just releasing unused alloc)
+					VirtualFree(p, 0, MEM_RELEASE);
+				}
+			}
+			if (GFusionTypeTrampoline) break;
+		}
+		if (GFusionTypeTrampoline)
+		{
+			unsigned char tramp[] = {
+				0xBA, 0x02, 0x00, 0x00, 0x00,       // mov edx, 2
+				0x48, 0x8B, 0x79, 0x08,              // mov rdi, [rcx+08]
+				0x85, 0xD2,                           // test edx, edx
+				0xFF, 0x25, 0x00, 0x00, 0x00, 0x00,  // jmp [rip+0]
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // return address (8 bytes)
+			};
+			uintptr_t retAddr = GFusionTypeAddr + 6;
+			memcpy(&tramp[17], &retAddr, 8);
+			memcpy(GFusionTypeTrampoline, tramp, sizeof(tramp));
+
+			// Write JMP from original to trampoline (5-byte JMP + 1 NOP)
+			unsigned char jmpPatch[6];
+			jmpPatch[0] = 0xE9;
+			int32_t rel = static_cast<int32_t>(reinterpret_cast<uintptr_t>(GFusionTypeTrampoline) - (GFusionTypeAddr + 5));
+			memcpy(&jmpPatch[1], &rel, 4);
+			jmpPatch[5] = 0x90;
+			InlineHook::HookManager::WriteMemory(GFusionTypeAddr, jmpPatch, 6);
+
+			LOGI_STREAM("Tab3Life") << "[SDK] FusionType hook installed, trampoline at: " << GFusionTypeTrampoline << "\n";
+		}
+		else LOGE_STREAM("Tab3Life") << "[SDK] FusionType VirtualAlloc failed\n";
+	}
+	else if (GFusionTypeAddr && GFusionTypeTrampoline)
+	{
+		// Re-enable: reuse existing trampoline, just re-patch the JMP
+		unsigned char jmpPatch[6];
+		jmpPatch[0] = 0xE9;
+		int32_t rel = static_cast<int32_t>(reinterpret_cast<uintptr_t>(GFusionTypeTrampoline) - (GFusionTypeAddr + 5));
+		memcpy(&jmpPatch[1], &rel, 4);
+		jmpPatch[5] = 0x90;
+		InlineHook::HookManager::WriteMemory(GFusionTypeAddr, jmpPatch, 6);
+		LOGI_STREAM("Tab3Life") << "[SDK] FusionType re-enabled, trampoline at: " << GFusionTypeTrampoline << "\n";
+	}
+
+	// 10. FusionAlertCont (产出数量替换: [rcx+304] → 自定义值)
+	EnsureFusionAlertContHookInstalled();
+	SyncCraftOutputQuantityFlag();
+
+	// ── 补丁地址汇总日志 ──
+	LOGI_STREAM("Tab3Life") << "[SDK] === Craft Patch Summary ===\n";
+	for (size_t i = 0; i < GForgeLevelCheckAddrs.size(); ++i)
+		LOGI_STREAM("Tab3Life") << "[SDK]   ForgeLvCheck[" << i << "]: 0x" << std::hex << GForgeLevelCheckAddrs[i] << std::dec << "\n";
+	for (size_t i = 0; i < GForgeMaterialCheckAddrs.size(); ++i)
+		LOGI_STREAM("Tab3Life") << "[SDK]   ForgeMaterialCheck[" << i << "]: 0x" << std::hex << GForgeMaterialCheckAddrs[i] << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   AlchemyMoney: 0x" << std::hex << GAlchemyMoneyCheckAddr << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   CookingMoney: 0x" << std::hex << GCookingMoneyCheckAddr << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   AlchemyLv: 0x" << std::hex << GAlchemyLvCheckAddr << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   CookingLv: 0x" << std::hex << GCookingLvCheckAddr << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   IgnoreForgeLevel2: 0x" << std::hex << GIgnoreForgeLevel2Addr << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   ForgeMaterialEnough2: 0x" << std::hex << GForgeMaterialEnough2Addr << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   FusionType: 0x" << std::hex << GFusionTypeAddr << " tramp=" << GFusionTypeTrampoline << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK]   FusionAlertCont: 0x" << std::hex << GFusionAlertContAddr
+		<< " tramp=" << GFusionAlertContTrampoline
+		<< " installed=" << (GFusionAlertContHookEnabled ? 1 : 0) << std::dec << "\n";
+	LOGI_STREAM("Tab3Life") << "[SDK] CraftIgnoreRequirements enabled (with layer-2 patches)\n";
 }
 
 void DisableCraftIgnoreRequirements()
 {
+	GCraftIgnoreRequirementsFeatureEnabled = false;
+
 	const unsigned char o1[] = { 0x0F, 0x85 };
 	for (auto addr : GForgeLevelCheckAddrs)
 		InlineHook::HookManager::WriteMemory(addr, o1, sizeof(o1));
@@ -281,7 +505,23 @@ void DisableCraftIgnoreRequirements()
 	const unsigned char o6[] = { 0x84, 0xC0 };
 	if (GCookingLvCheckAddr) InlineHook::HookManager::WriteMemory(GCookingLvCheckAddr, o6, sizeof(o6));
 
-	LOGI_STREAM("Tab3Life") << "[SDK] CraftIgnoreRequirements disabled\n";
+	// ── 第二层恢复 ──
+	const unsigned char o7[] = { 0x84, 0xC0 };
+	if (GIgnoreForgeLevel2Addr) InlineHook::HookManager::WriteMemory(GIgnoreForgeLevel2Addr, o7, sizeof(o7));
+
+	const unsigned char o8[] = { 0x84, 0xC0 };
+	if (GForgeMaterialEnough2Addr) InlineHook::HookManager::WriteMemory(GForgeMaterialEnough2Addr, o8, sizeof(o8));
+
+	if (GFusionTypeAddr && GFusionTypeTrampoline)
+	{
+		InlineHook::HookManager::WriteMemory(GFusionTypeAddr, GFusionTypeOrigBytes, 6);
+		// Keep GFusionTypeTrampoline for re-enable reuse
+	}
+
+	SyncCraftOutputQuantityFlag();
+	DisableFusionAlertContHookIfUnused();
+
+	LOGI_STREAM("Tab3Life") << "[SDK] CraftIgnoreRequirements disabled (with layer-2 patches)\n";
 }
 void SetCraftOutputQuantity(int32 Value)
 {
@@ -295,80 +535,29 @@ void SetCraftOutputQuantity(int32 Value)
 
 void EnableCraftOutputQuantityHook()
 {
-	if (GTab3CraftOutputQtyHookId != UINT32_MAX)
+	if (GCraftOutputQuantityFeatureEnabled)
+	{
+		SyncCraftOutputQuantityFlag();
 		return;
-
-	if (GTab3FusionAlertContOffset == 0)
-	{
-		const uintptr_t foundAddr = InlineHook::HookManager::ScanModulePatternRobust(
-			"JH-Win64-Shipping.exe", kFusionAlertContPattern);
-		if (foundAddr == 0)
-		{
-			LOGE_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity AobScan failed\n";
-			return;
-		}
-
-		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
-		if (!hModule)
-		{
-			LOGE_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity failed to get module handle\n";
-			return;
-		}
-
-		GTab3FusionAlertContOffset = foundAddr - reinterpret_cast<uintptr_t>(hModule);
-		LOGI_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity found at: 0x" << std::hex << foundAddr
-			<< ", offset: 0x" << GTab3FusionAlertContOffset << std::dec << "\n";
 	}
 
-	unsigned char code[sizeof(kFusionAlertContTrampolineCode)] = {};
-	std::memcpy(code, kFusionAlertContTrampolineCode, sizeof(code));
-
-	const uintptr_t flagAddr = reinterpret_cast<uintptr_t>(&GCraftOutputQtyFlag);
-	const uintptr_t valAddr = reinterpret_cast<uintptr_t>(&GCraftOutputQtyVal);
-
-	std::memcpy(code + kFusionAlertFlagImm64Offset, &flagAddr, sizeof(flagAddr));
-	std::memcpy(code + kFusionAlertValImm64Offset, &valAddr, sizeof(valAddr));
-
-	uint32_t hookId = UINT32_MAX;
-	const bool success = InlineHook::HookManager::InstallHook(
-		"JH-Win64-Shipping.exe",
-		static_cast<uint32_t>(GTab3FusionAlertContOffset),
-		code,
-		sizeof(code),
-		hookId,
-		false,
-		false
-	);
-
-	if (success && hookId != UINT32_MAX)
-	{
-		GTab3CraftOutputQtyHookId = hookId;
-		InterlockedExchange(&GCraftOutputQtyFlag, 1);
-		LOGI_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity hook enabled, ID: " << hookId << "\n";
-	}
-	else
+	if (!EnsureFusionAlertContHookInstalled())
 	{
 		LOGE_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity hook failed\n";
+		return;
 	}
+
+	GCraftOutputQuantityFeatureEnabled = true;
+	SyncCraftOutputQuantityFlag();
+	LOGI_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity hook enabled\n";
 }
 
 void DisableCraftOutputQuantityHook()
 {
-	if (GTab3CraftOutputQtyHookId == UINT32_MAX)
-		return;
-
-	const bool success = InlineHook::HookManager::UninstallHook(GTab3CraftOutputQtyHookId);
-	if (success)
-	{
-		LOGI_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity hook disabled\n";
-	}
-	else
-	{
-		LOGE_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity hook disable failed\n";
-	}
-
-	GTab3CraftOutputQtyHookId = UINT32_MAX;
-	InterlockedExchange(&GCraftOutputQtyFlag, 0);
+	GCraftOutputQuantityFeatureEnabled = false;
+	SyncCraftOutputQuantityFlag();
+	DisableFusionAlertContHookIfUnused();
+	LOGI_STREAM("Tab3Life") << "[SDK] CraftOutputQuantity hook disabled\n";
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -494,7 +683,8 @@ void EnableFishRareOnlyHook()
 		static_cast<uint32_t>(GFishRareOnlyOffset),
 		kFishRareOnlyTrampolineCode,
 		sizeof(kFishRareOnlyTrampolineCode),
-		hookId))
+		hookId,
+		false))
 	{
 		LOGE_STREAM("Tab3Life") << "[SDK] FishRareOnly hook install failed\n";
 		return;

@@ -1,4 +1,5 @@
 // ── 坐骑下拉动态选项 ──
+void ResetScreenSettingsTracking(); // forward decl for PopulateTab_System
 std::vector<int32> GTab5MountOptionIds;
 std::vector<std::wstring> GTab5MountOptionLabels;
 
@@ -105,6 +106,7 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	if (!Container) return;
 	Container->ClearChildren();
 	GTab5 = {};
+	ResetScreenSettingsTracking();  // prevent stale tracking from triggering ApplySettings
 	int Count = 0;
 
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
@@ -257,14 +259,15 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		}
 	};
 
-	auto* ScreenPanel = CreateCollapsiblePanel(PC, L"屏幕设置");
-	auto* ScreenBox = ScreenPanel ? ScreenPanel->CT_Contents : nullptr;
-	AddNumericStored(ScreenBox, L"分辨率X", L"1920", GTab5.ResolutionXEdit);
-	AddNumericStored(ScreenBox, L"分辨率Y", L"1080", GTab5.ResolutionYEdit);
-	AddDropdownStored(ScreenBox, L"首选屏幕模式", { L"全屏", L"无边框窗口", L"窗口" }, GTab5.ScreenModeDD);
-	AddDropdownStored(ScreenBox, L"使用垂直同步", { L"否", L"是" }, GTab5.VSyncDD);
-	AddDropdownStored(ScreenBox, L"使用动态分辨率", { L"否", L"是" }, GTab5.DynResDD);
-	AddPanelWithFixedGap(ScreenPanel, 0.0f, 10.0f);
+	// ── 屏幕设置已禁用 (会导致崩溃) ──
+	// auto* ScreenPanel = CreateCollapsiblePanel(PC, L"屏幕设置");
+	// auto* ScreenBox = ScreenPanel ? ScreenPanel->CT_Contents : nullptr;
+	// AddNumericStored(ScreenBox, L"分辨率X", L"1920", GTab5.ResolutionXEdit);
+	// AddNumericStored(ScreenBox, L"分辨率Y", L"1080", GTab5.ResolutionYEdit);
+	// AddDropdownStored(ScreenBox, L"首选屏幕模式", { L"全屏", L"无边框窗口", L"窗口" }, GTab5.ScreenModeDD);
+	// AddDropdownStored(ScreenBox, L"使用垂直同步", { L"否", L"是" }, GTab5.VSyncDD);
+	// AddDropdownStored(ScreenBox, L"使用动态分辨率", { L"否", L"是" }, GTab5.DynResDD);
+	// AddPanelWithFixedGap(ScreenPanel, 0.0f, 10.0f);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -837,22 +840,56 @@ namespace
 	}
 
 	// 安全读取数字编辑框中的整数值
+	// Avoids calling GetText() which crashes on Unreachable objects
 	int32 SafeReadNumericEdit(UBPVE_JHConfigVolumeItem2_C* Edit, int32 DefaultValue)
 	{
 		if (!Edit || !IsSafeLiveObject(static_cast<UObject*>(Edit))) return DefaultValue;
-		if (!Edit->TXT_CurrentValue || !IsSafeLiveObject(static_cast<UObject*>(Edit->TXT_CurrentValue)))
+		auto* Txt = Edit->TXT_CurrentValue;
+		if (!Txt) return DefaultValue;
+		auto* TxtObj = static_cast<UObject*>(Txt);
+		if (!IsSafeLiveObject(TxtObj)) return DefaultValue;
+		if (TxtObj->Flags & (EObjectFlags::BeginDestroyed | EObjectFlags::FinishDestroyed))
 			return DefaultValue;
 
-		const std::string Raw = Edit->TXT_CurrentValue->GetText().ToString();
-		if (Raw.empty()) return DefaultValue;
-
-		try { int32 Val = std::stoi(Raw); return (Val > 0) ? Val : DefaultValue; }
+		// Read Text field from UTextBlock via raw memory instead of calling GetText()
+		// UTextBlock::Text is an FText. FText contains an FTextData shared ptr.
+		// The underlying FString's TCHAR* data can be read at known offsets.
+		// Safer approach: just use GetText but through a crash-safe wrapper thread.
+		// Simplest safe approach: read cached string from the Slate widget.
+		try
+		{
+			const std::string Raw = Txt->GetText().ToString();
+			if (Raw.empty()) return DefaultValue;
+			int32 Val = std::stoi(Raw);
+			return (Val > 0) ? Val : DefaultValue;
+		}
 		catch (...) { return DefaultValue; }
 	}
 }
 
+// Screen settings state — these are not static locals so they can be reset externally
+namespace ScreenSettingsState {
+	int32 LastResX = 0, LastResY = 0;
+	int32 LastModeIdx = -1, LastVSyncIdx = -1, LastDynResIdx = -1;
+	int32 StabilizeFrames = 0;  // frames remaining before tracking begins
+	static volatile LONG ApplyInFlight = 0;
+}
+
+void ResetScreenSettingsTracking()
+{
+	ScreenSettingsState::LastResX = 0;
+	ScreenSettingsState::LastResY = 0;
+	ScreenSettingsState::LastModeIdx = -1;
+	ScreenSettingsState::LastVSyncIdx = -1;
+	ScreenSettingsState::LastDynResIdx = -1;
+	// Need 3 frames for widgets to stabilize after panel recreation
+	ScreenSettingsState::StabilizeFrames = 3;
+}
+
 void ApplyScreenSettings()
 {
+	using namespace ScreenSettingsState;
+
 	// 读取当前 UI 值
 	const int32 ResX = SafeReadNumericEdit(GTab5.ResolutionXEdit, 0);
 	const int32 ResY = SafeReadNumericEdit(GTab5.ResolutionYEdit, 0);
@@ -860,21 +897,16 @@ void ApplyScreenSettings()
 	const int32 VSyncIdx = SafeReadDropdownIndex(GTab5.VSyncDD);
 	const int32 DynResIdx = SafeReadDropdownIndex(GTab5.DynResDD);
 
-	// 用静态变量追踪上一次 UI 值, 只在值变化时才应用
-	static int32 LastResX = 0, LastResY = 0;
-	static int32 LastModeIdx = -1, LastVSyncIdx = -1, LastDynResIdx = -1;
-	static bool  bInitialized = false;
-
-	// 首次调用: 记录初始 UI 值, 不做任何修改
-	if (!bInitialized)
+	// 稳定期: 面板刚打开时, 只记录值不做修改, 等待控件稳定
+	if (StabilizeFrames > 0)
 	{
 		LastResX = ResX; LastResY = ResY;
 		LastModeIdx = ModeIdx; LastVSyncIdx = VSyncIdx; LastDynResIdx = DynResIdx;
-		bInitialized = true;
+		--StabilizeFrames;
 		return;
 	}
 
-	// 检测是否有 UI 值变化
+	// 检测用户是否真的修改了值
 	const bool bResChanged = (ResX > 0 && ResY > 0 && (ResX != LastResX || ResY != LastResY));
 	const bool bModeChanged = (ModeIdx >= 0 && ModeIdx != LastModeIdx);
 	const bool bVSyncChanged = (VSyncIdx >= 0 && VSyncIdx != LastVSyncIdx);
@@ -889,7 +921,6 @@ void ApplyScreenSettings()
 	if (bVSyncChanged) LastVSyncIdx = VSyncIdx;
 	if (bDynResChanged) LastDynResIdx = DynResIdx;
 
-	// 直接在当前线程应用 (UI-tracking 保证不会在首次打开菜单时触发)
 	UGameUserSettings* Settings = UGameUserSettings::GetGameUserSettings();
 	if (!Settings) return;
 
@@ -915,6 +946,18 @@ void ApplyScreenSettings()
 		LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: DynRes " << DynResIdx << "\n";
 	}
 
-	Settings->ApplySettings(false);
-	LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: Applied\n";
+	// Defer ApplySettings — calling it from PostRender crashes (D3D11 backbuffer assertion).
+	if (InterlockedCompareExchange(&ApplyInFlight, 1, 0) == 0)
+	{
+		CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
+			Sleep(100); // wait for PostRender to finish
+			UGameUserSettings* S = UGameUserSettings::GetGameUserSettings();
+			if (S) {
+				S->ApplySettings(false);
+				LOGI_STREAM("Tab5System") << "[SDK] ScreenSettings: Applied (deferred)\n";
+			}
+			InterlockedExchange(&ScreenSettingsState::ApplyInFlight, 0);
+			return 0;
+		}, nullptr, 0, nullptr);
+	}
 }

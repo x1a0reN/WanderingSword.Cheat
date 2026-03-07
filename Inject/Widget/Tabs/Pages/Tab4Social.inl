@@ -69,14 +69,34 @@ namespace
 
 // ── 送礼必定喜欢 ──
 uintptr_t GSongLi1Addr = 0;
-uintptr_t GSongLi2Addr = 0;
+uintptr_t GSongLi2Offset = 0;
 uint32_t GSongLiQualityHookId = UINT32_MAX;
+uint32_t GSongLiStrongEnoughHookId = UINT32_MAX;
 uintptr_t GSongLiQualityOffset = 0;
 volatile uint8_t GSongLiQualityValue = 5;
+volatile float GSongLiStrongEnoughValue = 99999.0f;
 volatile LONG GSongLiStrongEnoughFlag = 0;
 
 const char* kSongLi1Pattern = "E8 ?? ?? ?? ?? C1 E8 1F 34 01";
+const char* kSongLi2Pattern = "0F 10 ?? ?? 02 00 00 4C 8D ?? 24 ?? ?? 00 00 49 8B ?? ?? ?? 0F 28";
 const char* kSongLiQualityPattern = "88 87 80 00 00 00 0F B6 83";
+
+const unsigned char kSongLiStrongEnoughTrampolineTemplate[] = {
+	0x41, 0x53,                                       // push r11
+	0x49, 0xBB,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&flag)
+	0x41, 0x83, 0x3B, 0x01,                           // cmp dword ptr [r11], 1
+	0x75, 0x1C,                                       // jne skip
+	0x83, 0x7E, 0x38, 0x00,                           // cmp dword ptr [rsi+0x38], 0
+	0x75, 0x16,                                       // jne skip
+	0x41, 0xC7, 0x03, 0x00, 0x00, 0x00, 0x00,         // mov dword ptr [r11], 0
+	0x49, 0xBB,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&value)
+	0xF3, 0x41, 0x0F, 0x10, 0x03,                     // movss xmm0, dword ptr [r11]
+	0x41, 0x5B,                                       // pop r11
+};
+constexpr size_t kSongLiStrongEnoughFlagImm64Offset = 4;
+constexpr size_t kSongLiStrongEnoughValueImm64Offset = 33;
 
 const unsigned char kSongLiQualityTrampolineTemplate[] = {
 	0x41, 0x53,                                       // push r11
@@ -116,14 +136,18 @@ const unsigned char kQieCuoTrampolineCode[] = {
 uintptr_t GVigorIsMetAddr = 0;
 uintptr_t GPlayerFriendlinessIsMetAddr = 0;
 uintptr_t GConsultRequirementsIsMetAddr = 0;
+uintptr_t GConsultCanSelect1Offset = 0;
 uintptr_t GConsultCanSelect2Addr = 0;
 uintptr_t GConsultCanSelect3Addr = 0;
+uint32_t GConsultCanSelect1HookId = UINT32_MAX;
 
 const char* kVigorIsMetPattern = "84 C0 74 08 F3 0F 10 ?? ?? ?? ?? ?? 0F 2F ?? 73";
 const char* kPlayerFriendlinessIsMetPattern = "7E ?? 0F 2F ?? 73 ?? 48 8D";
 const char* kConsultRequirementsIsMetPattern = "41 8B F8 8B F2 48 8B D9 E8 ?? ?? ?? ?? 84 C0 74";
+const char* kConsultCanSelect1Pattern = "?? 8B ?? ?? 8B ?? E8 ?? ?? ?? ?? 44 0F B6 ?? ?? 8D ?? 24 ?? 48 8D";
 const char* kConsultCanSelect2Pattern = "FF 90 ?? ?? 00 00 83 F8 01 74 05";
 const char* kConsultCanSelect3Pattern = "FF 90 ?? ?? 00 00 83 F8 01 74 ?? 48 8D";
+const unsigned char kConsultCanSelect1TrampolineCode[] = { 0x0C, 0x01 };
 
 // ── 切磋获得对手背包 ──
 uintptr_t GAllLoot1Addr = 0;
@@ -140,8 +164,34 @@ const char* kNpcEquipCanRemove2Pattern = "0F B6 83 85 00 00 00 88 87 85 00 00 00
 // ── NPC无视武器功法限制 ──
 uintptr_t GIgnoreWeaponLimitsAddr = 0;
 uintptr_t GIgnoreSkillLimitsAddr = 0;
+uintptr_t GProtagonistSkillUiOffset = 0;
+uint32_t GProtagonistSkillUiHookId = UINT32_MAX;
 const char* kIgnoreWeaponLimitsPattern = "0F 44 ?? ?? FF ?? 48 ?? ?? 75 ?? 40 84 ?? 75 ??";
 const char* kIgnoreSkillLimitsPattern = "49 8B 4F 70 E8 ?? ?? ?? ?? 3C 04 75 75";
+const char* kProtagonistSkillUiPattern = "B2 01 49 8B 86 ?? ?? 00 00";
+const unsigned char kProtagonistSkillUiTrampolineTemplate[] = {
+	0x41, 0x50,                                       // push r8
+	0x49, 0xB8,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r8, imm64 (engine ptr)
+	0x4C, 0x3B, 0xC4,                                 // cmp r8, rsp
+	0x76, 0x2E,                                       // jna skip
+	0x4D, 0x8B, 0x80, 0x60, 0x0C, 0x00, 0x00,         // mov r8, [r8+0xC60]
+	0x4C, 0x3B, 0xC4,                                 // cmp r8, rsp
+	0x76, 0x22,                                       // jna skip
+	0x4D, 0x8B, 0x40, 0x38,                           // mov r8, [r8+0x38]
+	0x4C, 0x3B, 0xC4,                                 // cmp r8, rsp
+	0x76, 0x19,                                       // jna skip
+	0x4D, 0x8B, 0x40, 0x38,                           // mov r8, [r8+0x38]
+	0x4C, 0x3B, 0xC4,                                 // cmp r8, rsp
+	0x76, 0x10,                                       // jna skip
+	0x4D, 0x8B, 0x40, 0x30,                           // mov r8, [r8+0x30]
+	0x4C, 0x3B, 0xC4,                                 // cmp r8, rsp
+	0x76, 0x07,                                       // jna skip
+	0x4D, 0x8B, 0x40, 0x08,                           // mov r8, [r8+0x08]
+	0x4D, 0x89, 0xC6,                                 // mov r14, r8
+	0x41, 0x58,                                       // pop r8
+};
+constexpr size_t kProtagonistSkillUiEngineImm64Offset = 4;
 
 // ── 强制显示NPC互动 ──
 // (placeholder - complex feature, implemented later)
@@ -168,6 +218,44 @@ void EnableGiftAlwaysLiked()
 	}
 	const unsigned char p1[] = { 0x0C, 0x01 };
 	InlineHook::HookManager::WriteMemory(GSongLi1Addr, p1, sizeof(p1));
+
+	if (GSongLiStrongEnoughHookId == UINT32_MAX)
+	{
+		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+		if (!hModule) return;
+
+		if (GSongLi2Offset == 0)
+		{
+			const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
+				"JH-Win64-Shipping.exe", kSongLi2Pattern);
+			if (found == 0)
+			{
+				LOGE_STREAM("Tab4Social") << "[SDK] GiftAlwaysLiked strong-enough AobScan failed\n";
+				return;
+			}
+			GSongLi2Offset = (found + 0x7) - reinterpret_cast<uintptr_t>(hModule);
+		}
+
+		unsigned char code[sizeof(kSongLiStrongEnoughTrampolineTemplate)];
+		std::memcpy(code, kSongLiStrongEnoughTrampolineTemplate, sizeof(code));
+
+		const uintptr_t flagAddr = reinterpret_cast<uintptr_t>(&GSongLiStrongEnoughFlag);
+		const uintptr_t valueAddr = reinterpret_cast<uintptr_t>(&GSongLiStrongEnoughValue);
+		std::memcpy(code + kSongLiStrongEnoughFlagImm64Offset, &flagAddr, sizeof(flagAddr));
+		std::memcpy(code + kSongLiStrongEnoughValueImm64Offset, &valueAddr, sizeof(valueAddr));
+
+		uint32_t hookId = UINT32_MAX;
+		if (!InlineHook::HookManager::InstallHook(
+			"JH-Win64-Shipping.exe",
+			static_cast<uint32_t>(GSongLi2Offset),
+			code, sizeof(code), hookId,
+			false))
+		{
+			LOGE_STREAM("Tab4Social") << "[SDK] GiftAlwaysLiked strong-enough hook install failed\n";
+			return;
+		}
+		GSongLiStrongEnoughHookId = hookId;
+	}
 
 	if (GSongLiQualityHookId == UINT32_MAX)
 	{
@@ -220,6 +308,12 @@ void DisableGiftAlwaysLiked()
 		InlineHook::HookManager::UninstallHook(GSongLiQualityHookId);
 		GSongLiQualityHookId = UINT32_MAX;
 	}
+	if (GSongLiStrongEnoughHookId != UINT32_MAX)
+	{
+		InlineHook::HookManager::UninstallHook(GSongLiStrongEnoughHookId);
+		GSongLiStrongEnoughHookId = UINT32_MAX;
+	}
+	InterlockedExchange(&GSongLiStrongEnoughFlag, 0);
 	LOGI_STREAM("Tab4Social") << "[SDK] GiftAlwaysLiked disabled\n";
 }
 
@@ -338,6 +432,38 @@ void EnableConsultIgnoreRequirements()
 	Scan(kConsultCanSelect2Pattern, GConsultCanSelect2Addr, 0x9, "ConsultCanSelect2");
 	Scan(kConsultCanSelect3Pattern, GConsultCanSelect3Addr, 0x9, "ConsultCanSelect3");
 
+	if (GConsultCanSelect1HookId == UINT32_MAX)
+	{
+		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+		if (hModule && GConsultCanSelect1Offset == 0)
+		{
+			const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
+				"JH-Win64-Shipping.exe", kConsultCanSelect1Pattern);
+			if (found)
+				GConsultCanSelect1Offset = (found + 0xB) - reinterpret_cast<uintptr_t>(hModule);
+			else
+				LOGE_STREAM("Tab4Social") << "[SDK] ConsultCanSelect1 AobScan failed\n";
+		}
+
+		if (GConsultCanSelect1Offset != 0)
+		{
+			uint32_t hookId = UINT32_MAX;
+			if (InlineHook::HookManager::InstallHook(
+				"JH-Win64-Shipping.exe",
+				static_cast<uint32_t>(GConsultCanSelect1Offset),
+				kConsultCanSelect1TrampolineCode, sizeof(kConsultCanSelect1TrampolineCode),
+				hookId,
+				true))
+			{
+				GConsultCanSelect1HookId = hookId;
+			}
+			else
+			{
+				LOGE_STREAM("Tab4Social") << "[SDK] ConsultCanSelect1 hook install failed\n";
+			}
+		}
+	}
+
 	const unsigned char jmpByte[] = { 0xEB };
 	const unsigned char forceTrue[] = { 0x0C, 0x01 };
 
@@ -361,6 +487,11 @@ void DisableConsultIgnoreRequirements()
 	if (GConsultRequirementsIsMetAddr) InlineHook::HookManager::WriteMemory(GConsultRequirementsIsMetAddr, testAlAl, 2);
 	if (GConsultCanSelect2Addr) InlineHook::HookManager::WriteMemory(GConsultCanSelect2Addr, je, 1);
 	if (GConsultCanSelect3Addr) InlineHook::HookManager::WriteMemory(GConsultCanSelect3Addr, je, 1);
+	if (GConsultCanSelect1HookId != UINT32_MAX)
+	{
+		InlineHook::HookManager::UninstallHook(GConsultCanSelect1HookId);
+		GConsultCanSelect1HookId = UINT32_MAX;
+	}
 
 	LOGI_STREAM("Tab4Social") << "[SDK] ConsultIgnoreRequirements disabled\n";
 }
@@ -491,6 +622,47 @@ void EnableNpcIgnoreWeaponLimit()
 	const unsigned char jmp[] = { 0xEB };
 	if (GIgnoreWeaponLimitsAddr) InlineHook::HookManager::WriteMemory(GIgnoreWeaponLimitsAddr, jmp, 1);
 	if (GIgnoreSkillLimitsAddr) InlineHook::HookManager::WriteMemory(GIgnoreSkillLimitsAddr, jmp, 1);
+
+	if (GProtagonistSkillUiHookId == UINT32_MAX)
+	{
+		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
+		if (hModule && GProtagonistSkillUiOffset == 0)
+		{
+			const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
+				"JH-Win64-Shipping.exe", kProtagonistSkillUiPattern);
+			if (found)
+				GProtagonistSkillUiOffset = (found + 0x2) - reinterpret_cast<uintptr_t>(hModule);
+			else
+				LOGE_STREAM("Tab4Social") << "[SDK] ProtagonistSkillUI AobScan failed\n";
+		}
+
+		const uintptr_t enginePtr = reinterpret_cast<uintptr_t>(UGameEngine::GetEngine());
+		if (GProtagonistSkillUiOffset != 0 && enginePtr != 0)
+		{
+			unsigned char code[sizeof(kProtagonistSkillUiTrampolineTemplate)];
+			std::memcpy(code, kProtagonistSkillUiTrampolineTemplate, sizeof(code));
+			std::memcpy(code + kProtagonistSkillUiEngineImm64Offset, &enginePtr, sizeof(enginePtr));
+
+			uint32_t hookId = UINT32_MAX;
+			if (InlineHook::HookManager::InstallHook(
+				"JH-Win64-Shipping.exe",
+				static_cast<uint32_t>(GProtagonistSkillUiOffset),
+				code, sizeof(code), hookId,
+				true))
+			{
+				GProtagonistSkillUiHookId = hookId;
+			}
+			else
+			{
+				LOGE_STREAM("Tab4Social") << "[SDK] ProtagonistSkillUI hook install failed\n";
+			}
+		}
+		else if (enginePtr == 0)
+		{
+			LOGE_STREAM("Tab4Social") << "[SDK] ProtagonistSkillUI engine pointer unavailable\n";
+		}
+	}
+
 	LOGI_STREAM("Tab4Social") << "[SDK] NpcIgnoreWeaponLimit enabled\n";
 }
 
@@ -499,19 +671,173 @@ void DisableNpcIgnoreWeaponLimit()
 	const unsigned char jne[] = { 0x75 };
 	if (GIgnoreWeaponLimitsAddr) InlineHook::HookManager::WriteMemory(GIgnoreWeaponLimitsAddr, jne, 1);
 	if (GIgnoreSkillLimitsAddr) InlineHook::HookManager::WriteMemory(GIgnoreSkillLimitsAddr, jne, 1);
+	if (GProtagonistSkillUiHookId != UINT32_MAX)
+	{
+		InlineHook::HookManager::UninstallHook(GProtagonistSkillUiHookId);
+		GProtagonistSkillUiHookId = UINT32_MAX;
+	}
 	LOGI_STREAM("Tab4Social") << "[SDK] NpcIgnoreWeaponLimit disabled\n";
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//  强制显示NPC互动 (placeholder - complex)
+//  强制显示NPC互动 — SDK DataTable approach
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// TArray<FFunctionSetting> in-memory layout (16 bytes):
+//   uint8* Data;   // +0x00  pointer to element array
+//   int32  Num;    // +0x08  element count
+//   int32  Max;    // +0x0C  allocated capacity
+// FFunctionSetting is 0x20 bytes: ENPCFunction(uint8) +7pad +FText(0x18)
+
+// ENPCFunction values we want to force-add
+static constexpr uint8 kForcedFunctions[] = {
+	1,   // Talk      对话
+	12,  // Observe   观察
+	2,   // Deal      交易
+	3,   // MakeEquip 锻造
+	8,   // ZhiYi     制衣
+	5,   // MakeDrug  炼丹
+};
+static constexpr int kForcedCount = sizeof(kForcedFunctions) / sizeof(kForcedFunctions[0]);
+
+// Saved original TArray header per row pointer
+struct FTArrayBackup {
+	uint8* OrigData;
+	int32  OrigNum;
+	int32  OrigMax;
+};
+static std::unordered_map<uint8*, FTArrayBackup> GNpcFuncBackups;
+// Allocated blocks to free on disable
+static std::vector<uint8*> GNpcFuncAllocations;
 
 void EnableForceNpcInteraction()
 {
-	LOGI_STREAM("Tab4Social") << "[SDK] ForceNpcInteraction: not yet implemented (complex feature)\n";
+	// 1. Get NPCResManager (returns UNPCResManager* but we treat as UObject*)
+	UObject* ResMgr = static_cast<UObject*>(UManagerFuncLib::GetNPCResManager());
+	if (!ResMgr || !IsSafeLiveObject(ResMgr))
+	{
+		LOGE_STREAM("Tab4Social") << "[SDK] ForceNpcInteraction: GetNPCResManager failed\n";
+		return;
+	}
+
+	// 2. Get NPCTable (UDataTable* at +0x38 of UNPCResManager)
+	UDataTable* NPCTable = *reinterpret_cast<UDataTable**>(
+		reinterpret_cast<uint8*>(ResMgr) + 0x38);
+	if (!NPCTable || !IsSafeLiveObject(static_cast<UObject*>(NPCTable)))
+	{
+		LOGE_STREAM("Tab4Social") << "[SDK] ForceNpcInteraction: NPCTable null\n";
+		return;
+	}
+
+	// 3. Iterate RowMap
+	auto& RowMap = NPCTable->RowMap;
+	if (!RowMap.IsValid())
+	{
+		LOGE_STREAM("Tab4Social") << "[SDK] ForceNpcInteraction: RowMap invalid\n";
+		return;
+	}
+	const int32 AllocatedSlots = RowMap.NumAllocated();
+	int32 ModifiedCount = 0;
+
+	for (int32 i = 0; i < AllocatedSlots; ++i)
+	{
+		if (!RowMap.IsValidIndex(i))
+			continue;
+		uint8* RowData = RowMap[i].Value();
+		if (!RowData)
+			continue;
+
+		// FNPCSetting.Functions is TArray<FFunctionSetting> at offset +0xE0
+		uint8* FuncsPtr = RowData + 0xE0;
+		uint8*& Data = *reinterpret_cast<uint8**>(FuncsPtr + 0x00);
+		int32&  Num  = *reinterpret_cast<int32*>(FuncsPtr + 0x08);
+		int32&  Max  = *reinterpret_cast<int32*>(FuncsPtr + 0x0C);
+
+		// Save original if not already saved
+		if (GNpcFuncBackups.find(RowData) == GNpcFuncBackups.end())
+		{
+			GNpcFuncBackups[RowData] = { Data, Num, Max };
+		}
+
+		// Collect existing function types (simple array scan, no std::set needed)
+		uint8 ExistingTypes[64] = {};
+		int32 ExistingCount = 0;
+		if (Data && Num > 0 && Num < 200)
+		{
+			for (int32 j = 0; j < Num && ExistingCount < 64; ++j)
+			{
+				ExistingTypes[ExistingCount++] = *(Data + j * 0x20); // ENPCFunction at +0x00
+			}
+		}
+
+		// Determine how many new types to add
+		auto HasType = [&](uint8 t) {
+			for (int32 x = 0; x < ExistingCount; ++x)
+				if (ExistingTypes[x] == t) return true;
+			return false;
+		};
+		uint8 ToAdd[kForcedCount] = {};
+		int32 ToAddCount = 0;
+		for (int k = 0; k < kForcedCount; ++k)
+		{
+			if (!HasType(kForcedFunctions[k]))
+				ToAdd[ToAddCount++] = kForcedFunctions[k];
+		}
+
+		if (ToAddCount == 0)
+			continue; // NPC already has all types
+
+		// Allocate new array: original entries + new entries
+		int32 NewNum = Num + ToAddCount;
+		uint8* NewData = static_cast<uint8*>(VirtualAlloc(
+			nullptr, NewNum * 0x20, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+		if (!NewData)
+			continue;
+		GNpcFuncAllocations.push_back(NewData);
+
+		// Copy original entries
+		if (Data && Num > 0)
+			memcpy(NewData, Data, Num * 0x20);
+
+		// Append new entries (zero-init then set Function type)
+		for (int32 a = 0; a < ToAddCount; ++a)
+		{
+			uint8* Entry = NewData + (Num + a) * 0x20;
+			memset(Entry, 0, 0x20);
+			*Entry = ToAdd[a]; // ENPCFunction at offset 0
+		}
+
+		// Repoint TArray
+		Data = NewData;
+		Num  = NewNum;
+		Max  = NewNum;
+		ModifiedCount++;
+	}
+
+	LOGI_STREAM("Tab4Social") << "[SDK] ForceNpcInteraction enabled: modified "
+		<< ModifiedCount << " NPCs\n";
 }
 
 void DisableForceNpcInteraction()
 {
-	LOGI_STREAM("Tab4Social") << "[SDK] ForceNpcInteraction: not yet implemented (complex feature)\n";
+	// Restore all saved TArray headers
+	for (auto& Pair : GNpcFuncBackups)
+	{
+		uint8* RowData = Pair.first;
+		const auto& Bak = Pair.second;
+		uint8* FuncsPtr = RowData + 0xE0;
+		*reinterpret_cast<uint8**>(FuncsPtr + 0x00) = Bak.OrigData;
+		*reinterpret_cast<int32*>(FuncsPtr + 0x08)  = Bak.OrigNum;
+		*reinterpret_cast<int32*>(FuncsPtr + 0x0C)  = Bak.OrigMax;
+	}
+	int32 Restored = static_cast<int32>(GNpcFuncBackups.size());
+	GNpcFuncBackups.clear();
+
+	// Free allocated blocks
+	for (uint8* Block : GNpcFuncAllocations)
+		VirtualFree(Block, 0, MEM_RELEASE);
+	GNpcFuncAllocations.clear();
+
+	LOGI_STREAM("Tab4Social") << "[SDK] ForceNpcInteraction disabled: restored "
+		<< Restored << " NPCs\n";
 }

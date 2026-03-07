@@ -1,3 +1,100 @@
+// ── 任务下拉列表数据 ──
+std::vector<int32> GQuestOptionIds;
+std::vector<std::wstring> GQuestOptionLabels;
+
+void BuildQuestDropdownOptions()
+{
+	GQuestOptionIds.clear();
+	GQuestOptionLabels.clear();
+
+	// Get QuestResManager → QuestSettingTable (UDataTable* at +0x120)
+	UObject* ResMgr = static_cast<UObject*>(UManagerFuncLib::GetQuestResManager());
+	if (!ResMgr || !IsSafeLiveObject(ResMgr))
+	{
+		LOGE_STREAM("Tab7Quests") << "[SDK] GetQuestResManager failed\n";
+		return;
+	}
+	LOGI_STREAM("Tab7Quests") << "[SDK] ResMgr=" << (void*)ResMgr << "\n";
+
+	UDataTable* QuestTable = *reinterpret_cast<UDataTable**>(
+		reinterpret_cast<uint8*>(ResMgr) + 0x120);
+	if (!QuestTable || !IsSafeLiveObject(static_cast<UObject*>(QuestTable)))
+	{
+		LOGE_STREAM("Tab7Quests") << "[SDK] QuestSettingTable is null (ptr="
+			<< (void*)QuestTable << ")\n";
+		// Dump nearby pointers to find the correct offset
+		for (int off = 0x100; off <= 0x180; off += 8)
+		{
+			void* ptr = *reinterpret_cast<void**>(
+				reinterpret_cast<uint8*>(ResMgr) + off);
+			LOGI_STREAM("Tab7Quests") << "[SDK]   ResMgr+0x"
+				<< std::hex << off << std::dec << " = " << ptr << "\n";
+		}
+		return;
+	}
+	LOGI_STREAM("Tab7Quests") << "[SDK] QuestTable=" << (void*)QuestTable << "\n";
+
+	// Iterate RowMap (TMap<FName, uint8*> at +0x30 of UDataTable)
+	struct FRowMapPair { FName Key; uint8* Value; };
+	auto& RowMap = *reinterpret_cast<TMap<FName, uint8*>*>(
+		reinterpret_cast<uint8*>(QuestTable) + 0x30);
+
+	if (!RowMap.IsValid())
+	{
+		LOGE_STREAM("Tab7Quests") << "[SDK] RowMap.IsValid() = false\n";
+		return;
+	}
+	const int32 NumRows = RowMap.Num();
+	LOGI_STREAM("Tab7Quests") << "[SDK] QuestTable rows: " << NumRows << "\n";
+
+	GQuestOptionLabels.push_back(L"请选择任务");
+	GQuestOptionIds.push_back(0);
+
+	auto* ResManager = static_cast<UQuestResManager*>(ResMgr);
+
+	for (int32 i = 0; i < NumRows && GQuestOptionIds.size() < 500; ++i)
+	{
+		uint8* RowData = RowMap[i].Value();
+		if (!RowData) continue;
+
+		// FQuestSetting row: first 8 bytes = UScriptStruct*, QuestId (int32) at +0x08
+		int32 QuestId = *reinterpret_cast<int32*>(RowData + 0x08);
+		if (QuestId <= 0) continue;
+
+		// Get quest name via QuestResManager::GetQuestInfo
+		std::wstring Label;
+		UQuestInfo* Info = ResManager->GetQuestInfo(QuestId);
+		if (Info && IsSafeLiveObject(static_cast<UObject*>(Info)))
+		{
+			// QuestName is FText at +0x30
+			std::string NameUtf8 = Info->QuestName.ToString();
+			if (!NameUtf8.empty())
+			{
+				// Convert UTF-8 to wide string
+				int Len = MultiByteToWideChar(CP_UTF8, 0, NameUtf8.c_str(), -1, nullptr, 0);
+				if (Len > 0)
+				{
+					Label.resize(Len - 1);
+					MultiByteToWideChar(CP_UTF8, 0, NameUtf8.c_str(), -1, &Label[0], Len);
+				}
+			}
+		}
+
+		// Fallback: show ID if name is empty
+		if (Label.empty())
+		{
+			wchar_t Buf[64];
+			swprintf_s(Buf, 64, L"任务#%d", QuestId);
+			Label = Buf;
+		}
+
+		GQuestOptionIds.push_back(QuestId);
+		GQuestOptionLabels.push_back(Label);
+	}
+
+	LOGI_STREAM("Tab7Quests") << "[SDK] Built " << GQuestOptionIds.size() << " quest options\n";
+}
+
 void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 {
 	if (!GDynTab.Content7) return;
@@ -7,7 +104,9 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* WidgetTree = *reinterpret_cast<UWidgetTree**>(reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree) : static_cast<UObject*>(CV);
 
-	GQuest.Toggle = nullptr;
+	GQuest.ExecuteBtn = nullptr;
+	GQuest.BtnWasPressed = false;
+	GQuest.QuestDD = nullptr;
 	GQuest.TypeDD = nullptr;
 
 	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
@@ -26,15 +125,27 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	};
 
+	// Build quest list from DataTable
+	BuildQuestDropdownOptions();
+
 	auto* MainPanel = CreateCollapsiblePanel(PC, L"任务执行");
 	auto* MainBox = MainPanel ? MainPanel->CT_Contents : nullptr;
-	GQuest.Toggle = CreateToggleItem(PC, L"接到/完成任务");
-	if (GQuest.Toggle)
+
+	// 任务下拉列表
+	GQuest.QuestDD = CreateVideoItemWithOptions(PC, L"选择任务", {});
+	if (GQuest.QuestDD && GQuest.QuestDD->CB_Main)
 	{
-		if (MainBox) MainBox->AddChild(GQuest.Toggle);
-		else GDynTab.Content7->AddChild(GQuest.Toggle);
+		GQuest.QuestDD->CB_Main->ClearOptions();
+		for (const auto& Label : GQuestOptionLabels)
+			GQuest.QuestDD->CB_Main->AddOption(FString(Label.c_str()));
+		GQuest.QuestDD->CB_Main->SetSelectedIndex(0);
+
+		if (MainBox) MainBox->AddChild(GQuest.QuestDD);
+		else GDynTab.Content7->AddChild(GQuest.QuestDD);
 		Count++;
 	}
+
+	// 执行类型下拉列表
 	GQuest.TypeDD = CreateVideoItemWithOptions(PC, L"执行类型", { L"接取", L"完成" });
 	if (GQuest.TypeDD)
 	{
@@ -42,18 +153,46 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		else GDynTab.Content7->AddChild(GQuest.TypeDD);
 		Count++;
 	}
-	AddPanelWithFixedGap(MainPanel, 0.0f, 10.0f);
 
-	auto* ArgPanel = CreateCollapsiblePanel(PC, L"任务参数");
-	auto* ArgBox = ArgPanel ? ArgPanel->CT_Contents : nullptr;
-	auto* QuestIdItem = CreateVolumeNumericEditBoxItem(PC, Outer, ArgBox ? ArgBox : GDynTab.Content7, L"任务ID", L"输入数字", L"1");
-	if (QuestIdItem)
+	// 执行按钮
+	UWidget* BtnLayout = nullptr;
+	GQuest.ExecuteBtn = CreateGameStyleButton(PC, L"立刻执行任务", "QuestExecute",
+		0.0f, 0.0f, &BtnLayout);
+	if (BtnLayout)
 	{
-		if (ArgBox) ArgBox->AddChild(QuestIdItem);
-		else GDynTab.Content7->AddChild(QuestIdItem);
+		if (MainBox) MainBox->AddChild(BtnLayout);
+		else GDynTab.Content7->AddChild(BtnLayout);
 		Count++;
 	}
-	AddPanelWithFixedGap(ArgPanel, 0.0f, 8.0f);
+
+	AddPanelWithFixedGap(MainPanel, 0.0f, 10.0f);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  任务 SDK 执行
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+void ExecuteQuestSDK(int32 QuestId, bool bAccept)
+{
+	UObject* QMObj = static_cast<UObject*>(UManagerFuncLib::GetQuestManager());
+	if (!QMObj || !IsSafeLiveObject(QMObj))
+	{
+		LOGE_STREAM("Tab7Quests") << "[SDK] GetQuestManager failed\n";
+		return;
+	}
+
+	auto* QM = static_cast<UQuestManager*>(QMObj);
+
+	if (bAccept)
+	{
+		QM->RequestQuest(QuestId);
+		LOGI_STREAM("Tab7Quests") << "[SDK] RequestQuest(" << QuestId << ")\n";
+	}
+	else
+	{
+		QM->FinishQuest(QuestId);
+		LOGI_STREAM("Tab7Quests") << "[SDK] FinishQuest(" << QuestId << ")\n";
+	}
 }
 
 void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC)

@@ -132,7 +132,9 @@ void ClearRuntimeWidgetState()
 	GTeammate.ReplaceToggle = nullptr;
 	GTeammate.ReplaceDD = nullptr;
 
-	GQuest.Toggle = nullptr;
+	GQuest.ExecuteBtn = nullptr;
+	GQuest.BtnWasPressed = false;
+	GQuest.QuestDD = nullptr;
 	GQuest.TypeDD = nullptr;
 	GOriginalLanPanel = nullptr;
 	GOriginalInputMappingPanel = nullptr;

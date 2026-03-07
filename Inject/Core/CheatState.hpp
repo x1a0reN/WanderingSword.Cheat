@@ -233,8 +233,10 @@ struct TeammateTabControls
 /// Tab7「任务」页控件
 struct QuestTabControls
 {
-    UBPVE_JHConfigVideoItem2_C* Toggle = nullptr;  // 任务操作开关
-    UBPVE_JHConfigVideoItem2_C* TypeDD = nullptr;  // 操作类型 (接取/完成)
+    UJHCommon_Btn_Free_C*       ExecuteBtn = nullptr;  // 执行按钮
+    bool                        BtnWasPressed = false;  // 按钮上一帧按下状态
+    UBPVE_JHConfigVideoItem2_C* QuestDD = nullptr;     // 任务下拉列表
+    UBPVE_JHConfigVideoItem2_C* TypeDD  = nullptr;     // 操作类型 (接取/完成)
 };
 
 // ┌─────────────────────────────────────────────────────────────┐
@@ -423,10 +425,13 @@ void DisableUnlockAllAchievements();
 void ApplyScreenSettings();                      // 屏幕设置
 
 // ── Tab6: 队友系统 ──
-void EnableFollowerCountHook();                 // 设置队友跟随数量
-void DisableFollowerCountHook();
-void SetFollowerCountValue(int32 Value);
+void ApplyFollowerCountSDK(int32 Value);         // 设置队友跟随数量 (SDK直写)
+void DisableFollowerCountSDK();                   // 恢复队友跟随数量
 
 void EnableReplaceTeammateHook();               // 替换指定队友
 void DisableReplaceTeammateHook();
 void SetReplaceTeammateId(int32 Value);
+
+// ── Tab7: 任务系统 ──
+extern std::vector<int32>       GQuestOptionIds;
+void ExecuteQuestSDK(int32 QuestId, bool bAccept);

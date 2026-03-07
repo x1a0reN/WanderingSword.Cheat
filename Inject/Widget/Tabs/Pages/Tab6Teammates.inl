@@ -82,26 +82,10 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 namespace
 {
 
-// ── 设置队友跟随数量 ──
-uint32_t GFollowerCountHookId = UINT32_MAX;
-uintptr_t GFollowerCountOffset = 0;
-volatile LONG GFollowerCountValue = 99;
-const char* kFollowerCountPattern = "44 3B BE ?? 05 00 00 0F 8C";
+// ── 设置队友跟随数量 (SDK直写) ──
+int32 GOriginalFollowerCount = -1; // -1 = not saved yet
 
-const unsigned char kFollowerCountTrampolineTemplate[] = {
-	0x50,                                             // push rax
-	0x41, 0x53,                                       // push r11
-	0x49, 0xBB,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&GFollowerCountValue)
-	0x41, 0x8B, 0x03,                                 // mov eax, dword [r11]
-	0xFF, 0xC0,                                       // inc eax
-	0x44, 0x3B, 0xF8,                                 // cmp r15d, eax (flags = r15d - eax)
-	0x41, 0x5B,                                       // pop r11
-	0x58,                                             // pop rax
-};
-constexpr size_t kFollowerCountImm64Offset = 5;
-
-// ── 替换指定队友 ──
+// ── 替换指定队友 (AOB hook) ──
 uint32_t GReplaceTeammateHookId = UINT32_MAX;
 uintptr_t GReplaceTeammateOffset = 0;
 volatile LONG GReplaceTeammateId = 30;
@@ -121,59 +105,54 @@ constexpr int32 kRoleIds[] = { 0, 30, 31, 32, 33, 34, 35, 36 };
 } // end anonymous namespace
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//  设置队友跟随数量
+//  设置队友跟随数量 — SDK approach (ASceneHero::FollowerCount at +0x0518)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-void SetFollowerCountValue(int32 Value)
+void ApplyFollowerCountSDK(int32 Value)
 {
 	if (Value < 1) Value = 1;
 	if (Value > 99) Value = 99;
-	InterlockedExchange(&GFollowerCountValue, static_cast<LONG>(Value));
+
+	UWorld* World = UWorld::GetWorld();
+	if (!World) return;
+
+	AActor* Hero = UNPCFuncLib::GetSceneHero(static_cast<UObject*>(World));
+	if (!Hero || !IsSafeLiveObject(static_cast<UObject*>(Hero)))
+		return;
+
+	uint8* HeroPtr = reinterpret_cast<uint8*>(Hero);
+	int32& FollowerCount = *reinterpret_cast<int32*>(HeroPtr + 0x0518);
+
+	// Save original on first call
+	if (GOriginalFollowerCount < 0)
+		GOriginalFollowerCount = FollowerCount;
+
+	if (FollowerCount != Value)
+	{
+		FollowerCount = Value;
+		LOGI_STREAM("Tab6Teammates") << "[SDK] FollowerCount set to " << Value << "\n";
+	}
 }
 
-void EnableFollowerCountHook()
+void DisableFollowerCountSDK()
 {
-	if (GFollowerCountHookId != UINT32_MAX) return;
+	if (GOriginalFollowerCount < 0)
+		return; // nothing to restore
 
-	if (GFollowerCountOffset == 0)
+	UWorld* World = UWorld::GetWorld();
+	if (!World) return;
+
+	AActor* Hero = UNPCFuncLib::GetSceneHero(static_cast<UObject*>(World));
+	if (!Hero || !IsSafeLiveObject(static_cast<UObject*>(Hero)))
 	{
-		const uintptr_t found = InlineHook::HookManager::ScanModulePatternRobust(
-			"JH-Win64-Shipping.exe", kFollowerCountPattern);
-		if (found == 0)
-		{
-			LOGE_STREAM("Tab6Teammates") << "[SDK] FollowerCount AobScan failed\n";
-			return;
-		}
-		HMODULE hModule = GetModuleHandleA("JH-Win64-Shipping.exe");
-		if (!hModule) return;
-		GFollowerCountOffset = found - reinterpret_cast<uintptr_t>(hModule);
-	}
-
-	unsigned char code[sizeof(kFollowerCountTrampolineTemplate)];
-	std::memcpy(code, kFollowerCountTrampolineTemplate, sizeof(code));
-	const uintptr_t valAddr = reinterpret_cast<uintptr_t>(&GFollowerCountValue);
-	std::memcpy(code + kFollowerCountImm64Offset, &valAddr, sizeof(valAddr));
-
-	uint32_t hookId = UINT32_MAX;
-	if (!InlineHook::HookManager::InstallHook(
-		"JH-Win64-Shipping.exe",
-		static_cast<uint32_t>(GFollowerCountOffset),
-		code, sizeof(code), hookId,
-		false, true, false))
-	{
-		LOGE_STREAM("Tab6Teammates") << "[SDK] FollowerCount hook install failed\n";
+		GOriginalFollowerCount = -1;
 		return;
 	}
-	GFollowerCountHookId = hookId;
-	LOGI_STREAM("Tab6Teammates") << "[SDK] FollowerCount hook enabled, ID: " << hookId << "\n";
-}
 
-void DisableFollowerCountHook()
-{
-	if (GFollowerCountHookId == UINT32_MAX) return;
-	InlineHook::HookManager::UninstallHook(GFollowerCountHookId);
-	GFollowerCountHookId = UINT32_MAX;
-	LOGI_STREAM("Tab6Teammates") << "[SDK] FollowerCount hook disabled\n";
+	uint8* HeroPtr = reinterpret_cast<uint8*>(Hero);
+	*reinterpret_cast<int32*>(HeroPtr + 0x0518) = GOriginalFollowerCount;
+	LOGI_STREAM("Tab6Teammates") << "[SDK] FollowerCount restored to " << GOriginalFollowerCount << "\n";
+	GOriginalFollowerCount = -1;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

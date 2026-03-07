@@ -1785,8 +1785,9 @@ struct PostRenderInFlightScope final
 		TAB5_TOGGLE(UnlockCodex, EnableUnlockAllCodex, DisableUnlockAllCodex)
 		TAB5_TOGGLE(UnlockAchievement, EnableUnlockAllAchievements, DisableUnlockAllAchievements)
 
-		// 屏幕设置: 每帧检测变化并通过 SDK 应用
-		ApplyScreenSettings();
+		// 屏幕设置: 已禁用
+		// if (CanReadFromUI)
+		//	ApplyScreenSettings();
 
 		static bool LastRunMountSpeed = false;
 		if (Config.RunMountSpeed != LastRunMountSpeed)
@@ -1858,11 +1859,15 @@ struct PostRenderInFlightScope final
 		static bool LastFollowerCount = false;
 		if (Config.FollowerCountEnabled != LastFollowerCount)
 		{
-			Config.FollowerCountEnabled ? EnableFollowerCountHook() : DisableFollowerCountHook();
+			if (!Config.FollowerCountEnabled)
+			{
+				// Restore original FollowerCount on the SceneHero
+				DisableFollowerCountSDK();
+			}
 			LastFollowerCount = Config.FollowerCountEnabled;
 		}
 		if (Config.FollowerCountEnabled)
-			SetFollowerCountValue(Config.FollowerCountValue);
+			ApplyFollowerCountSDK(Config.FollowerCountValue);
 
 		static int32 LastAddTeammateIdx = 0;
 		if (Config.AddTeammateIdx != LastAddTeammateIdx && Config.AddTeammateIdx > 0)
@@ -1889,6 +1894,62 @@ struct PostRenderInFlightScope final
 		if (Config.ReplaceTeammateEnabled)
 			SetReplaceTeammateId(Config.ReplaceTeammateId);
 	}
+
+	// ┌─────────────────────────────────────────────────────────────┐
+	// │  §8e  Tab7 任务系统按钮轮询                                  │
+	// └─────────────────────────────────────────────────────────────┘
+
+	void PollQuestButton()
+	{
+
+	auto GetClickableButtonTab7 = [](UJHCommon_Btn_Free_C* W) -> UButton* {
+		if (!W) return nullptr;
+		if (W->Btn) return W->Btn;
+		if (W->JHGPCBtn)
+			return static_cast<UJHNeoUIGamepadConfirmButton*>(W->JHGPCBtn)->BtnMain;
+		return nullptr;
+	};
+
+	if (GQuest.ExecuteBtn)
+	{
+		UButton* Inner = GetClickableButtonTab7(GQuest.ExecuteBtn);
+		bool Pressed = Inner &&
+			IsSafeLiveObject(static_cast<UObject*>(Inner)) &&
+			Inner->IsPressed();
+
+		// Edge detect: release = click
+		if (GQuest.BtnWasPressed && !Pressed)
+		{
+			// Read quest dropdown index
+			int32 QuestIdx = -1;
+			if (GQuest.QuestDD && IsSafeLiveObject(static_cast<UObject*>(GQuest.QuestDD)) &&
+				GQuest.QuestDD->CB_Main && IsSafeLiveObject(static_cast<UObject*>(GQuest.QuestDD->CB_Main)))
+			{
+				QuestIdx = GQuest.QuestDD->CB_Main->GetSelectedIndex();
+			}
+
+			// Read type dropdown index (0=接取, 1=完成)
+			int32 TypeIdx = 0;
+			if (GQuest.TypeDD && IsSafeLiveObject(static_cast<UObject*>(GQuest.TypeDD)) &&
+				GQuest.TypeDD->CB_Main && IsSafeLiveObject(static_cast<UObject*>(GQuest.TypeDD->CB_Main)))
+			{
+				TypeIdx = GQuest.TypeDD->CB_Main->GetSelectedIndex();
+			}
+
+			if (QuestIdx > 0 && QuestIdx < static_cast<int32>(GQuestOptionIds.size()))
+			{
+				const int32 QuestId = GQuestOptionIds[QuestIdx];
+				const bool bAccept = (TypeIdx == 0);
+				ExecuteQuestSDK(QuestId, bAccept);
+			}
+			else
+			{
+				LOGE_STREAM("FrameHook") << "[SDK] QuestExecute: no quest selected (idx=" << QuestIdx << ")\n";
+			}
+		}
+		GQuest.BtnWasPressed = Pressed;
+	}
+	} // PollQuestButton
 
 	// ┌─────────────────────────────────────────────────────────────┐
 	// │  §9  滑块通用轮询 — 按钮点击增减 · 文本标签同步             │
@@ -2023,7 +2084,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			DisablePostStationPatch();
 			DisableUnlockAllCodex();
 			DisableUnlockAllAchievements();
-			DisableFollowerCountHook();
+			DisableFollowerCountSDK();
 			DisableReplaceTeammateHook();
 			APlayerController* PC = GetFirstLocalPlayerController();
 			DestroyInternalWidget(PC);
@@ -2428,6 +2489,10 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		LiveInternalWidget &&
 		IsTeammateTabActive;
 	PollAndApplyTab6Features(CanReadTab6FromUI);
+
+	// Tab7 quest button (always polls — button only acts on click)
+	if (GInternalWidgetVisible && LiveInternalWidget && GActiveDynTabForPoll == 7)
+		PollQuestButton();
 
 	bool HoverGridValid = false;
 	if (GItemBrowser.GridPanel)

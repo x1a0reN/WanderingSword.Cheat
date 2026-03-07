@@ -141,28 +141,28 @@ namespace
 		TAB0_ATTR(AttrHiddenWeaponsExp,   "AttrHiddenWeaponsExp",   "暗器经验",        "HiddenWeaponsExp",   HiddenWeaponsExp),
 		TAB0_ATTR(AttrOtherWeaponsLevel,  "AttrOtherWeaponsLevel",  "其他武器精通",    "OtherWeaponsLevel",  OtherWeaponsLevel),
 		TAB0_ATTR(AttrOtherWeaponsExp,    "AttrOtherWeaponsExp",    "其他武器经验",    "OtherWeaponsExp",    OtherWeaponsExp),
-		TAB0_NAME_ATTR(AttrDaZaoLevel,         "AttrDaZaoLevel",         "锻造精通",        "DaZaoLevel"),
-		TAB0_NAME_ATTR(AttrDaZaoExp,           "AttrDaZaoExp",           "锻造经验",        "DaZaoExp"),
-		TAB0_NAME_ATTR(AttrMedicalLevel,       "AttrMedicalLevel",       "医术精通",        "MedicalLevel"),
-		TAB0_NAME_ATTR(AttrMedicalExp,         "AttrMedicalExp",         "医术经验",        "MedicalExp"),
-		TAB0_NAME_ATTR(AttrZhiYiLevel,         "AttrZhiYiLevel",         "制衣精通",        "ZhiYiLevel"),
-		TAB0_NAME_ATTR(AttrZhiYiExp,           "AttrZhiYiExp",           "制衣经验",        "ZhiYiExp"),
-		TAB0_NAME_ATTR(AttrAlchemyLevel,       "AttrAlchemyLevel",       "炼丹精通",        "AlchemyLevel"),
-		TAB0_NAME_ATTR(AttrAlchemyExp,         "AttrAlchemyExp",         "炼丹经验",        "AlchemyExp"),
-		TAB0_NAME_ATTR(AttrCookingLevel,       "AttrCookingLevel",       "烹饪精通",        "CookingLevel"),
-		TAB0_NAME_ATTR(AttrCookingExp,         "AttrCookingExp",         "烹饪经验",        "CookingExp"),
-		TAB0_NAME_ATTR(AttrGatheringLevel,     "AttrGatheringLevel",     "采集精通",        "GatheringLevel"),
-		TAB0_NAME_ATTR(AttrGatheringExp,       "AttrGatheringExp",       "采集经验",        "GatheringExp"),
-		TAB0_NAME_ATTR(AttrFishingLevelAttr,   "AttrFishingLevelAttr",   "钓鱼精通",        "FishingLevel"),
-		TAB0_NAME_ATTR(AttrFishingExpAttr,     "AttrFishingExpAttr",     "钓鱼经验",        "FishingExp"),
-		TAB0_NAME_ATTR(AttrDrinkLevel,         "AttrDrinkLevel",         "饮酒精通",        "DrinkLevel"),
-		TAB0_NAME_ATTR(AttrDrinkExp,           "AttrDrinkExp",           "饮酒经验",        "DrinkExp"),
-		TAB0_NAME_ATTR(AttrTeaCeremonyLevel,   "AttrTeaCeremonyLevel",   "茶道精通",        "TeaCeremonyLevel"),
-		TAB0_NAME_ATTR(AttrTeaCeremonyExp,     "AttrTeaCeremonyExp",     "茶道经验",        "TeaCeremonyExp"),
-		TAB0_NAME_ATTR(AttrEloquenceLevel,     "AttrEloquenceLevel",     "口才精通",        "EloquenceLevel"),
-		TAB0_NAME_ATTR(AttrEloquenceExp,       "AttrEloquenceExp",       "口才经验",        "EloquenceExp"),
-		TAB0_NAME_ATTR(AttrCalligraphyLevel,   "AttrCalligraphyLevel",   "书法精通",        "CalligraphyLevel"),
-		TAB0_NAME_ATTR(AttrCalligraphyExp,     "AttrCalligraphyExp",     "书法经验",        "CalligraphyExp"),
+		TAB0_ATTR(AttrDaZaoLevel,         "AttrDaZaoLevel",         "锻造精通",        "DaZaoLevel",         DaZaoLevel),
+		TAB0_ATTR(AttrDaZaoExp,           "AttrDaZaoExp",           "锻造经验",        "DaZaoExp",           DaZaoExp),
+		TAB0_ATTR(AttrMedicalLevel,       "AttrMedicalLevel",       "医术精通",        "MedicalLevel",       MedicalLevel),
+		TAB0_ATTR(AttrMedicalExp,         "AttrMedicalExp",         "医术经验",        "MedicalExp",         MedicalExp),
+		TAB0_ATTR(AttrZhiYiLevel,         "AttrZhiYiLevel",         "制衣精通",        "ZhiYiLevel",         ZhiYiLevel),
+		TAB0_ATTR(AttrZhiYiExp,           "AttrZhiYiExp",           "制衣经验",        "ZhiYiExp",           ZhiYiExp),
+		TAB0_ATTR(AttrAlchemyLevel,       "AttrAlchemyLevel",       "炼丹精通",        "AlchemyLevel",       AlchemyLevel),
+		TAB0_ATTR(AttrAlchemyExp,         "AttrAlchemyExp",         "炼丹经验",        "AlchemyExp",         AlchemyExp),
+		TAB0_ATTR(AttrCookingLevel,       "AttrCookingLevel",       "烹饪精通",        "CookingLevel",       CookingLevel),
+		TAB0_ATTR(AttrCookingExp,         "AttrCookingExp",         "烹饪经验",        "CookingExp",         CookingExp),
+		TAB0_ATTR(AttrGatheringLevel,     "AttrGatheringLevel",     "采集精通",        "GatheringLevel",     GatheringLevel),
+		TAB0_ATTR(AttrGatheringExp,       "AttrGatheringExp",       "采集经验",        "GatheringExp",       GatheringExp),
+		TAB0_ATTR(AttrFishingLevelAttr,   "AttrFishingLevelAttr",   "钓鱼精通",        "FishingLevel",       FishingLevel),
+		TAB0_ATTR(AttrFishingExpAttr,     "AttrFishingExpAttr",     "钓鱼经验",        "FishingExp",         FishingExp),
+		TAB0_ATTR(AttrDrinkLevel,         "AttrDrinkLevel",         "饮酒精通",        "DrinkLevel",         DrinkLevel),
+		TAB0_ATTR(AttrDrinkExp,           "AttrDrinkExp",           "饮酒经验",        "DrinkExp",           DrinkExp),
+		TAB0_ATTR(AttrTeaCeremonyLevel,   "AttrTeaCeremonyLevel",   "茶道精通",        "TeaCeremonyLevel",   TeaCeremonyLevel),
+		TAB0_ATTR(AttrTeaCeremonyExp,     "AttrTeaCeremonyExp",     "茶道经验",        "TeaCeremonyExp",     TeaCeremonyExp),
+		TAB0_ATTR(AttrEloquenceLevel,     "AttrEloquenceLevel",     "口才精通",        "EloquenceLevel",     EloquenceLevel),
+		TAB0_ATTR(AttrEloquenceExp,       "AttrEloquenceExp",       "口才经验",        "EloquenceExp",       EloquenceExp),
+		TAB0_ATTR(AttrCalligraphyLevel,   "AttrCalligraphyLevel",   "书法精通",        "CalligraphyLevel",   CalligraphyLevel),
+		TAB0_ATTR(AttrCalligraphyExp,     "AttrCalligraphyExp",     "书法经验",        "CalligraphyExp",     CalligraphyExp),
 	};
 
 #undef TAB0_ATTR
@@ -2135,6 +2135,37 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddNumeric(WeaponBox, L"其他武器精通", L"100");
 	AddNumeric(WeaponBox, L"其他武器经验", L"100");
 	AddPanelWithFixedGap(WeaponPanel, 0.0f, 8.0f);
+
+	auto* LifeMasteryPanel = CreateCollapsiblePanel(PC, L"生活精通");
+	auto* LifeMasteryBox = LifeMasteryPanel ? LifeMasteryPanel->CT_Contents : nullptr;
+	AddNumeric(LifeMasteryBox, L"锻造精通", L"100");
+	AddNumeric(LifeMasteryBox, L"医术精通", L"100");
+	AddNumeric(LifeMasteryBox, L"制衣精通", L"100");
+	AddNumeric(LifeMasteryBox, L"炼丹精通", L"100");
+	AddNumeric(LifeMasteryBox, L"烹饪精通", L"100");
+	AddNumeric(LifeMasteryBox, L"采集精通", L"100");
+	AddNumeric(LifeMasteryBox, L"钓鱼精通", L"100");
+	AddNumeric(LifeMasteryBox, L"饮酒精通", L"100");
+	AddNumeric(LifeMasteryBox, L"茶道精通", L"100");
+	AddNumeric(LifeMasteryBox, L"口才精通", L"100");
+	AddNumeric(LifeMasteryBox, L"书法精通", L"100");
+	AddPanelWithFixedGap(LifeMasteryPanel, 0.0f, 10.0f);
+
+	auto* LifeExpPanel = CreateCollapsiblePanel(PC, L"生活经验");
+	auto* LifeExpBox = LifeExpPanel ? LifeExpPanel->CT_Contents : nullptr;
+	AddNumeric(LifeExpBox, L"锻造经验", L"100");
+	AddNumeric(LifeExpBox, L"医术经验", L"100");
+	AddNumeric(LifeExpBox, L"制衣经验", L"100");
+	AddNumeric(LifeExpBox, L"炼丹经验", L"100");
+	AddNumeric(LifeExpBox, L"烹饪经验", L"100");
+	AddNumeric(LifeExpBox, L"采集经验", L"100");
+	AddNumeric(LifeExpBox, L"钓鱼经验", L"100");
+	AddNumeric(LifeExpBox, L"饮酒经验", L"100");
+	AddNumeric(LifeExpBox, L"茶道经验", L"100");
+	AddNumeric(LifeExpBox, L"口才经验", L"100");
+	AddNumeric(LifeExpBox, L"书法经验", L"100");
+	AddPanelWithFixedGap(LifeExpPanel, 0.0f, 8.0f);
+
 	SyncTab0RoleDropdownsFromLive(PC);
 	RefreshTab0BindingsText(PC);
 	DumpTab0InitSnapshot(PC);
