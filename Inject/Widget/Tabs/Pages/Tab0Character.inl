@@ -211,6 +211,12 @@ namespace
 	constexpr ULONGLONG kTab0UiPollIntervalMs = 100ULL;
 	ULONGLONG GTab0LastUiPollTick = 0;
 
+	constexpr ULONGLONG kTab0RoleDropdownPollIntervalMs = 200ULL;
+	ULONGLONG GTab0LastRoleDropdownPollTick = 0;
+
+	constexpr ULONGLONG kTab0GuildRepairPollIntervalMs = 1500ULL;
+	ULONGLONG GTab0LastGuildRepairPollTick = 0;
+
 	UBPVE_JHConfigVideoItem2_C* GTab0RoleSelectDD = nullptr;
 	std::vector<int32> GTab0RoleSelectNPCIds;
 	std::vector<std::wstring> GTab0RoleSelectNames;
@@ -970,6 +976,8 @@ namespace
 		if (!bTab0Active)
 			return;
 
+		const ULONGLONG Now = GetTickCount64();
+
 		if (GTab0RoleSelectDD && IsValidTab0Dropdown(GTab0RoleSelectDD))
 		{
 			int32 CurRoleIdx = GetComboSelectedIndexFast(GTab0RoleSelectDD->CB_Main);
@@ -1002,13 +1010,19 @@ namespace
 			return GetComboSelectedIndexFast(Item->CB_Main);
 		};
 
+		const bool bShouldCheckGuildRepair =
+			!GTab0LastGuildRepairPollTick ||
+			(Now - GTab0LastGuildRepairPollTick) >= kTab0GuildRepairPollIntervalMs;
+		if (bShouldCheckGuildRepair)
+		{
+			RefreshTab0GuildDropdownOptionsIfNeeded(PC, false);
+			GTab0LastGuildRepairPollTick = Now;
+		}
+
 		const int32 CurExtraIdx = ReadIndex(GTab0ExtraNeiGongLimitDD);
 		const int32 CurGuildIdx = ReadIndex(GTab0GuildDD);
-
 		if (CurExtraIdx < 0 && CurGuildIdx < 0)
 			return;
-
-		RefreshTab0GuildDropdownOptionsIfNeeded(PC, false);
 
 		if (GTab0ExtraNeiGongLimitLastIdx < 0 && CurExtraIdx >= 0)
 			GTab0ExtraNeiGongLimitLastIdx = CurExtraIdx;
@@ -1083,6 +1097,12 @@ namespace
 
 		wchar_t Buf[32] = {};
 		swprintf_s(Buf, 32, L"%.1f", Clamped);
+		const std::string CurrentText = Item->TXT_CurrentValue->GetText().ToString();
+		std::string NextText;
+		for (const wchar_t* P = Buf; *P; ++P)
+			NextText.push_back(static_cast<char>(*P));
+		if (CurrentText == NextText)
+			return;
 		Item->TXT_CurrentValue->SetText(MakeText(Buf));
 	}
 
@@ -1863,6 +1883,8 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GTab0FocusCacheTick = 0;
 	GTab0LastCleanupTick = 0;
 	GTab0LastUiPollTick = 0;
+	GTab0LastRoleDropdownPollTick = 0;
+	GTab0LastGuildRepairPollTick = 0;
 	GTab0RoleSelectDD = nullptr;
 	GTab0RoleSelectNPCIds.clear();
 	GTab0RoleSelectNames.clear();
@@ -2196,6 +2218,7 @@ void PollTab0CharacterInput(bool bTab0Active)
 		if (GTab0FocusCacheEdit && !IsSafeLiveObject(static_cast<UObject*>(GTab0FocusCacheEdit)))
 		{
 			GTab0FocusCacheEdit = nullptr;
+			GTab0FocusCacheTick = 0;
 		}
 		GTab0LastCleanupTick = Now;
 	}
@@ -2208,6 +2231,9 @@ void PollTab0CharacterInput(bool bTab0Active)
 		GTab0EnterWasDown = EnterDown;
 		GTab0LastFocusedEdit = nullptr;
 		GTab0FocusCacheEdit = nullptr;
+		GTab0FocusCacheTick = 0;
+		GTab0LastRoleDropdownPollTick = 0;
+		GTab0LastGuildRepairPollTick = 0;
 		return;
 	}
 
@@ -2218,13 +2244,23 @@ void PollTab0CharacterInput(bool bTab0Active)
 	const bool bDoUiPoll = !GTab0LastUiPollTick || (Now - GTab0LastUiPollTick) >= kTab0UiPollIntervalMs;
 	if (bDoUiPoll)
 	{
-		PollTab0RoleDropdowns(PC, true);
 		PollTab0RatioSliders(PC);
 		GTab0LastUiPollTick = Now;
 	}
 
+	const bool bDoRoleDropdownPoll =
+		!GTab0LastRoleDropdownPollTick ||
+		(Now - GTab0LastRoleDropdownPollTick) >= kTab0RoleDropdownPollIntervalMs;
+	if (bDoRoleDropdownPoll)
+	{
+		PollTab0RoleDropdowns(PC, true);
+		GTab0LastRoleDropdownPollTick = Now;
+	}
+
 	const bool bCacheExpired = !GTab0FocusCacheTick || (Now - GTab0FocusCacheTick) >= kTab0FocusCacheDurationMs;
-	const bool bCachedEditValid = GTab0FocusCacheEdit && IsSafeLiveObject(static_cast<UObject*>(GTab0FocusCacheEdit));
+	const bool bCachedEditValid =
+		(!bCacheExpired && GTab0FocusCacheEdit == nullptr) ||
+		(GTab0FocusCacheEdit && IsSafeLiveObject(static_cast<UObject*>(GTab0FocusCacheEdit)));
 	const bool bNeedFocusScan = EnterTriggered || bCacheExpired || !bCachedEditValid;
 
 	FTab0Binding* Focused = nullptr;
