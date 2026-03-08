@@ -49,21 +49,24 @@ ULONGLONG GTeammateNpcPrototypeLastPagerPollTick = 0;
 ULONGLONG GTeammateNpcPrototypeLastLayoutLogTick = 0;
 bool GTeammateNpcResourceTableSchemaLogged = false;
 
-constexpr int32 kTeammateNpcPrototypePerPage = 10;
+constexpr int32 kTeammateNpcPrototypePerPage = 12;
 constexpr float kTeammateNpcCardScaleNormal = 1.0f;
 constexpr float kTeammateNpcCardScaleSelected = 1.0f;
 constexpr float kTeammateNpcCardHostWidth = 84.0f;
 constexpr float kTeammateNpcCardHostHeight = 122.0f;
 constexpr float kTeammateNpcMainImageScale = 2.40f;
-constexpr float kTeammateNpcMainImageOffsetX = -36.0f;
-constexpr float kTeammateNpcMainImageLiftY = -106.0f;
-constexpr float kTeammateNpcTitleOffsetX = kTeammateNpcMainImageOffsetX;
-constexpr float kTeammateNpcTitleOffsetY = kTeammateNpcMainImageLiftY;
+constexpr float kTeammateNpcMainImageOffsetX = -16.0f;
+constexpr float kTeammateNpcMainImageLiftY = -108.0f;
+constexpr int32 kTeammateNpcTitleFontSize = 14;
+constexpr float kTeammateNpcTitleFollowDeltaX = 0.0f;
+constexpr float kTeammateNpcTitleFollowDeltaY = -12.0f;
+constexpr float kTeammateNpcTitleOffsetX = kTeammateNpcMainImageOffsetX + kTeammateNpcTitleFollowDeltaX;
+constexpr float kTeammateNpcTitleOffsetY = kTeammateNpcMainImageLiftY + kTeammateNpcTitleFollowDeltaY;
 constexpr bool kTeammateNpcHideFrameHighlight = true;
 constexpr ULONGLONG kTeammateNpcSelectionPollIntervalMs = 33ULL;
 constexpr ULONGLONG kTeammateNpcPagerPollIntervalMs = 33ULL;
 constexpr bool kTab6NpcPrototypeVerboseLog = true;
-constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260308-1700-nohighlight-1";
+constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260308-1936-titlefit-1";
 
 void LogTeammateNpcResourceTableSchema(UDataTable* Table);
 void RebuildTeammateNpcPrototypeFilteredIndices();
@@ -1011,6 +1014,9 @@ void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Bi
 		const wchar_t* Title = Binding.DisplayName.empty() ? L"未命名NPC" : Binding.DisplayName.c_str();
 		Binding.CardWidget->TXT_Title->SetText(MakeText(Title));
 		Binding.CardWidget->TXT_Title->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		FSlateFontInfo TitleFont = Binding.CardWidget->TXT_Title->Font;
+		TitleFont.Size = kTeammateNpcTitleFontSize;
+		Binding.CardWidget->TXT_Title->SetFont(TitleFont);
 		Binding.CardWidget->TXT_Title->SetRenderTransformPivot(FVector2D{ 0.5f, 1.0f });
 		Binding.CardWidget->TXT_Title->SetRenderTranslation(FVector2D{ kTeammateNpcTitleOffsetX, kTeammateNpcTitleOffsetY });
 	}
@@ -1152,6 +1158,30 @@ void UpdateTeammateNpcPrototypePageLabel()
 	GTeammateNpcPrototypePageLabel->SetText(MakeText(Buf));
 }
 
+void UpdateTeammateNpcPrototypePagerButtons()
+{
+	auto SetBtnEnabled = [](UJHCommon_Btn_Free_C* W, bool bEnabled)
+	{
+		if (!W)
+			return;
+		W->SetIsEnabled(bEnabled);
+		if (bEnabled)
+			W->GotoNormalStatus();
+		else
+			W->GotoDisableStatus();
+		if (W->Btn)
+			W->Btn->SetIsEnabled(bEnabled);
+		if (W->JHGPCBtn)
+			W->JHGPCBtn->SetIsEnabled(bEnabled);
+	};
+
+	const bool bHasPages = (GTeammateNpcPrototypeTotalPages > 0);
+	const bool bCanPrev = bHasPages && (GTeammateNpcPrototypeCurrentPage > 0);
+	const bool bCanNext = bHasPages && ((GTeammateNpcPrototypeCurrentPage + 1) < GTeammateNpcPrototypeTotalPages);
+	SetBtnEnabled(GTeammateNpcPrototypePrevPageBtn, bCanPrev);
+	SetBtnEnabled(GTeammateNpcPrototypeNextPageBtn, bCanNext);
+}
+
 void RebuildTeammateNpcPrototypeFilteredIndices()
 {
 	GTeammateNpcPrototypeFilteredIndices.clear();
@@ -1220,6 +1250,7 @@ void RefreshTeammateNpcPrototypePage()
 	if (FilteredCount <= 0)
 	{
 		UpdateTeammateNpcPrototypePageLabel();
+		UpdateTeammateNpcPrototypePagerButtons();
 		UpdateTeammateNpcPrototypeSelectionSummary();
 		return;
 	}
@@ -1327,6 +1358,7 @@ void RefreshTeammateNpcPrototypePage()
 	}
 
 	UpdateTeammateNpcPrototypePageLabel();
+	UpdateTeammateNpcPrototypePagerButtons();
 	if (!HasTeammateNpcPrototypeCardBinding(GTeammateNpcPrototypeSelectedNpcId) &&
 		!GTeammateNpcPrototypeCards.empty())
 	{
@@ -1769,12 +1801,7 @@ void PollTab6NpcPrototypeSelection(bool bTab6Active)
 	}
 
 	const ULONGLONG Now = GetTickCount64();
-	if (kTab6NpcPrototypeVerboseLog &&
-		(!GTeammateNpcPrototypeLastLayoutLogTick || (Now - GTeammateNpcPrototypeLastLayoutLogTick) >= 700ULL))
-	{
-		GTeammateNpcPrototypeLastLayoutLogTick = Now;
-		LogTeammateNpcPrototypeLayout("poll");
-	}
+	// 关闭轮询阶段布局日志，避免持续刷屏。
 	const bool bDoPagerPoll =
 		!GTeammateNpcPrototypeLastPagerPollTick ||
 		(Now - GTeammateNpcPrototypeLastPagerPollTick) >= kTeammateNpcPagerPollIntervalMs;
@@ -1885,24 +1912,6 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	};
 
-	auto* TeamPanel = CreateCollapsiblePanel(PC, L"队伍设置");
-	auto* TeamBox = TeamPanel ? TeamPanel->CT_Contents : nullptr;
-	GTeammate.FollowToggle = CreateToggleItem(PC, L"设置队友跟随数量");
-	if (GTeammate.FollowToggle)
-	{
-		if (TeamBox) TeamBox->AddChild(GTeammate.FollowToggle);
-		else GDynTab.Content6->AddChild(GTeammate.FollowToggle);
-		Count++;
-	}
-	GTeammate.FollowCount = CreateVolumeNumericEditBoxItem(PC, Outer, TeamBox ? TeamBox : GDynTab.Content6, L"跟随数量", L"输入数字", L"3");
-	if (GTeammate.FollowCount)
-	{
-		if (TeamBox) TeamBox->AddChild(GTeammate.FollowCount);
-		else GDynTab.Content6->AddChild(GTeammate.FollowCount);
-		Count++;
-	}
-	AddPanelWithFixedGap(TeamPanel, 0.0f, 10.0f);
-
 	auto* OperatePanel = CreateCollapsiblePanel(PC, L"队友操作");
 	auto* OperateBox = OperatePanel ? OperatePanel->CT_Contents : nullptr;
 	GTeammate.AddDD = CreateVideoItemWithOptions(PC, L"添加队友",
@@ -1930,69 +1939,37 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	}
 	AddPanelWithFixedGap(OperatePanel, 0.0f, 8.0f);
 
-	auto* PrototypePanel = CreateCollapsiblePanel(PC, L"NPC图鉴卡片原型");
+	auto* PrototypePanel = CreateCollapsiblePanel(PC, L"NPC浏览器");
 	auto* PrototypeBox = PrototypePanel ? PrototypePanel->CT_Contents : nullptr;
 	if (PrototypeBox)
 	{
-		auto* TipLabel = CreateRawTextLabel(
-			Outer,
-			L"分页原型：复用原版图鉴 NPC 卡片，支持搜索 + 上一页/下一页；点击只做高亮选择，不直接入队。");
-		if (TipLabel)
-		{
-			RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(TipLabel));
-			TipLabel->Font.Size = 15;
-			TipLabel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-			if (UPanelSlot* LabelSlot = PrototypeBox->AddChild(TipLabel))
-			{
-				if (LabelSlot->IsA(UVerticalBoxSlot::StaticClass()))
-				{
-					auto* VSlot = static_cast<UVerticalBoxSlot*>(LabelSlot);
-					FMargin Pad{};
-					Pad.Bottom = 10.0f;
-					VSlot->SetPadding(Pad);
-				}
-			}
-			Count++;
-		}
-
-		auto* SelectionLabel = CreateRawTextLabel(
-			Outer,
-			L"当前选择：未选择  |  点击卡片只做选择高亮。");
-		if (SelectionLabel)
-		{
-			RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(SelectionLabel));
-			SelectionLabel->Font.Size = 16;
-			SelectionLabel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-			GTeammateNpcPrototypeSelectionLabel = SelectionLabel;
-			if (UPanelSlot* LabelSlot = PrototypeBox->AddChild(SelectionLabel))
-			{
-				if (LabelSlot->IsA(UVerticalBoxSlot::StaticClass()))
-				{
-					auto* VSlot = static_cast<UVerticalBoxSlot*>(LabelSlot);
-					FMargin Pad{};
-					Pad.Bottom = 12.0f;
-					VSlot->SetPadding(Pad);
-				}
-			}
-			Count++;
-		}
-
-		UEditableTextBox* SearchEdit = nullptr;
-		if (false && SearchEdit)
+		UEditableTextBox* SearchEdit = static_cast<UEditableTextBox*>(
+			CreateRawWidget(UEditableTextBox::StaticClass(), Outer));
+		if (SearchEdit)
 		{
 			RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(SearchEdit));
-			SearchEdit->SetHintText(MakeText(L"输入姓名或NPCId搜索..."));
+			SearchEdit->SetHintText(MakeText(L"输入以搜索..."));
 			SearchEdit->SetText(MakeText(L""));
 			SearchEdit->SetJustification(ETextJustify::Left);
-			SearchEdit->MinimumDesiredWidth = 380.0f;
+			SearchEdit->MinimumDesiredWidth = 500.0f;
 			SearchEdit->SelectAllTextWhenFocused = true;
 			SearchEdit->ClearKeyboardFocusOnCommit = false;
 			SearchEdit->Font.Size = 16;
 			SearchEdit->WidgetStyle.Font.Size = 16;
 			SearchEdit->WidgetStyle.Padding.Left = 10.0f;
-			SearchEdit->WidgetStyle.Padding.Top = 3.0f;
+			SearchEdit->WidgetStyle.Padding.Top = 4.0f;
 			SearchEdit->WidgetStyle.Padding.Right = 10.0f;
-			SearchEdit->WidgetStyle.Padding.Bottom = 3.0f;
+			SearchEdit->WidgetStyle.Padding.Bottom = 4.0f;
+			const FSlateColor SearchBgTint(FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f });
+			const FSlateColor SearchTextTint(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });
+			SearchEdit->WidgetStyle.BackgroundImageNormal.TintColor = SearchBgTint;
+			SearchEdit->WidgetStyle.BackgroundImageHovered.TintColor = SearchBgTint;
+			SearchEdit->WidgetStyle.BackgroundImageFocused.TintColor = SearchBgTint;
+			SearchEdit->WidgetStyle.BackgroundImageReadOnly.TintColor = SearchBgTint;
+			SearchEdit->WidgetStyle.ForegroundColor = SearchTextTint;
+			SearchEdit->WidgetStyle.ReadOnlyForegroundColor = SearchTextTint;
+			SearchEdit->ForegroundColor = FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f };
+			SearchEdit->ReadOnlyForegroundColor = FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f };
 			ClearEditableTextBindings(SearchEdit);
 
 			UWidget* SearchHost = SearchEdit;
@@ -2000,7 +1977,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			if (SearchSize)
 			{
 				RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(SearchSize));
-				SearchSize->SetWidthOverride(420.0f);
+				SearchSize->SetWidthOverride(560.0f);
 				SearchSize->SetHeightOverride(44.0f);
 				SearchSize->SetContent(SearchEdit);
 				SearchHost = SearchSize;
@@ -2012,55 +1989,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 				if (SearchSlot->IsA(UVerticalBoxSlot::StaticClass()))
 				{
 					auto* VSlot = static_cast<UVerticalBoxSlot*>(SearchSlot);
-					FMargin Pad{};
-					Pad.Bottom = 10.0f;
-					VSlot->SetPadding(Pad);
-				}
-			}
-			Count++;
-		}
-
-		const wchar_t* SearchRowTitle = L"NPC卡片搜索";
-		auto* SearchRow = CreateVolumeEditBoxItem(
-			PC,
-			Outer,
-			PrototypeBox,
-			SearchRowTitle,
-			L"输入姓名或NPCId搜索...",
-			L"");
-		if (SearchRow)
-		{
-			if (SearchRow->TXT_Title)
-			{
-				SearchRow->TXT_Title->SetText(MakeText(L""));
-				SearchRow->TXT_Title->SetVisibility(ESlateVisibility::Collapsed);
-			}
-
-			auto* SearchEdit2 = GetRuntimeEditBoxByTitle(SearchRowTitle);
-			if (SearchEdit2 &&
-				IsSafeLiveObjectOfClass(static_cast<UObject*>(SearchEdit2), UEditableTextBox::StaticClass()))
-			{
-				SearchEdit2->SetHintText(MakeText(L"输入姓名或NPCId搜索..."));
-				SearchEdit2->SetJustification(ETextJustify::Left);
-				SearchEdit2->MinimumDesiredWidth = 460.0f;
-				SearchEdit2->SelectAllTextWhenFocused = true;
-				SearchEdit2->ClearKeyboardFocusOnCommit = false;
-				SearchEdit2->Font.Size = 16;
-				SearchEdit2->WidgetStyle.Font.Size = 16;
-				SearchEdit2->WidgetStyle.Padding.Left = 10.0f;
-				SearchEdit2->WidgetStyle.Padding.Top = 4.0f;
-				SearchEdit2->WidgetStyle.Padding.Right = 10.0f;
-				SearchEdit2->WidgetStyle.Padding.Bottom = 4.0f;
-				SearchEdit2->SetRenderTranslation(FVector2D{ 0.0f, -0.5f });
-				GTeammateNpcPrototypeSearchEdit = SearchEdit2;
-			}
-
-			if (UPanelSlot* SearchSlot = PrototypeBox->AddChild(SearchRow))
-			{
-				if (SearchSlot->IsA(UVerticalBoxSlot::StaticClass()))
-				{
-					auto* VSlot = static_cast<UVerticalBoxSlot*>(SearchSlot);
-					VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+					VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
 					VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
 					FMargin Pad{};
 					Pad.Bottom = 10.0f;
@@ -2075,15 +2004,15 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (CardWrap)
 		{
 			RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(CardWrap));
-			CardWrap->SetInnerSlotPadding(FVector2D{ 25.0f, 20.5f });
-			CardWrap->WrapSize = 500.0f;
+			CardWrap->SetInnerSlotPadding(FVector2D{ 25.0f, 33.5f });
+			CardWrap->WrapSize = 640.0f;
 			CardWrap->bExplicitWrapSize = true;
 
 			bool bMountedListContainer = false;
 			if (CardViewport)
 			{
 				RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(CardViewport));
-				CardViewport->SetWidthOverride(500.0f);
+				CardViewport->SetWidthOverride(640.0f);
 				CardViewport->SetHeightOverride(340.0f);
 				CardViewport->SetContent(CardWrap);
 				if (UPanelSlot* RowSlot = PrototypeBox->AddChild(CardViewport))
@@ -2091,7 +2020,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 					if (RowSlot->IsA(UVerticalBoxSlot::StaticClass()))
 					{
 						auto* VSlot = static_cast<UVerticalBoxSlot*>(RowSlot);
-						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
+						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
 						VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Top);
 						FMargin Pad{};
 						Pad.Bottom = 0.0f;
@@ -2108,7 +2037,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 					if (RowSlot->IsA(UVerticalBoxSlot::StaticClass()))
 					{
 						auto* VSlot = static_cast<UVerticalBoxSlot*>(RowSlot);
-						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
+						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
 						VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Top);
 						FMargin Pad{};
 						Pad.Bottom = 0.0f;
@@ -2179,7 +2108,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 					if (PagerSlot->IsA(UVerticalBoxSlot::StaticClass()))
 					{
 						auto* VSlot = static_cast<UVerticalBoxSlot*>(PagerSlot);
-						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Right);
 						VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
 						FMargin Pad{};
 						Pad.Top = 2.0f;
