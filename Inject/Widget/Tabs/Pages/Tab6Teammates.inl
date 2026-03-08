@@ -20,6 +20,7 @@ struct FTeammateNpcPrototypeCardBinding
 	UPaperFlipbook* IdleFlipbook = nullptr;
 	UButton* ClickButton = nullptr;
 	UBorder* FrameBorder = nullptr;
+	USizeBox* CardHost = nullptr;
 	UJHNeoUIGHC_RegionElement_NPC* CardWidget = nullptr;
 	bool bVisualsPrimed = false;
 	bool WasPressed = false;
@@ -45,21 +46,29 @@ bool GTeammateNpcPrototypePrevWasPressed = false;
 bool GTeammateNpcPrototypeNextWasPressed = false;
 ULONGLONG GTeammateNpcPrototypeLastSelectionPollTick = 0;
 ULONGLONG GTeammateNpcPrototypeLastPagerPollTick = 0;
+ULONGLONG GTeammateNpcPrototypeLastLayoutLogTick = 0;
 bool GTeammateNpcResourceTableSchemaLogged = false;
 
-constexpr int32 kTeammateNpcPrototypePerPage = 8;
-constexpr float kTeammateNpcCardScaleNormal = 0.95f;
-constexpr float kTeammateNpcCardScaleSelected = 1.04f;
-constexpr float kTeammateNpcCardHostWidth = 114.0f;
-constexpr float kTeammateNpcCardHostHeight = 184.0f;
+constexpr int32 kTeammateNpcPrototypePerPage = 10;
+constexpr float kTeammateNpcCardScaleNormal = 1.0f;
+constexpr float kTeammateNpcCardScaleSelected = 1.0f;
+constexpr float kTeammateNpcCardHostWidth = 84.0f;
+constexpr float kTeammateNpcCardHostHeight = 122.0f;
+constexpr float kTeammateNpcMainImageScale = 2.40f;
+constexpr float kTeammateNpcMainImageOffsetX = -36.0f;
+constexpr float kTeammateNpcMainImageLiftY = -106.0f;
+constexpr float kTeammateNpcTitleOffsetX = kTeammateNpcMainImageOffsetX;
+constexpr float kTeammateNpcTitleOffsetY = kTeammateNpcMainImageLiftY;
+constexpr bool kTeammateNpcHideFrameHighlight = true;
 constexpr ULONGLONG kTeammateNpcSelectionPollIntervalMs = 33ULL;
 constexpr ULONGLONG kTeammateNpcPagerPollIntervalMs = 33ULL;
-constexpr bool kTab6NpcPrototypeVerboseLog = false;
-constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260308-0112";
+constexpr bool kTab6NpcPrototypeVerboseLog = true;
+constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260308-1700-nohighlight-1";
 
 void LogTeammateNpcResourceTableSchema(UDataTable* Table);
 void RebuildTeammateNpcPrototypeFilteredIndices();
 void RefreshTeammateNpcPrototypePage();
+void LogTeammateNpcPrototypeLayout(const char* StageTag);
 
 std::wstring GetTeammateNpcPrototypeText(const FText& Text)
 {
@@ -127,6 +136,7 @@ void ReleaseTeammateNpcPrototypeWidgets()
 	GTeammateNpcPrototypeNextWasPressed = false;
 	GTeammateNpcPrototypeLastSelectionPollTick = 0;
 	GTeammateNpcPrototypeLastPagerPollTick = 0;
+	GTeammateNpcPrototypeLastLayoutLogTick = 0;
 }
 
 std::wstring GetTeammateNpcPrototypeName(int32 NpcId, const wchar_t* FallbackName)
@@ -143,6 +153,9 @@ std::wstring GetTeammateNpcPrototypeName(int32 NpcId, const wchar_t* FallbackNam
 
 FLinearColor GetTeammateNpcPrototypeFrameColor(bool bSelected)
 {
+	if (kTeammateNpcHideFrameHighlight)
+		return FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f };
+
 	if (bSelected)
 		return FLinearColor{ 0.52f, 0.70f, 0.92f, 0.96f };
 	return FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f };
@@ -970,7 +983,8 @@ void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Bi
 	}
 
 	Binding.CardWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-	Binding.CardWidget->SetRenderTransformPivot(FVector2D{ 0.5f, 0.0f });
+	Binding.CardWidget->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
+	Binding.CardWidget->SetRenderTranslation(FVector2D{ 0.0f, 0.0f });
 
 	if (Binding.CardWidget->IsA(UJHGHC_RegionEle_NPC_C::StaticClass()))
 	{
@@ -997,6 +1011,8 @@ void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Bi
 		const wchar_t* Title = Binding.DisplayName.empty() ? L"未命名NPC" : Binding.DisplayName.c_str();
 		Binding.CardWidget->TXT_Title->SetText(MakeText(Title));
 		Binding.CardWidget->TXT_Title->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		Binding.CardWidget->TXT_Title->SetRenderTransformPivot(FVector2D{ 0.5f, 1.0f });
+		Binding.CardWidget->TXT_Title->SetRenderTranslation(FVector2D{ kTeammateNpcTitleOffsetX, kTeammateNpcTitleOffsetY });
 	}
 
 	if (Binding.CardWidget->IMG_Locked)
@@ -1022,6 +1038,26 @@ void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Bi
 	else if (Binding.CardWidget->IMG_Main && !Binding.IdleFlipbook)
 	{
 		Binding.CardWidget->IMG_Main->SetRenderOpacity(0.0f);
+	}
+
+	if (Binding.CardWidget->IMG_Main)
+	{
+		Binding.CardWidget->IMG_Main->SetRenderTransformPivot(FVector2D{ 0.5f, 1.0f });
+		Binding.CardWidget->IMG_Main->SetRenderScale(FVector2D{ kTeammateNpcMainImageScale, kTeammateNpcMainImageScale });
+		Binding.CardWidget->IMG_Main->SetRenderTranslation(FVector2D{ kTeammateNpcMainImageOffsetX, kTeammateNpcMainImageLiftY });
+		if (Binding.CardWidget->IMG_Main->Slot &&
+			Binding.CardWidget->IMG_Main->Slot->IsA(UCanvasPanelSlot::StaticClass()))
+		{
+			auto* MainSlot = static_cast<UCanvasPanelSlot*>(Binding.CardWidget->IMG_Main->Slot);
+			FAnchorData Layout = MainSlot->GetLayout();
+			Layout.Anchors.Minimum = FVector2D{ 0.5f, 1.0f };
+			Layout.Anchors.Maximum = FVector2D{ 0.5f, 1.0f };
+			Layout.Alignment = FVector2D{ 0.5f, 1.0f };
+			Layout.Offsets.Left = 0.0f;
+			Layout.Offsets.Top = 0.0f;
+			MainSlot->SetLayout(Layout);
+			MainSlot->SetAutoSize(true);
+		}
 	}
 }
 
@@ -1218,22 +1254,55 @@ void RefreshTeammateNpcPrototypePage()
 			ClickButton->IsFocusable = false;
 			ClickButton->SetBackgroundColor(FLinearColor{ 0.0f, 0.0f, 0.0f, 0.0f });
 			ClickButton->SetColorAndOpacity(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });
-			FrameBorder->SetPadding(FMargin{ 3.0f, 3.0f, 3.0f, 3.0f });
-			FrameBorder->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
-			FrameBorder->SetVerticalAlignment(EVerticalAlignment::VAlign_Top);
+			{
+				FButtonStyle BtnStyle = ClickButton->WidgetStyle;
+				BtnStyle.NormalPadding = FMargin{ 0.0f, 0.0f, 0.0f, 0.0f };
+				BtnStyle.PressedPadding = FMargin{ 0.0f, 0.0f, 0.0f, 0.0f };
+				ClickButton->SetStyle(BtnStyle);
+			}
+			FrameBorder->SetPadding(FMargin{ 0.0f, 0.0f, 0.0f, 0.0f });
+			FrameBorder->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+			FrameBorder->SetVerticalAlignment(EVerticalAlignment::VAlign_Fill);
 			FrameBorder->SetBrushColor(GetTeammateNpcPrototypeFrameColor(false));
 			FrameBorder->SetContentColorAndOpacity(FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f });
 			CardHost->SetWidthOverride(kTeammateNpcCardHostWidth);
 			CardHost->SetHeightOverride(kTeammateNpcCardHostHeight);
-			CardHost->AddChild(Card);
-			ClickButton->AddChild(CardHost);
-			FrameBorder->AddChild(ClickButton);
+			if (UPanelSlot* CardSlot = CardHost->AddChild(Card))
+			{
+				if (CardSlot->IsA(USizeBoxSlot::StaticClass()))
+				{
+					auto* SizeSlot = static_cast<USizeBoxSlot*>(CardSlot);
+					SizeSlot->SetPadding(FMargin{ 0.0f, 0.0f, 0.0f, 0.0f });
+					SizeSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+					SizeSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+				}
+			}
+			if (UPanelSlot* BtnSlotRaw = ClickButton->AddChild(CardHost))
+			{
+				if (BtnSlotRaw->IsA(UButtonSlot::StaticClass()))
+				{
+					auto* BtnSlot = static_cast<UButtonSlot*>(BtnSlotRaw);
+					BtnSlot->SetPadding(FMargin{ 0.0f, 0.0f, 0.0f, 0.0f });
+					BtnSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+					BtnSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Fill);
+				}
+			}
+			if (UPanelSlot* BorderSlotRaw = FrameBorder->AddChild(ClickButton))
+			{
+				if (BorderSlotRaw->IsA(UBorderSlot::StaticClass()))
+				{
+					auto* BorderSlot = static_cast<UBorderSlot*>(BorderSlotRaw);
+					BorderSlot->SetPadding(FMargin{ 0.0f, 0.0f, 0.0f, 0.0f });
+					BorderSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+					BorderSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Fill);
+				}
+			}
 
 			if (UWrapBoxSlot* HostSlot = GTeammateNpcPrototypeCardWrap->AddChildToWrapBox(FrameBorder))
 			{
 				FMargin Pad{};
 				Pad.Right = 0.0f;
-				Pad.Bottom = 6.0f;
+				Pad.Bottom = 0.0f;
 				HostSlot->SetPadding(Pad);
 				HostSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
 				HostSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Top);
@@ -1246,6 +1315,7 @@ void RefreshTeammateNpcPrototypePage()
 			Binding.IdleFlipbook = Sample.IdleFlipbook;
 			Binding.ClickButton = ClickButton;
 			Binding.FrameBorder = FrameBorder;
+			Binding.CardHost = CardHost;
 			Binding.CardWidget = Card;
 			RefreshTeammateNpcPrototypeCardContent(Binding);
 			GTeammateNpcPrototypeCards.push_back(Binding);
@@ -1263,6 +1333,423 @@ void RefreshTeammateNpcPrototypePage()
 		GTeammateNpcPrototypeSelectedNpcId = GTeammateNpcPrototypeCards.front().NpcId;
 	}
 	ApplyTeammateNpcPrototypeSelectionVisuals();
+	GTeammateNpcPrototypeLastLayoutLogTick = 0;
+	if (kTab6NpcPrototypeVerboseLog)
+		LogTeammateNpcPrototypeLayout("refresh-immediate");
+}
+
+const char* GetTeammateNpcPrototypeSlotTypeName(UPanelSlot* Slot)
+{
+	if (!Slot)
+		return "null";
+	if (Slot->IsA(UWrapBoxSlot::StaticClass()))
+		return "WrapBoxSlot";
+	if (Slot->IsA(UCanvasPanelSlot::StaticClass()))
+		return "CanvasPanelSlot";
+	if (Slot->IsA(UButtonSlot::StaticClass()))
+		return "ButtonSlot";
+	if (Slot->IsA(UBorderSlot::StaticClass()))
+		return "BorderSlot";
+	if (Slot->IsA(UOverlaySlot::StaticClass()))
+		return "OverlaySlot";
+	if (Slot->IsA(USizeBoxSlot::StaticClass()))
+		return "SizeBoxSlot";
+	if (Slot->IsA(UVerticalBoxSlot::StaticClass()))
+		return "VerticalBoxSlot";
+	if (Slot->IsA(UHorizontalBoxSlot::StaticClass()))
+		return "HorizontalBoxSlot";
+	return "PanelSlot";
+}
+
+void LogTeammateNpcPrototypePanelSlotInfo(const char* Prefix, UPanelSlot* Slot)
+{
+	if (!kTab6NpcPrototypeVerboseLog)
+		return;
+	if (!Prefix)
+		Prefix = "slot";
+	if (!Slot || !IsSafeLiveObject(static_cast<UObject*>(Slot)))
+	{
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " slot=null\n";
+		return;
+	}
+
+	LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+		<< Prefix << " slotType=" << GetTeammateNpcPrototypeSlotTypeName(Slot) << "\n";
+
+	if (Slot->IsA(UWrapBoxSlot::StaticClass()))
+	{
+		auto* S = static_cast<UWrapBoxSlot*>(Slot);
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " wrapPad=(" << S->Padding.Left << "," << S->Padding.Top << "," << S->Padding.Right << "," << S->Padding.Bottom << ")"
+			<< " hAlign=" << static_cast<int32>(S->HorizontalAlignment)
+			<< " vAlign=" << static_cast<int32>(S->VerticalAlignment)
+			<< " fillEmpty=" << (S->bFillEmptySpace ? 1 : 0)
+			<< " fillSpanLt=" << S->FillSpanWhenLessThan
+			<< "\n";
+		return;
+	}
+	if (Slot->IsA(UCanvasPanelSlot::StaticClass()))
+	{
+		auto* S = static_cast<UCanvasPanelSlot*>(Slot);
+		const FAnchorData Layout = S->GetLayout();
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " canvasOffsets=(" << Layout.Offsets.Left << "," << Layout.Offsets.Top << "," << Layout.Offsets.Right << "," << Layout.Offsets.Bottom << ")"
+			<< " anchorsMin=(" << Layout.Anchors.Minimum.X << "," << Layout.Anchors.Minimum.Y << ")"
+			<< " anchorsMax=(" << Layout.Anchors.Maximum.X << "," << Layout.Anchors.Maximum.Y << ")"
+			<< " align=(" << Layout.Alignment.X << "," << Layout.Alignment.Y << ")"
+			<< " autoSize=" << (S->GetAutoSize() ? 1 : 0)
+			<< " z=" << S->GetZOrder()
+			<< "\n";
+		return;
+	}
+	if (Slot->IsA(UButtonSlot::StaticClass()))
+	{
+		auto* S = static_cast<UButtonSlot*>(Slot);
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " buttonPad=(" << S->Padding.Left << "," << S->Padding.Top << "," << S->Padding.Right << "," << S->Padding.Bottom << ")"
+			<< " hAlign=" << static_cast<int32>(S->HorizontalAlignment)
+			<< " vAlign=" << static_cast<int32>(S->VerticalAlignment)
+			<< "\n";
+		return;
+	}
+	if (Slot->IsA(UBorderSlot::StaticClass()))
+	{
+		auto* S = static_cast<UBorderSlot*>(Slot);
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " borderPad=(" << S->Padding.Left << "," << S->Padding.Top << "," << S->Padding.Right << "," << S->Padding.Bottom << ")"
+			<< " hAlign=" << static_cast<int32>(S->HorizontalAlignment)
+			<< " vAlign=" << static_cast<int32>(S->VerticalAlignment)
+			<< "\n";
+		return;
+	}
+	if (Slot->IsA(UOverlaySlot::StaticClass()))
+	{
+		auto* S = static_cast<UOverlaySlot*>(Slot);
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " overlayPad=(" << S->Padding.Left << "," << S->Padding.Top << "," << S->Padding.Right << "," << S->Padding.Bottom << ")"
+			<< " hAlign=" << static_cast<int32>(S->HorizontalAlignment)
+			<< " vAlign=" << static_cast<int32>(S->VerticalAlignment)
+			<< "\n";
+		return;
+	}
+	if (Slot->IsA(USizeBoxSlot::StaticClass()))
+	{
+		auto* S = static_cast<USizeBoxSlot*>(Slot);
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " sizeBoxPad=(" << S->Padding.Left << "," << S->Padding.Top << "," << S->Padding.Right << "," << S->Padding.Bottom << ")"
+			<< " hAlign=" << static_cast<int32>(S->HorizontalAlignment)
+			<< " vAlign=" << static_cast<int32>(S->VerticalAlignment)
+			<< "\n";
+		return;
+	}
+	if (Slot->IsA(UVerticalBoxSlot::StaticClass()))
+	{
+		auto* S = static_cast<UVerticalBoxSlot*>(Slot);
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " vboxPad=(" << S->Padding.Left << "," << S->Padding.Top << "," << S->Padding.Right << "," << S->Padding.Bottom << ")"
+			<< " hAlign=" << static_cast<int32>(S->HorizontalAlignment)
+			<< " vAlign=" << static_cast<int32>(S->VerticalAlignment)
+			<< "\n";
+		return;
+	}
+	if (Slot->IsA(UHorizontalBoxSlot::StaticClass()))
+	{
+		auto* S = static_cast<UHorizontalBoxSlot*>(Slot);
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " hboxPad=(" << S->Padding.Left << "," << S->Padding.Top << "," << S->Padding.Right << "," << S->Padding.Bottom << ")"
+			<< " hAlign=" << static_cast<int32>(S->HorizontalAlignment)
+			<< " vAlign=" << static_cast<int32>(S->VerticalAlignment)
+			<< "\n";
+		return;
+	}
+}
+
+void LogTeammateNpcPrototypeWidgetGeometry(const char* Prefix, UObject* WorldCtx, UWidget* Widget)
+{
+	if (!kTab6NpcPrototypeVerboseLog)
+		return;
+	if (!Prefix)
+		Prefix = "widget";
+	if (!Widget || !IsSafeLiveObject(static_cast<UObject*>(Widget)))
+	{
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+			<< Prefix << " widget=null\n";
+		return;
+	}
+
+	const FGeometry Geo = Widget->GetCachedGeometry();
+	const FVector2D Local = USlateBlueprintLibrary::GetLocalSize(Geo);
+	const FVector2D Desired = Widget->GetDesiredSize();
+	FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+	if (WorldCtx)
+	{
+		USlateBlueprintLibrary::LocalToViewport(WorldCtx, Geo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+		USlateBlueprintLibrary::LocalToViewport(WorldCtx, Geo, Local, &PixelBR, &ViewBR);
+	}
+	float W = ViewBR.X - ViewTL.X;
+	float H = ViewBR.Y - ViewTL.Y;
+	float X = ViewTL.X;
+	float Y = ViewTL.Y;
+	if (W < 0.0f) { W = -W; X = ViewBR.X; }
+	if (H < 0.0f) { H = -H; Y = ViewBR.Y; }
+
+	LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] "
+		<< Prefix
+		<< " pos=(" << X << "," << Y << ")"
+		<< " size=(" << W << "," << H << ")"
+		<< " local=(" << Local.X << "," << Local.Y << ")"
+		<< " desired=(" << Desired.X << "," << Desired.Y << ")"
+		<< " renderPivot=(" << Widget->RenderTransformPivot.X << "," << Widget->RenderTransformPivot.Y << ")"
+		<< " renderTrans=(" << Widget->RenderTransform.Translation.X << "," << Widget->RenderTransform.Translation.Y << ")"
+		<< " renderScale=(" << Widget->RenderTransform.Scale.X << "," << Widget->RenderTransform.Scale.Y << ")"
+		<< " renderShear=(" << Widget->RenderTransform.Shear.X << "," << Widget->RenderTransform.Shear.Y << ")"
+		<< " renderAngle=" << Widget->RenderTransform.Angle
+		<< "\n";
+}
+
+void LogTeammateNpcPrototypeLayout(const char* StageTag)
+{
+	if (!kTab6NpcPrototypeVerboseLog)
+		return;
+
+	if (!GTeammateNpcPrototypeCardWrap ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcPrototypeCardWrap), UWrapBox::StaticClass()))
+	{
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout] stage="
+			<< (StageTag ? StageTag : "null")
+			<< " wrapInvalid=1\n";
+		return;
+	}
+
+	GTeammateNpcPrototypeCardWrap->ForceLayoutPrepass();
+	UPanelWidget* P0 = GTeammateNpcPrototypeCardWrap->GetParent();
+	if (P0 && IsSafeLiveObject(static_cast<UObject*>(P0)))
+	{
+		P0->ForceLayoutPrepass();
+		UPanelWidget* P1 = P0->GetParent();
+		if (P1 && IsSafeLiveObject(static_cast<UObject*>(P1)))
+			P1->ForceLayoutPrepass();
+	}
+
+	UObject* WorldCtx = nullptr;
+	if (UWorld* World = UWorld::GetWorld())
+		WorldCtx = static_cast<UObject*>(World);
+	else if (GTeammateNpcPrototypeOwnerPC && IsSafeLiveObject(static_cast<UObject*>(GTeammateNpcPrototypeOwnerPC)))
+		WorldCtx = static_cast<UObject*>(GTeammateNpcPrototypeOwnerPC);
+
+	const FGeometry WrapGeo = GTeammateNpcPrototypeCardWrap->GetCachedGeometry();
+	const FVector2D WrapLocal = USlateBlueprintLibrary::GetLocalSize(WrapGeo);
+
+	FVector2D WrapPixelTL{}, WrapViewTL{}, WrapPixelBR{}, WrapViewBR{};
+	if (WorldCtx)
+	{
+		USlateBlueprintLibrary::LocalToViewport(WorldCtx, WrapGeo, FVector2D{ 0.0f, 0.0f }, &WrapPixelTL, &WrapViewTL);
+		USlateBlueprintLibrary::LocalToViewport(WorldCtx, WrapGeo, WrapLocal, &WrapPixelBR, &WrapViewBR);
+	}
+
+	float WrapViewW = WrapViewBR.X - WrapViewTL.X;
+	float WrapViewH = WrapViewBR.Y - WrapViewTL.Y;
+	if (WrapViewW < 0.0f) WrapViewW = -WrapViewW;
+	if (WrapViewH < 0.0f) WrapViewH = -WrapViewH;
+
+	LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout] stage="
+		<< (StageTag ? StageTag : "null")
+		<< " wrapCfg=(" << GTeammateNpcPrototypeCardWrap->WrapSize << "," << (GTeammateNpcPrototypeCardWrap->bExplicitWrapSize ? 1 : 0) << ")"
+		<< " wrapChildren=" << GTeammateNpcPrototypeCardWrap->GetChildrenCount()
+		<< " bindings=" << GTeammateNpcPrototypeCards.size()
+		<< " local=(" << WrapLocal.X << "," << WrapLocal.Y << ")"
+		<< " view=(" << WrapViewW << "," << WrapViewH << ")"
+		<< " page=" << (GTeammateNpcPrototypeCurrentPage + 1) << "/" << (GTeammateNpcPrototypeTotalPages > 0 ? GTeammateNpcPrototypeTotalPages : 1)
+		<< " filtered=" << GTeammateNpcPrototypeFilteredIndices.size()
+		<< "\n";
+
+	struct FCardGeom
+	{
+		int32 Index = -1;
+		int32 NpcId = 0;
+		float X = 0.0f;
+		float Y = 0.0f;
+		float W = 0.0f;
+		float H = 0.0f;
+		float LocalW = 0.0f;
+		float LocalH = 0.0f;
+		float DesiredW = 0.0f;
+		float DesiredH = 0.0f;
+	};
+	std::vector<FCardGeom> Geoms;
+	Geoms.reserve(GTeammateNpcPrototypeCards.size());
+
+	for (int32 i = 0; i < static_cast<int32>(GTeammateNpcPrototypeCards.size()); ++i)
+	{
+		auto& Binding = GTeammateNpcPrototypeCards[i];
+		if (!Binding.FrameBorder ||
+			!IsSafeLiveObjectOfClass(static_cast<UObject*>(Binding.FrameBorder), UBorder::StaticClass()))
+		{
+			continue;
+		}
+
+		const FGeometry Geo = Binding.FrameBorder->GetCachedGeometry();
+		const FVector2D Local = USlateBlueprintLibrary::GetLocalSize(Geo);
+		const FVector2D Desired = Binding.FrameBorder->GetDesiredSize();
+
+		FVector2D PixelTL{}, ViewTL{}, PixelBR{}, ViewBR{};
+		if (WorldCtx)
+		{
+			USlateBlueprintLibrary::LocalToViewport(WorldCtx, Geo, FVector2D{ 0.0f, 0.0f }, &PixelTL, &ViewTL);
+			USlateBlueprintLibrary::LocalToViewport(WorldCtx, Geo, Local, &PixelBR, &ViewBR);
+		}
+
+		float W = ViewBR.X - ViewTL.X;
+		float H = ViewBR.Y - ViewTL.Y;
+		float X = ViewTL.X;
+		float Y = ViewTL.Y;
+		if (W < 0.0f) { W = -W; X = ViewBR.X; }
+		if (H < 0.0f) { H = -H; Y = ViewBR.Y; }
+
+		FCardGeom G{};
+		G.Index = i;
+		G.NpcId = Binding.NpcId;
+		G.X = X;
+		G.Y = Y;
+		G.W = W;
+		G.H = H;
+		G.LocalW = Local.X;
+		G.LocalH = Local.Y;
+		G.DesiredW = Desired.X;
+		G.DesiredH = Desired.Y;
+		Geoms.push_back(G);
+	}
+
+	std::sort(Geoms.begin(), Geoms.end(),
+		[](const FCardGeom& A, const FCardGeom& B)
+		{
+			const float DY = A.Y - B.Y;
+			if (DY < -1.0f || DY > 1.0f)
+				return A.Y < B.Y;
+			return A.X < B.X;
+		});
+
+	auto AbsF = [](float V) -> float { return V < 0.0f ? -V : V; };
+	std::vector<float> RowAnchors;
+	std::vector<int32> RowCounts;
+	const float RowEpsilon = 18.0f;
+	for (const auto& G : Geoms)
+	{
+		int32 RowIdx = -1;
+		for (int32 i = 0; i < static_cast<int32>(RowAnchors.size()); ++i)
+		{
+			if (AbsF(G.Y - RowAnchors[i]) <= RowEpsilon)
+			{
+				RowIdx = i;
+				break;
+			}
+		}
+		if (RowIdx < 0)
+		{
+			RowAnchors.push_back(G.Y);
+			RowCounts.push_back(0);
+			RowIdx = static_cast<int32>(RowCounts.size()) - 1;
+		}
+		RowCounts[RowIdx] += 1;
+	}
+
+	std::string RowDist;
+	for (int32 i = 0; i < static_cast<int32>(RowCounts.size()); ++i)
+	{
+		if (i > 0) RowDist += "+";
+		RowDist += std::to_string(RowCounts[i]);
+	}
+	if (RowDist.empty())
+		RowDist = "none";
+
+	LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout] stage="
+		<< (StageTag ? StageTag : "null")
+		<< " rows=" << RowCounts.size()
+		<< " rowDist=" << RowDist.c_str()
+		<< " cardsLogged=" << Geoms.size()
+		<< "\n";
+
+	for (const auto& G : Geoms)
+	{
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout] card"
+			<< " idx=" << G.Index
+			<< " npcId=" << G.NpcId
+			<< " pos=(" << G.X << "," << G.Y << ")"
+			<< " size=(" << G.W << "," << G.H << ")"
+			<< " local=(" << G.LocalW << "," << G.LocalH << ")"
+			<< " desired=(" << G.DesiredW << "," << G.DesiredH << ")"
+			<< "\n";
+	}
+
+	const bool bDetailed = (StageTag && StageTag[0] == 'r');
+	if (!bDetailed)
+		return;
+
+	int32 LoggedDetailCards = 0;
+	for (int32 i = 0; i < static_cast<int32>(GTeammateNpcPrototypeCards.size()); ++i)
+	{
+		auto& Binding = GTeammateNpcPrototypeCards[i];
+		if (!Binding.FrameBorder || !IsSafeLiveObject(static_cast<UObject*>(Binding.FrameBorder)))
+			continue;
+
+		LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] card"
+			<< " idx=" << i
+			<< " npcId=" << Binding.NpcId
+			<< "\n";
+
+		if (Binding.ClickButton && IsSafeLiveObject(static_cast<UObject*>(Binding.ClickButton)))
+		{
+			const FButtonStyle& BtnStyle = Binding.ClickButton->WidgetStyle;
+			LOGI_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto][Layout][Detail] buttonStyle"
+				<< " normalPad=(" << BtnStyle.NormalPadding.Left << "," << BtnStyle.NormalPadding.Top << "," << BtnStyle.NormalPadding.Right << "," << BtnStyle.NormalPadding.Bottom << ")"
+				<< " pressedPad=(" << BtnStyle.PressedPadding.Left << "," << BtnStyle.PressedPadding.Top << "," << BtnStyle.PressedPadding.Right << "," << BtnStyle.PressedPadding.Bottom << ")"
+				<< "\n";
+		}
+
+		LogTeammateNpcPrototypeWidgetGeometry("frameBorder", WorldCtx, Binding.FrameBorder);
+		LogTeammateNpcPrototypePanelSlotInfo("frameBorder.slot", Binding.FrameBorder ? Binding.FrameBorder->Slot : nullptr);
+
+		LogTeammateNpcPrototypeWidgetGeometry("clickButton", WorldCtx, Binding.ClickButton);
+		LogTeammateNpcPrototypePanelSlotInfo("clickButton.slot", Binding.ClickButton ? Binding.ClickButton->Slot : nullptr);
+		if (Binding.ClickButton)
+			LogTeammateNpcPrototypePanelSlotInfo("clickButton.contentSlot", Binding.ClickButton->GetContentSlot());
+
+		LogTeammateNpcPrototypeWidgetGeometry("cardHost", WorldCtx, Binding.CardHost);
+		LogTeammateNpcPrototypePanelSlotInfo("cardHost.slot", Binding.CardHost ? Binding.CardHost->Slot : nullptr);
+		if (Binding.CardHost)
+			LogTeammateNpcPrototypePanelSlotInfo("cardHost.contentSlot", Binding.CardHost->GetContentSlot());
+
+		LogTeammateNpcPrototypeWidgetGeometry("cardWidget", WorldCtx, Binding.CardWidget);
+		LogTeammateNpcPrototypePanelSlotInfo("cardWidget.slot", Binding.CardWidget ? Binding.CardWidget->Slot : nullptr);
+
+		if (Binding.CardWidget && Binding.CardWidget->IMG_Main)
+		{
+			LogTeammateNpcPrototypeWidgetGeometry("imgMain", WorldCtx, Binding.CardWidget->IMG_Main);
+			LogTeammateNpcPrototypePanelSlotInfo("imgMain.slot", Binding.CardWidget->IMG_Main->Slot);
+		}
+		if (Binding.CardWidget && Binding.CardWidget->TXT_Title)
+		{
+			LogTeammateNpcPrototypeWidgetGeometry("txtTitle", WorldCtx, Binding.CardWidget->TXT_Title);
+			LogTeammateNpcPrototypePanelSlotInfo("txtTitle.slot", Binding.CardWidget->TXT_Title->Slot);
+		}
+
+		if (Binding.CardWidget && Binding.CardWidget->IsA(UJHGHC_RegionEle_NPC_C::StaticClass()))
+		{
+			auto* RegionNpcCard = static_cast<UJHGHC_RegionEle_NPC_C*>(Binding.CardWidget);
+			if (RegionNpcCard->JHGPCBtn_ActiveBG &&
+				IsSafeLiveObjectOfClass(static_cast<UObject*>(RegionNpcCard->JHGPCBtn_ActiveBG), UWidget::StaticClass()))
+			{
+				auto* ActiveBgWidget = static_cast<UWidget*>(RegionNpcCard->JHGPCBtn_ActiveBG);
+				LogTeammateNpcPrototypeWidgetGeometry("activeBg", WorldCtx, ActiveBgWidget);
+				LogTeammateNpcPrototypePanelSlotInfo("activeBg.slot", ActiveBgWidget->Slot);
+			}
+		}
+
+		++LoggedDetailCards;
+		if (LoggedDetailCards >= 2)
+			break;
+	}
 }
 
 } // end anonymous namespace
@@ -1277,10 +1764,17 @@ void PollTab6NpcPrototypeSelection(bool bTab6Active)
 		GTeammateNpcPrototypeLastPagerPollTick = 0;
 		GTeammateNpcPrototypePrevWasPressed = false;
 		GTeammateNpcPrototypeNextWasPressed = false;
+		GTeammateNpcPrototypeLastLayoutLogTick = 0;
 		return;
 	}
 
 	const ULONGLONG Now = GetTickCount64();
+	if (kTab6NpcPrototypeVerboseLog &&
+		(!GTeammateNpcPrototypeLastLayoutLogTick || (Now - GTeammateNpcPrototypeLastLayoutLogTick) >= 700ULL))
+	{
+		GTeammateNpcPrototypeLastLayoutLogTick = Now;
+		LogTeammateNpcPrototypeLayout("poll");
+	}
 	const bool bDoPagerPoll =
 		!GTeammateNpcPrototypeLastPagerPollTick ||
 		(Now - GTeammateNpcPrototypeLastPagerPollTick) >= kTeammateNpcPagerPollIntervalMs;
@@ -1581,7 +2075,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (CardWrap)
 		{
 			RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(CardWrap));
-			CardWrap->SetInnerSlotPadding(FVector2D{ 6.0f, 10.0f });
+			CardWrap->SetInnerSlotPadding(FVector2D{ 25.0f, 20.5f });
 			CardWrap->WrapSize = 500.0f;
 			CardWrap->bExplicitWrapSize = true;
 
@@ -1590,15 +2084,17 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 			{
 				RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(CardViewport));
 				CardViewport->SetWidthOverride(500.0f);
-				CardViewport->SetHeightOverride(420.0f);
+				CardViewport->SetHeightOverride(340.0f);
 				CardViewport->SetContent(CardWrap);
 				if (UPanelSlot* RowSlot = PrototypeBox->AddChild(CardViewport))
 				{
 					if (RowSlot->IsA(UVerticalBoxSlot::StaticClass()))
 					{
 						auto* VSlot = static_cast<UVerticalBoxSlot*>(RowSlot);
+						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
+						VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Top);
 						FMargin Pad{};
-						Pad.Bottom = 8.0f;
+						Pad.Bottom = 0.0f;
 						VSlot->SetPadding(Pad);
 					}
 				}
@@ -1612,8 +2108,10 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 					if (RowSlot->IsA(UVerticalBoxSlot::StaticClass()))
 					{
 						auto* VSlot = static_cast<UVerticalBoxSlot*>(RowSlot);
+						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
+						VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Top);
 						FMargin Pad{};
-						Pad.Bottom = 8.0f;
+						Pad.Bottom = 0.0f;
 						VSlot->SetPadding(Pad);
 					}
 				}
@@ -1684,7 +2182,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 						VSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 						VSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
 						FMargin Pad{};
-						Pad.Top = 6.0f;
+						Pad.Top = 2.0f;
 						VSlot->SetPadding(Pad);
 					}
 				}

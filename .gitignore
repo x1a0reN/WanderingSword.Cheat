@@ -17,3 +17,6 @@ Proxy/Wanderin.*/
 
 # Cheat Engine tables
 *.CT
+
+# Blueprint bytecode dumps
+blueprintbytecode/

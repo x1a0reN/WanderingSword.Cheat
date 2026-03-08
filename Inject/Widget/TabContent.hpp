@@ -17,6 +17,7 @@ void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 
 void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC);
+void PollTab6NpcPrototypeSelection(bool bTab6Active);
 
 void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 

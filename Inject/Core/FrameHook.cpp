@@ -2489,6 +2489,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		LiveInternalWidget &&
 		IsTeammateTabActive;
 	PollAndApplyTab6Features(CanReadTab6FromUI);
+	PollTab6NpcPrototypeSelection(IsTeammateTabActive && GInternalWidgetVisible && LiveInternalWidget);
 
 	// Tab7 quest button (always polls — button only acts on click)
 	if (GInternalWidgetVisible && LiveInternalWidget && GActiveDynTabForPoll == 7)
