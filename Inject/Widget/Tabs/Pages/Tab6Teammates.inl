@@ -48,14 +48,14 @@ ULONGLONG GTeammateNpcPrototypeLastPagerPollTick = 0;
 bool GTeammateNpcResourceTableSchemaLogged = false;
 
 constexpr int32 kTeammateNpcPrototypePerPage = 8;
-constexpr float kTeammateNpcCardScaleNormal = 0.76f;
-constexpr float kTeammateNpcCardScaleSelected = 0.84f;
-constexpr float kTeammateNpcCardHostWidth = 142.0f;
-constexpr float kTeammateNpcCardHostHeight = 212.0f;
+constexpr float kTeammateNpcCardScaleNormal = 0.95f;
+constexpr float kTeammateNpcCardScaleSelected = 1.04f;
+constexpr float kTeammateNpcCardHostWidth = 114.0f;
+constexpr float kTeammateNpcCardHostHeight = 184.0f;
 constexpr ULONGLONG kTeammateNpcSelectionPollIntervalMs = 33ULL;
 constexpr ULONGLONG kTeammateNpcPagerPollIntervalMs = 33ULL;
 constexpr bool kTab6NpcPrototypeVerboseLog = false;
-constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260308-0105";
+constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260308-0112";
 
 void LogTeammateNpcResourceTableSchema(UDataTable* Table);
 void RebuildTeammateNpcPrototypeFilteredIndices();
@@ -1233,7 +1233,7 @@ void RefreshTeammateNpcPrototypePage()
 			{
 				FMargin Pad{};
 				Pad.Right = 0.0f;
-				Pad.Bottom = 8.0f;
+				Pad.Bottom = 6.0f;
 				HostSlot->SetPadding(Pad);
 				HostSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
 				HostSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Top);
@@ -1581,15 +1581,16 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		if (CardWrap)
 		{
 			RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(CardWrap));
-			CardWrap->SetInnerSlotPadding(FVector2D{ 8.0f, 12.0f });
-			CardWrap->WrapSize = 624.0f;
+			CardWrap->SetInnerSlotPadding(FVector2D{ 6.0f, 10.0f });
+			CardWrap->WrapSize = 500.0f;
 			CardWrap->bExplicitWrapSize = true;
 
 			bool bMountedListContainer = false;
 			if (CardViewport)
 			{
 				RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(CardViewport));
-				CardViewport->SetHeightOverride(470.0f);
+				CardViewport->SetWidthOverride(500.0f);
+				CardViewport->SetHeightOverride(420.0f);
 				CardViewport->SetContent(CardWrap);
 				if (UPanelSlot* RowSlot = PrototypeBox->AddChild(CardViewport))
 				{
