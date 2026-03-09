@@ -18,6 +18,8 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 
 void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 void PollTab6NpcPrototypeSelection(bool bTab6Active);
+UObject* GetTab6NpcConfirmAlertForProcessEventHook();
+void HandleTab6NpcConfirmProcessEventAction(bool bConfirmButton);
 
 void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 

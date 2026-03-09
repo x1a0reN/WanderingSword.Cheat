@@ -48,6 +48,28 @@ ULONGLONG GTeammateNpcPrototypeLastSelectionPollTick = 0;
 ULONGLONG GTeammateNpcPrototypeLastPagerPollTick = 0;
 ULONGLONG GTeammateNpcPrototypeLastLayoutLogTick = 0;
 bool GTeammateNpcResourceTableSchemaLogged = false;
+bool GTeammateNpcNeoUISubsystemLogged = false;
+bool GTeammateNpcSimpleAlertProbeLogged = false;
+bool GTeammateNpcPrototypePollWasActive = false;
+UJHNeoUIAlertContentSimple* GTeammateNpcAddConfirmAlert = nullptr;
+UJHNeoUIAlertModuleView* GTeammateNpcAddConfirmView = nullptr;
+UButton* GTeammateNpcAddConfirmYesBtn = nullptr;
+UButton* GTeammateNpcAddConfirmNoBtn = nullptr;
+int32 GTeammateNpcAddConfirmPendingNpcId = 0;
+bool GTeammateNpcAddConfirmPending = false;
+bool GTeammateNpcAddConfirmYesWasPressed = false;
+bool GTeammateNpcAddConfirmNoWasPressed = false;
+bool GTeammateNpcAddConfirmYesWasHovered = false;
+bool GTeammateNpcAddConfirmNoWasHovered = false;
+bool GTeammateNpcAddConfirmLmbWasDown = false;
+bool GTeammateNpcAddConfirmPanelZLowered = false;
+bool GTeammateNpcAddConfirmInputRerouted = false;
+bool GTeammateNpcAddConfirmPanelInputMuted = false;
+ESlateVisibility GTeammateNpcAddConfirmPanelPrevVisibility = ESlateVisibility::Visible;
+bool GTeammateNpcAddConfirmPanelPrevEnabled = true;
+UFunction* GTeammateNpcAlertShow2Func = nullptr;
+int32 GTeammateNpcAlertShow2FuncIdx = -1;
+std::string GTeammateNpcAlertShow2OwnerClass;
 
 constexpr int32 kTeammateNpcPrototypePerPage = 12;
 constexpr float kTeammateNpcCardScaleNormal = 1.0f;
@@ -66,12 +88,40 @@ constexpr bool kTeammateNpcHideFrameHighlight = true;
 constexpr ULONGLONG kTeammateNpcSelectionPollIntervalMs = 33ULL;
 constexpr ULONGLONG kTeammateNpcPagerPollIntervalMs = 33ULL;
 constexpr bool kTab6NpcPrototypeVerboseLog = true;
-constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260308-1936-titlefit-1";
+constexpr bool kTeammateNpcDumpAlertFunctions = false;
+constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260309-2012-confirm-show2-priority-2";
+constexpr int32 kTeammateNpcNeoUISubsystemHintIdx = 45025;
+constexpr int32 kTeammateNpcNeoUISubsystemHintRadius = 10;
+constexpr int32 kTeammateNpcConfirmDialogZOrder = 20000;
+constexpr int32 kTeammateNpcInternalPanelNormalZOrder = 10000;
+constexpr int32 kTeammateNpcInternalPanelBackgroundZOrder = -10000;
+
+int HandleTab6NpcProtoSehException(const char* Stage, int32 NpcId, unsigned int Code)
+{
+	LOGE_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] SEH guarded crash stage="
+		<< (Stage ? Stage : "unknown")
+		<< " npcId=" << NpcId
+		<< " code=0x" << std::hex << Code << std::dec
+		<< "\n";
+	return EXCEPTION_EXECUTE_HANDLER;
+}
 
 void LogTeammateNpcResourceTableSchema(UDataTable* Table);
 void RebuildTeammateNpcPrototypeFilteredIndices();
 void RefreshTeammateNpcPrototypePage();
 void LogTeammateNpcPrototypeLayout(const char* StageTag);
+std::wstring GetTeammateNpcPrototypeName(int32 NpcId, const wchar_t* FallbackName);
+UJHNeoUISubsystem* GetJHNeoUISubsystemForTab6(bool bLogSearch);
+UFunction* FindTeammateNpcAlertFunctionByFullName(const char* FullFuncName, std::string* OutOwnerClass, int32* OutFuncIdx);
+void DumpTeammateNpcAlertUFunctions(UObject* AlertObj);
+void ProbeTeammateNpcSimpleAlert();
+UButton* ResolveTeammateNpcConfirmInnerButton(UNeoUI1Btn1TxtComp* BtnComp);
+void RestoreTeammateNpcAddConfirmUiState();
+void EnsureTeammateNpcAddConfirmDialogPriority(UJHNeoUIAlertContentSimple* AlertContent);
+void ResetTeammateNpcAddConfirmState();
+bool ShowTeammateNpcAddConfirmDialog(int32 NpcId);
+void PollTeammateNpcAddConfirmDialog();
 
 std::wstring GetTeammateNpcPrototypeText(const FText& Text)
 {
@@ -140,6 +190,813 @@ void ReleaseTeammateNpcPrototypeWidgets()
 	GTeammateNpcPrototypeLastSelectionPollTick = 0;
 	GTeammateNpcPrototypeLastPagerPollTick = 0;
 	GTeammateNpcPrototypeLastLayoutLogTick = 0;
+	GTeammateNpcNeoUISubsystemLogged = false;
+	GTeammateNpcSimpleAlertProbeLogged = false;
+	GTeammateNpcPrototypePollWasActive = false;
+	ResetTeammateNpcAddConfirmState();
+}
+
+UGameInstance* GetCurrentGameInstanceForTab6()
+{
+	UWorld* World = UWorld::GetWorld();
+	if (!World)
+		return nullptr;
+
+	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+	if (PC && IsSafeLiveObject(static_cast<UObject*>(PC)))
+		return UGameplayStatics::GetGameInstance(PC);
+
+	return World->OwningGameInstance;
+}
+
+UJHNeoUISubsystem* GetJHNeoUISubsystemForTab6(bool bLogSearch)
+{
+	static UJHNeoUISubsystem* Cached = nullptr;
+	UGameInstance* CurrentGI = GetCurrentGameInstanceForTab6();
+
+	auto IsRuntimeSubsystem = [&](UJHNeoUISubsystem* Subsystem) -> bool
+	{
+		if (!Subsystem)
+			return false;
+		auto* Obj = static_cast<UObject*>(Subsystem);
+		if (!Obj || Obj->IsDefaultObject())
+			return false;
+		if ((static_cast<int32>(Obj->Flags) &
+			static_cast<int32>(EObjectFlags::ClassDefaultObject)) != 0)
+			return false;
+		if (!IsSafeLiveObject(Obj))
+			return false;
+		if (!CurrentGI)
+			return true;
+		return Obj->Outer == static_cast<UObject*>(CurrentGI);
+	};
+
+	auto LogSubsystem = [&](const char* SourceTag, UJHNeoUISubsystem* Sub, int32 ScanIdx)
+	{
+		if (!bLogSearch || !Sub)
+			return;
+		UObject* Obj = static_cast<UObject*>(Sub);
+		std::string ClassName = (Obj && Obj->Class) ? Obj->Class->GetName() : std::string("<null>");
+		const int32 ObjIdx = Obj ? Obj->Index : -1;
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] NeoUISubsystem found source=" << (SourceTag ? SourceTag : "unknown")
+			<< " ptr=" << Sub
+			<< " class=" << ClassName.c_str()
+			<< " idx=" << ObjIdx
+			<< " scanIdx=" << ScanIdx
+			<< "\n";
+	};
+
+	if (IsRuntimeSubsystem(Cached))
+	{
+		LogSubsystem("cached", Cached, Cached ? static_cast<UObject*>(Cached)->Index : -1);
+		return Cached;
+	}
+
+	Cached = nullptr;
+
+	if (CurrentGI)
+	{
+		auto* SubObj = USubsystemBlueprintLibrary::GetGameInstanceSubsystem(
+			static_cast<UObject*>(CurrentGI),
+			UJHNeoUISubsystem::StaticClass());
+		auto* Sub = static_cast<UJHNeoUISubsystem*>(SubObj);
+		if (IsRuntimeSubsystem(Sub))
+		{
+			Cached = Sub;
+			LogSubsystem("game_instance_subsystem", Cached, Cached ? static_cast<UObject*>(Cached)->Index : -1);
+			return Cached;
+		}
+	}
+
+	if (UWorld* World = UWorld::GetWorld())
+	{
+		auto* SubObj = USubsystemBlueprintLibrary::GetGameInstanceSubsystem(
+			static_cast<UObject*>(World),
+			UJHNeoUISubsystem::StaticClass());
+		auto* Sub = static_cast<UJHNeoUISubsystem*>(SubObj);
+		if (IsRuntimeSubsystem(Sub))
+		{
+			Cached = Sub;
+			LogSubsystem("world_subsystem", Cached, Cached ? static_cast<UObject*>(Cached)->Index : -1);
+			return Cached;
+		}
+	}
+
+	auto* ObjArray = UObject::GObjects.GetTypedPtr();
+	if (ObjArray)
+	{
+		const int32 Num = ObjArray->Num();
+		const int32 HintBegin = (kTeammateNpcNeoUISubsystemHintIdx - kTeammateNpcNeoUISubsystemHintRadius) > 0
+			                        ? (kTeammateNpcNeoUISubsystemHintIdx - kTeammateNpcNeoUISubsystemHintRadius)
+			                        : 0;
+		const int32 HintEnd = (kTeammateNpcNeoUISubsystemHintIdx + kTeammateNpcNeoUISubsystemHintRadius) < (Num - 1)
+			                      ? (kTeammateNpcNeoUISubsystemHintIdx + kTeammateNpcNeoUISubsystemHintRadius)
+			                      : (Num - 1);
+		for (int32 i = HintBegin; i <= HintEnd; ++i)
+		{
+			UObject* Obj = ObjArray->GetByIndex(i);
+			if (!Obj || !Obj->IsA(UJHNeoUISubsystem::StaticClass()))
+				continue;
+
+			auto* Candidate = static_cast<UJHNeoUISubsystem*>(Obj);
+			if (!IsRuntimeSubsystem(Candidate))
+				continue;
+
+			Cached = Candidate;
+			LogSubsystem("gobjects_hint_range", Cached, i);
+			return Cached;
+		}
+
+		for (int32 i = 0; i < Num; ++i)
+		{
+			UObject* Obj = ObjArray->GetByIndex(i);
+			if (!Obj || !Obj->IsA(UJHNeoUISubsystem::StaticClass()))
+				continue;
+
+			auto* Candidate = static_cast<UJHNeoUISubsystem*>(Obj);
+			if (!IsRuntimeSubsystem(Candidate))
+				continue;
+
+			Cached = Candidate;
+			LogSubsystem("gobjects_scan", Cached, i);
+			return Cached;
+		}
+	}
+
+	if (bLogSearch)
+	{
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] NeoUISubsystem not found\n";
+	}
+	return nullptr;
+}
+
+UFunction* FindTeammateNpcAlertFunctionByFullName(const char* FullFuncName, std::string* OutOwnerClass, int32* OutFuncIdx)
+{
+	if (OutOwnerClass)
+		OutOwnerClass->clear();
+	if (OutFuncIdx)
+		*OutFuncIdx = -1;
+
+	if (!FullFuncName || !FullFuncName[0])
+		return nullptr;
+
+	auto* ObjArray = UObject::GObjects.GetTypedPtr();
+	if (!ObjArray)
+		return nullptr;
+
+	const int32 Num = ObjArray->Num();
+	for (int32 i = 0; i < Num; ++i)
+	{
+		UObject* Obj = ObjArray->GetByIndex(i);
+		if (!Obj || !IsSafeLiveObject(Obj) || !Obj->IsA(UFunction::StaticClass()))
+			continue;
+
+		const std::string FullName = Obj->GetFullName();
+		if (FullName != FullFuncName)
+			continue;
+
+		if (OutFuncIdx)
+			*OutFuncIdx = Obj->Index;
+
+		if (OutOwnerClass)
+		{
+			if (Obj->Outer && IsSafeLiveObject(Obj->Outer))
+				*OutOwnerClass = Obj->Outer->GetName();
+			else
+				*OutOwnerClass = "<null>";
+		}
+
+		return static_cast<UFunction*>(Obj);
+	}
+
+	return nullptr;
+}
+
+#if 0
+void ProbeTeammateNpcSimpleAlert_Legacy()
+{
+	UJHNeoUISubsystem* Subsystem = GetJHNeoUISubsystemForTab6(false);
+	if (!Subsystem)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe fail: subsystem null\n";
+		return;
+	}
+
+	const TScriptInterface<IJHNeoUIAlert_Content_Simple> AlertIface = Subsystem->BPSimpleAlert();
+	UObject* AlertObj = AlertIface.ObjectPointer;
+	void* AlertInterface = AlertIface.InterfacePointer;
+	std::string ClassName = "<null>";
+	int32 ObjIdx = -1;
+	int32 ObjValid = 0;
+	int32 IsPcSimple = 0;
+	int32 IsMobileSimple = 0;
+	if (AlertObj)
+	{
+		if (AlertObj->Class)
+			ClassName = AlertObj->Class->GetName();
+		ObjIdx = AlertObj->Index;
+		ObjValid = IsSafeLiveObject(AlertObj) ? 1 : 0;
+		IsPcSimple = AlertObj->IsA(UJHNeoUIAlertContentSimple::StaticClass()) ? 1 : 0;
+		IsMobileSimple = AlertObj->IsA(UJHNeoUIAlertContentSimple_mobile::StaticClass()) ? 1 : 0;
+	}
+
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] BPSimpleAlert probe sub=" << Subsystem
+		<< " subClass=JHNeoUISubsystem"
+		<< " subIdx=" << static_cast<UObject*>(Subsystem)->Index
+		<< " retObj=" << AlertObj
+		<< " retIface=" << AlertInterface
+		<< " retClass=" << ClassName.c_str()
+		<< " retIdx=" << ObjIdx
+		<< " retObjValid=" << ObjValid
+		<< " isPcSimple=" << IsPcSimple
+		<< " isMobileSimple=" << IsMobileSimple
+		<< "\n";
+
+	DumpTeammateNpcAlertUFunctions(AlertObj);
+
+	if (!AlertObj || !ObjValid)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe show1 skip: invalid retObj\n";
+		return;
+	}
+
+	IJHNeoUIAlert_Content_Simple* AlertFromObj = reinterpret_cast<IJHNeoUIAlert_Content_Simple*>(AlertObj);
+	if (!AlertFromObj)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe show1 skip: cast null\n";
+		return;
+	}
+
+	std::string Show1OwnerClass = "<unknown>";
+	UFunction* Show1Func = nullptr;
+	if (AlertObj && AlertObj->Class)
+	{
+		Show1Func = AlertObj->Class->GetFunction("JHNeoUIAlert_Content_Simple", "BP_Show1");
+		if (Show1Func)
+			Show1OwnerClass = "JHNeoUIAlert_Content_Simple::BP_Show1";
+	}
+	if (!Show1Func && AlertObj && AlertObj->Class)
+	{
+		Show1Func = AlertObj->Class->GetFunction("JHNeoUIAlertContentSimple_mobile", "BP_Show1");
+		if (Show1Func)
+			Show1OwnerClass = "JHNeoUIAlertContentSimple_mobile::BP_Show1";
+	}
+	if (!Show1Func)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe show1 unresolved obj=" << AlertObj
+			<< " class=" << ClassName.c_str()
+			<< " iface=" << AlertInterface
+			<< "\n";
+		return;
+	}
+
+	const FText DescText = MakeText(L"[SDK] BPSimpleAlert 测试：Show1");
+	const FText BtnText = MakeText(L"确定");
+	if (Show1OwnerClass.rfind("JHNeoUIAlert_Content_Simple::", 0) == 0)
+	{
+		AlertFromObj->BP_Show1(DescText, BtnText);
+	}
+	else if (Show1OwnerClass.rfind("JHNeoUIAlertContentSimple_mobile::", 0) == 0 &&
+		AlertObj->IsA(UJHNeoUIAlertContentSimple_mobile::StaticClass()))
+	{
+		auto* MobileSimple = static_cast<UJHNeoUIAlertContentSimple_mobile*>(AlertObj);
+		MobileSimple->BP_Show1(DescText, BtnText);
+	}
+	else
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe show1 skip: unsupported owner="
+			<< Show1OwnerClass.c_str() << "\n";
+		return;
+	}
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] BPSimpleAlert probe show1 called obj=" << AlertObj
+		<< " class=" << ClassName.c_str()
+		<< " idx=" << ObjIdx
+		<< " owner=" << Show1OwnerClass.c_str()
+		<< "\n";
+}
+#endif
+
+void ProbeTeammateNpcSimpleAlert()
+{
+	UJHNeoUISubsystem* Subsystem = GetJHNeoUISubsystemForTab6(false);
+	if (!Subsystem)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe fail: subsystem null\n";
+		return;
+	}
+
+	const TScriptInterface<IJHNeoUIAlert_Content_Simple> AlertIface = Subsystem->BPSimpleAlert();
+	UObject* AlertObj = AlertIface.ObjectPointer;
+	void* AlertInterface = AlertIface.InterfacePointer;
+	std::string ClassName = "<null>";
+	int32 ObjIdx = -1;
+	int32 ObjValid = 0;
+	int32 IsPcSimple = 0;
+	int32 IsMobileSimple = 0;
+	if (AlertObj)
+	{
+		if (AlertObj->Class)
+			ClassName = AlertObj->Class->GetName();
+		ObjIdx = AlertObj->Index;
+		ObjValid = IsSafeLiveObject(AlertObj) ? 1 : 0;
+		IsPcSimple = AlertObj->IsA(UJHNeoUIAlertContentSimple::StaticClass()) ? 1 : 0;
+		IsMobileSimple = AlertObj->IsA(UJHNeoUIAlertContentSimple_mobile::StaticClass()) ? 1 : 0;
+	}
+
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] BPSimpleAlert probe sub=" << Subsystem
+		<< " subClass=JHNeoUISubsystem"
+		<< " subIdx=" << static_cast<UObject*>(Subsystem)->Index
+		<< " retObj=" << AlertObj
+		<< " retIface=" << AlertInterface
+		<< " retClass=" << ClassName.c_str()
+		<< " retIdx=" << ObjIdx
+		<< " retObjValid=" << ObjValid
+		<< " isPcSimple=" << IsPcSimple
+		<< " isMobileSimple=" << IsMobileSimple
+		<< "\n";
+
+	if (kTeammateNpcDumpAlertFunctions)
+		DumpTeammateNpcAlertUFunctions(AlertObj);
+
+	if (!AlertObj || !ObjValid)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe skip: invalid retObj\n";
+		return;
+	}
+
+	std::string Show1OwnerClass;
+	int32 Show1FuncIdx = -1;
+	UFunction* Show1Func = FindTeammateNpcAlertFunctionByFullName(
+		"Function JH.JHNeoUIAlert_Content_Simple.BP_Show1",
+		&Show1OwnerClass,
+		&Show1FuncIdx);
+
+	std::string Show2OwnerClass;
+	int32 Show2FuncIdx = -1;
+	UFunction* Show2Func = FindTeammateNpcAlertFunctionByFullName(
+		"Function JH.JHNeoUIAlert_Content_Simple.BP_Show2",
+		&Show2OwnerClass,
+		&Show2FuncIdx);
+
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] BPSimpleAlert probe resolve show1 ptr=" << Show1Func
+		<< " idx=" << Show1FuncIdx
+		<< " owner=" << (Show1OwnerClass.empty() ? "<null>" : Show1OwnerClass.c_str())
+		<< " | show2 ptr=" << Show2Func
+		<< " idx=" << Show2FuncIdx
+		<< " owner=" << (Show2OwnerClass.empty() ? "<null>" : Show2OwnerClass.c_str())
+		<< "\n";
+
+	if (!Show2Func)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] BPSimpleAlert probe show2 unresolved obj=" << AlertObj
+			<< " class=" << ClassName.c_str()
+			<< " iface=" << AlertInterface
+			<< "\n";
+	}
+	else
+	{
+		GTeammateNpcAlertShow2Func = Show2Func;
+		GTeammateNpcAlertShow2FuncIdx = Show2FuncIdx;
+		GTeammateNpcAlertShow2OwnerClass = Show2OwnerClass;
+	}
+
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] BPSimpleAlert probe ready(no-auto-show) obj=" << AlertObj
+		<< " class=" << ClassName.c_str()
+		<< " idx=" << ObjIdx
+		<< " show2Owner=" << (Show2OwnerClass.empty() ? "<null>" : Show2OwnerClass.c_str())
+		<< " show2Idx=" << Show2FuncIdx
+		<< "\n";
+}
+
+void DumpTeammateNpcAlertUFunctions(UObject* AlertObj)
+{
+	if (!AlertObj || !AlertObj->Class || !IsSafeLiveObject(AlertObj))
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto][FuncDump] skip: alert object invalid\n";
+		return;
+	}
+
+	constexpr int32 kMaxPerClass = 120;
+	constexpr int32 kMaxTotal = 600;
+	int32 TotalCount = 0;
+	int32 Depth = 0;
+
+	for (UStruct* Clss = AlertObj->Class; Clss && TotalCount < kMaxTotal; Clss = Clss->SuperStruct, ++Depth)
+	{
+		std::string ClassName = Clss->GetName();
+		int32 ClassCount = 0;
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto][FuncDump] class depth=" << Depth
+			<< " name=" << ClassName.c_str()
+			<< " ptr=" << Clss
+			<< "\n";
+
+		for (UField* Field = Clss->Children; Field && TotalCount < kMaxTotal; Field = Field->Next)
+		{
+			if (!Field->HasTypeFlag(EClassCastFlags::Function))
+				continue;
+
+			std::string FuncName = Field->GetName();
+			LOGI_STREAM("Tab6Teammates")
+				<< "[SDK][Tab6NpcProto][FuncDump]  depth=" << Depth
+				<< " class=" << ClassName.c_str()
+				<< " fn=" << FuncName.c_str()
+				<< "\n";
+
+			++ClassCount;
+			++TotalCount;
+			if (ClassCount >= kMaxPerClass)
+			{
+				LOGI_STREAM("Tab6Teammates")
+					<< "[SDK][Tab6NpcProto][FuncDump]  class-truncated depth=" << Depth
+					<< " name=" << ClassName.c_str()
+					<< " limit=" << kMaxPerClass
+					<< "\n";
+				break;
+			}
+		}
+
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto][FuncDump] class-summary depth=" << Depth
+			<< " name=" << ClassName.c_str()
+			<< " fnCount=" << ClassCount
+			<< " total=" << TotalCount
+			<< "\n";
+	}
+
+	if (TotalCount >= kMaxTotal)
+	{
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto][FuncDump] total-truncated limit=" << kMaxTotal
+			<< "\n";
+	}
+}
+
+UButton* ResolveTeammateNpcConfirmInnerButton(UNeoUI1Btn1TxtComp* BtnComp)
+{
+	if (!BtnComp || !IsSafeLiveObjectOfClass(static_cast<UObject*>(BtnComp), UNeoUI1Btn1TxtComp::StaticClass()))
+		return nullptr;
+
+	UNeoUIButtonBase* Inner = BtnComp->Btn;
+	if (!Inner || !IsSafeLiveObjectOfClass(static_cast<UObject*>(Inner), UButton::StaticClass()))
+		return nullptr;
+
+	return static_cast<UButton*>(Inner);
+}
+
+void ResetTeammateNpcAddConfirmState()
+{
+	RestoreTeammateNpcAddConfirmUiState();
+
+	GTeammateNpcAddConfirmAlert = nullptr;
+	GTeammateNpcAddConfirmView = nullptr;
+	GTeammateNpcAddConfirmYesBtn = nullptr;
+	GTeammateNpcAddConfirmNoBtn = nullptr;
+	GTeammateNpcAddConfirmPendingNpcId = 0;
+	GTeammateNpcAddConfirmPending = false;
+	GTeammateNpcAddConfirmYesWasPressed = false;
+	GTeammateNpcAddConfirmNoWasPressed = false;
+	GTeammateNpcAddConfirmYesWasHovered = false;
+	GTeammateNpcAddConfirmNoWasHovered = false;
+	GTeammateNpcAddConfirmLmbWasDown = false;
+}
+
+void RestoreTeammateNpcAddConfirmUiState()
+{
+	if (GTeammateNpcAddConfirmPanelInputMuted &&
+		GInternalWidget &&
+		IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)))
+	{
+		GInternalWidget->SetVisibility(GTeammateNpcAddConfirmPanelPrevVisibility);
+		GInternalWidget->SetIsEnabled(GTeammateNpcAddConfirmPanelPrevEnabled);
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog ui restore: panel visibility/enabled restored\n";
+	}
+	GTeammateNpcAddConfirmPanelInputMuted = false;
+
+	if (GTeammateNpcAddConfirmInputRerouted &&
+		GTeammateNpcPrototypeOwnerPC &&
+		IsSafeLiveObject(static_cast<UObject*>(GTeammateNpcPrototypeOwnerPC)))
+	{
+		if (GInternalWidget &&
+			IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) &&
+			GInternalWidget->IsInViewport())
+		{
+			UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(
+				GTeammateNpcPrototypeOwnerPC,
+				GInternalWidget,
+				EMouseLockMode::DoNotLock,
+				false);
+			GInternalWidget->SetKeyboardFocus();
+		}
+		GTeammateNpcAddConfirmInputRerouted = false;
+	}
+
+	if (GTeammateNpcAddConfirmPanelZLowered &&
+		GInternalWidget &&
+		IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) &&
+		GInternalWidget->IsInViewport())
+	{
+		GInternalWidget->RemoveFromParent();
+		GInternalWidget->AddToViewport(kTeammateNpcInternalPanelNormalZOrder);
+	}
+	GTeammateNpcAddConfirmPanelZLowered = false;
+}
+
+void EnsureTeammateNpcAddConfirmDialogPriority(UJHNeoUIAlertContentSimple* AlertContent)
+{
+	if (!AlertContent || !IsSafeLiveObjectOfClass(static_cast<UObject*>(AlertContent), UJHNeoUIAlertContentSimple::StaticClass()))
+		return;
+
+	UNeoUIUniversalModuleVMBase* AlertVMBase = AlertContent->PendingVM;
+
+	GTeammateNpcAddConfirmView = nullptr;
+
+	if (AlertVMBase && IsSafeLiveObject(static_cast<UObject*>(AlertVMBase)))
+	{
+		UJHNeoUIAlertModuleView* AlertView = nullptr;
+		if (AlertVMBase->IsA(UJHNeoUIAlertModuleVM::StaticClass()))
+		{
+			auto* AlertVM = static_cast<UJHNeoUIAlertModuleVM*>(AlertVMBase);
+			AlertView = AlertVM->GetAlertView();
+		}
+
+		if (!AlertView)
+		{
+			UNeoUIBlueprintableVisualBase* PairView = AlertVMBase->GetPairView();
+			if (PairView && PairView->IsA(UJHNeoUIAlertModuleView::StaticClass()))
+				AlertView = static_cast<UJHNeoUIAlertModuleView*>(PairView);
+		}
+
+		if (AlertView && IsSafeLiveObjectOfClass(static_cast<UObject*>(AlertView), UJHNeoUIAlertModuleView::StaticClass()))
+		{
+			GTeammateNpcAddConfirmView = AlertView;
+			AlertView->SetVisibility(ESlateVisibility::Visible);
+			UCanvasPanelSlot* LayerSlot = AlertView->GetLayerSlot();
+			if (LayerSlot && IsSafeLiveObjectOfClass(static_cast<UObject*>(LayerSlot), UCanvasPanelSlot::StaticClass()))
+				LayerSlot->SetZOrder(kTeammateNpcConfirmDialogZOrder);
+		}
+	}
+
+	if (GInternalWidget &&
+		IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) &&
+		GInternalWidget->IsInViewport())
+	{
+		if (!GTeammateNpcAddConfirmPanelInputMuted)
+		{
+			GTeammateNpcAddConfirmPanelPrevVisibility = GInternalWidget->GetVisibility();
+			GTeammateNpcAddConfirmPanelPrevEnabled = GInternalWidget->GetIsEnabled();
+		}
+		GInternalWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		GInternalWidget->SetIsEnabled(false);
+		GTeammateNpcAddConfirmPanelInputMuted = true;
+
+		GInternalWidget->RemoveFromParent();
+		GInternalWidget->AddToViewport(kTeammateNpcInternalPanelBackgroundZOrder);
+		GTeammateNpcAddConfirmPanelZLowered = true;
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog ui mute: panel demoted z=" << kTeammateNpcInternalPanelBackgroundZOrder
+			<< " visibility=SelfHitTestInvisible enabled=0\n";
+	}
+
+	if (GTeammateNpcPrototypeOwnerPC &&
+		IsSafeLiveObject(static_cast<UObject*>(GTeammateNpcPrototypeOwnerPC)))
+	{
+		UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(
+			GTeammateNpcPrototypeOwnerPC,
+			AlertContent,
+			EMouseLockMode::DoNotLock,
+			false);
+		AlertContent->SetKeyboardFocus();
+		GTeammateNpcPrototypeOwnerPC->bShowMouseCursor = true;
+		GTeammateNpcAddConfirmInputRerouted = true;
+	}
+}
+
+bool AddTeammateNpcToTeamById(int32 NpcId)
+{
+	if (NpcId <= 0)
+		return false;
+
+	UTeamManager* TeamMgr = UManagerFuncLib::GetTeamManager();
+	if (!TeamMgr || !IsSafeLiveObject(static_cast<UObject*>(TeamMgr)))
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog add fail: team manager invalid npcId=" << NpcId << "\n";
+		return false;
+	}
+
+	TeamMgr->AddTeamInfo(NpcId, true, true, true);
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] ConfirmDialog add ok npcId=" << NpcId << "\n";
+	return true;
+}
+
+bool ShowTeammateNpcAddConfirmDialog(int32 NpcId)
+{
+	if (NpcId <= 0)
+		return false;
+
+	UJHNeoUISubsystem* Subsystem = GetJHNeoUISubsystemForTab6(false);
+	if (!Subsystem)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog fail: subsystem null npcId=" << NpcId << "\n";
+		return false;
+	}
+
+	const TScriptInterface<IJHNeoUIAlert_Content_Simple> AlertIface = Subsystem->BPSimpleAlert();
+	UObject* AlertObj = AlertIface.ObjectPointer;
+	void* AlertIfacePtr = AlertIface.InterfacePointer;
+	if (!AlertObj || !IsSafeLiveObject(AlertObj))
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog fail: alert object invalid npcId=" << NpcId << "\n";
+		return false;
+	}
+
+	if (!GTeammateNpcAlertShow2Func || !IsSafeLiveObject(static_cast<UObject*>(GTeammateNpcAlertShow2Func)))
+	{
+		GTeammateNpcAlertShow2Func = FindTeammateNpcAlertFunctionByFullName(
+			"Function JH.JHNeoUIAlert_Content_Simple.BP_Show2",
+			&GTeammateNpcAlertShow2OwnerClass,
+			&GTeammateNpcAlertShow2FuncIdx);
+	}
+
+	if (!GTeammateNpcAlertShow2Func)
+	{
+		std::string ObjClassName = AlertObj->Class ? AlertObj->Class->GetName() : std::string("<null>");
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog fail: BP_Show2 unresolved obj=" << AlertObj
+			<< " class=" << ObjClassName.c_str()
+			<< " iface=" << AlertIfacePtr
+			<< "\n";
+		return false;
+	}
+
+	ResetTeammateNpcAddConfirmState();
+
+	std::wstring DisplayName = GetTeammateNpcPrototypeName(NpcId, L"NPC");
+	if (DisplayName.empty())
+		DisplayName = L"NPC";
+	std::wstring Desc = L"\u662F\u5426\u6DFB\u52A0 ";
+	Desc += DisplayName;
+	Desc += L" \u5230\u961F\u4F0D\uFF1F";
+
+	struct FAlertShow2Params
+	{
+		FText Desc;
+		FText BtnTitle1;
+		FText BtnTitle2;
+	};
+
+	FAlertShow2Params Parms{};
+	Parms.Desc = MakeText(Desc.c_str());
+	Parms.BtnTitle1 = MakeText(L"\u662F");
+	Parms.BtnTitle2 = MakeText(L"\u5426");
+
+	auto Flgs = GTeammateNpcAlertShow2Func->FunctionFlags;
+	GTeammateNpcAlertShow2Func->FunctionFlags |= 0x400;
+	AlertObj->ProcessEvent(GTeammateNpcAlertShow2Func, &Parms);
+	GTeammateNpcAlertShow2Func->FunctionFlags = Flgs;
+
+	if (!AlertObj->IsA(UJHNeoUIAlertContentSimple::StaticClass()))
+	{
+		std::string ObjClassName = AlertObj->Class ? AlertObj->Class->GetName() : std::string("<null>");
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog fail: alert class not UJHNeoUIAlertContentSimple class=" << ObjClassName.c_str() << "\n";
+		return false;
+	}
+
+	auto* AlertContent = static_cast<UJHNeoUIAlertContentSimple*>(AlertObj);
+	EnsureTeammateNpcAddConfirmDialogPriority(AlertContent);
+	GTeammateNpcAddConfirmAlert = AlertContent;
+	GTeammateNpcAddConfirmYesBtn = ResolveTeammateNpcConfirmInnerButton(AlertContent->Btn_1);
+	GTeammateNpcAddConfirmNoBtn = ResolveTeammateNpcConfirmInnerButton(AlertContent->Btn_2);
+	if (!GTeammateNpcAddConfirmYesBtn || !GTeammateNpcAddConfirmNoBtn)
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog fail: yes/no inner button unresolved\n";
+		ResetTeammateNpcAddConfirmState();
+		return false;
+	}
+
+	GTeammateNpcAddConfirmPendingNpcId = NpcId;
+	GTeammateNpcAddConfirmPending = true;
+	GTeammateNpcAddConfirmYesWasPressed = GTeammateNpcAddConfirmYesBtn->IsPressed();
+	GTeammateNpcAddConfirmNoWasPressed = GTeammateNpcAddConfirmNoBtn->IsPressed();
+	GTeammateNpcAddConfirmYesWasHovered = GTeammateNpcAddConfirmYesBtn->IsHovered();
+	GTeammateNpcAddConfirmNoWasHovered = GTeammateNpcAddConfirmNoBtn->IsHovered();
+	GTeammateNpcAddConfirmLmbWasDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] ConfirmDialog show2 ok npcId=" << NpcId
+		<< " obj=" << AlertObj
+		<< " iface=" << AlertIfacePtr
+		<< " owner=" << (GTeammateNpcAlertShow2OwnerClass.empty() ? "<null>" : GTeammateNpcAlertShow2OwnerClass.c_str())
+		<< " idx=" << GTeammateNpcAlertShow2FuncIdx
+		<< " z=" << kTeammateNpcConfirmDialogZOrder
+		<< "\n";
+	return true;
+}
+
+void PollTeammateNpcAddConfirmDialog()
+{
+	if (!GTeammateNpcAddConfirmPending)
+		return;
+
+	const bool bLmbDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+	const bool bLmbReleased = GTeammateNpcAddConfirmLmbWasDown && !bLmbDown;
+
+	if (!GTeammateNpcAddConfirmAlert ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcAddConfirmAlert), UJHNeoUIAlertContentSimple::StaticClass()))
+	{
+		if (bLmbReleased && GTeammateNpcAddConfirmYesWasHovered)
+		{
+			const int32 TargetNpcId = GTeammateNpcAddConfirmPendingNpcId;
+			ResetTeammateNpcAddConfirmState();
+			(void)AddTeammateNpcToTeamById(TargetNpcId);
+			GTeammateNpcAddConfirmLmbWasDown = bLmbDown;
+			return;
+		}
+		ResetTeammateNpcAddConfirmState();
+		GTeammateNpcAddConfirmLmbWasDown = bLmbDown;
+		return;
+	}
+
+	if (!GTeammateNpcAddConfirmYesBtn ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcAddConfirmYesBtn), UButton::StaticClass()))
+	{
+		GTeammateNpcAddConfirmYesBtn = ResolveTeammateNpcConfirmInnerButton(GTeammateNpcAddConfirmAlert->Btn_1);
+	}
+	if (!GTeammateNpcAddConfirmNoBtn ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcAddConfirmNoBtn), UButton::StaticClass()))
+	{
+		GTeammateNpcAddConfirmNoBtn = ResolveTeammateNpcConfirmInnerButton(GTeammateNpcAddConfirmAlert->Btn_2);
+	}
+
+	if (!GTeammateNpcAddConfirmYesBtn || !GTeammateNpcAddConfirmNoBtn)
+		return;
+
+	const bool bYesPressed = GTeammateNpcAddConfirmYesBtn->IsPressed();
+	const bool bNoPressed = GTeammateNpcAddConfirmNoBtn->IsPressed();
+	const bool bYesHovered = GTeammateNpcAddConfirmYesBtn->IsHovered();
+	const bool bNoHovered = GTeammateNpcAddConfirmNoBtn->IsHovered();
+
+	const bool bYesTriggered =
+		(!GTeammateNpcAddConfirmYesWasPressed && bYesPressed) ||
+		(GTeammateNpcAddConfirmYesWasPressed && !bYesPressed);
+	const bool bNoTriggered =
+		(!GTeammateNpcAddConfirmNoWasPressed && bNoPressed) ||
+		(GTeammateNpcAddConfirmNoWasPressed && !bNoPressed);
+	const bool bYesMouseTriggered = bLmbReleased && (bYesHovered || GTeammateNpcAddConfirmYesWasHovered);
+	const bool bNoMouseTriggered = bLmbReleased && (bNoHovered || GTeammateNpcAddConfirmNoWasHovered);
+
+	if (bYesTriggered || bYesMouseTriggered)
+	{
+		const int32 TargetNpcId = GTeammateNpcAddConfirmPendingNpcId;
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog yes trigger: source="
+			<< (bYesMouseTriggered ? "mouse_release_hover" : "button_press_state")
+			<< " npcId=" << TargetNpcId << "\n";
+		ResetTeammateNpcAddConfirmState();
+		(void)AddTeammateNpcToTeamById(TargetNpcId);
+		GTeammateNpcAddConfirmLmbWasDown = bLmbDown;
+		return;
+	}
+
+	if (bNoTriggered || bNoMouseTriggered)
+	{
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog no trigger: source="
+			<< (bNoMouseTriggered ? "mouse_release_hover" : "button_press_state")
+			<< "\n";
+		ResetTeammateNpcAddConfirmState();
+		GTeammateNpcAddConfirmLmbWasDown = bLmbDown;
+		return;
+	}
+
+	GTeammateNpcAddConfirmYesWasPressed = bYesPressed;
+	GTeammateNpcAddConfirmNoWasPressed = bNoPressed;
+	GTeammateNpcAddConfirmYesWasHovered = bYesHovered;
+	GTeammateNpcAddConfirmNoWasHovered = bNoHovered;
+	GTeammateNpcAddConfirmLmbWasDown = bLmbDown;
 }
 
 std::wstring GetTeammateNpcPrototypeName(int32 NpcId, const wchar_t* FallbackName)
@@ -172,6 +1029,26 @@ bool HasTeammateNpcPrototypeCardBinding(int32 NpcId)
 			return true;
 	}
 	return false;
+}
+
+void EnsureTeammateNpcPrototypeCardTitleStyle(FTeammateNpcPrototypeCardBinding& Binding)
+{
+	if (!Binding.CardWidget ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(Binding.CardWidget), UJHNeoUIGHC_RegionElement_NPC::StaticClass()))
+	{
+		return;
+	}
+
+	auto* Title = Binding.CardWidget->TXT_Title;
+	if (!Title || !IsSafeLiveObject(static_cast<UObject*>(Title)))
+		return;
+
+	Title->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	FSlateFontInfo TitleFont = Title->Font;
+	TitleFont.Size = kTeammateNpcTitleFontSize;
+	Title->SetFont(TitleFont);
+	Title->SetRenderTransformPivot(FVector2D{ 0.5f, 1.0f });
+	Title->SetRenderTranslation(FVector2D{ kTeammateNpcTitleOffsetX, kTeammateNpcTitleOffsetY });
 }
 
 void UpdateTeammateNpcPrototypeSelectionSummary()
@@ -229,10 +1106,147 @@ void ApplyTeammateNpcPrototypeSelectionVisuals()
 			Binding.CardWidget->SetRenderScale(Scale);
 			Binding.CardWidget->SetRenderOpacity(bSelected ? 1.0f : 0.88f);
 		}
+
+		EnsureTeammateNpcPrototypeCardTitleStyle(Binding);
 	}
 
 	UpdateTeammateNpcPrototypeSelectionSummary();
 }
+
+#if 0 // 已禁用：点击 NPC 确认弹窗逻辑
+bool ShowTeammateNpcAddConfirmDialog(int32 NpcId)
+{
+	std::wstring DisplayName = GetTeammateNpcPrototypeName(NpcId, L"NPC");
+	if (DisplayName.empty())
+		DisplayName = L"NPC";
+
+	std::wstring Desc = L"\u662F\u5426\u6DFB\u52A0 ";
+	Desc += DisplayName;
+	Desc += L" \u5230\u961F\u4F0D\uFF1F";
+
+	FText DescText = MakeText(Desc.c_str());
+	FText YesText = MakeText(L"\u662F");
+	FText NoText = MakeText(L"\u5426");
+
+	struct FAlertShow2Params
+	{
+		FText Desc;
+		FText BtnTitle1;
+		FText BtnTitle2;
+	};
+
+	std::string Show2OwnerClass = "<unknown>";
+	UFunction* Show2Func = ResolveTeammateNpcAlertShow2Function(AlertObj, &Show2OwnerClass);
+
+	if (!Show2Func)
+	{
+		std::string ObjClassName = "<null>";
+		if (AlertObj->Class)
+			ObjClassName = AlertObj->Class->GetName();
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog fail: BP_Show2 unresolved obj=" << AlertObj
+			<< " class=" << ObjClassName.c_str()
+			<< " iface=" << AlertIfacePtr
+			<< "\n";
+		return false;
+	}
+
+	FAlertShow2Params Parms{};
+	Parms.Desc = DescText;
+	Parms.BtnTitle1 = YesText;
+	Parms.BtnTitle2 = NoText;
+
+	bool bShow2CalledBySdkWrapper = false;
+	if (Show2OwnerClass.rfind("JHNeoUIAlert_Content_Simple::", 0) == 0)
+	{
+		IJHNeoUIAlert_Content_Simple* AlertIfaceFromObj = reinterpret_cast<IJHNeoUIAlert_Content_Simple*>(AlertObj);
+		if (AlertIfaceFromObj)
+		{
+			AlertIfaceFromObj->BP_Show2(DescText, YesText, NoText);
+			bShow2CalledBySdkWrapper = true;
+		}
+	}
+	else if (Show2OwnerClass.rfind("JHNeoUIAlertContentSimple_mobile::", 0) == 0 &&
+		AlertObj->IsA(UJHNeoUIAlertContentSimple_mobile::StaticClass()))
+	{
+		UJHNeoUIAlertContentSimple_mobile* MobileSimple = static_cast<UJHNeoUIAlertContentSimple_mobile*>(AlertObj);
+		MobileSimple->BP_Show2(DescText, YesText, NoText);
+		bShow2CalledBySdkWrapper = true;
+	}
+
+	if (!bShow2CalledBySdkWrapper)
+	{
+		auto Flgs = Show2Func->FunctionFlags;
+		Show2Func->FunctionFlags |= 0x400;
+		AlertObj->ProcessEvent(Show2Func, &Parms);
+		Show2Func->FunctionFlags = Flgs;
+	}
+
+	// BP_Show2 的 this 需要 UObject 语义，不能传 TScriptInterface 的 InterfacePtr。
+
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] ConfirmDialog show2 ok owner=" << Show2OwnerClass.c_str()
+		<< " obj=" << AlertObj
+		<< " iface=" << AlertIfacePtr
+		<< " sdkCall=" << (bShow2CalledBySdkWrapper ? 1 : 0)
+		<< "\n";
+
+	UJHNeoUIAlertContentSimple* AlertContent = nullptr;
+	if (AlertObj->IsA(UJHNeoUIAlertContentSimple::StaticClass()))
+		AlertContent = static_cast<UJHNeoUIAlertContentSimple*>(AlertObj);
+
+	GTeammateNpcAddConfirmAlert = AlertContent;
+	GTeammateNpcAddConfirmYesBtn = AlertContent ? ResolveTeammateNpcConfirmInnerButton(AlertContent->Btn_1) : nullptr;
+	GTeammateNpcAddConfirmNoBtn = AlertContent ? ResolveTeammateNpcConfirmInnerButton(AlertContent->Btn_2) : nullptr;
+	GTeammateNpcAddConfirmYesWasPressed = false;
+	GTeammateNpcAddConfirmNoWasPressed = false;
+	GTeammateNpcAddConfirmPending = true;
+	GTeammateNpcAddConfirmPendingNpcId = NpcId;
+
+	if (!GTeammateNpcAddConfirmYesBtn || !GTeammateNpcAddConfirmNoBtn)
+	{
+		LOGE_STREAM("Tab6Teammates") << "[SDK][Tab6NpcProto] ConfirmDialog warn: yes/no button unresolved\n";
+	}
+
+	return true;
+}
+
+void PollTeammateNpcAddConfirmDialog()
+{
+	if (!GTeammateNpcAddConfirmPending)
+		return;
+
+	if (!GTeammateNpcAddConfirmAlert ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcAddConfirmAlert), UJHNeoUIAlertContentSimple::StaticClass()) ||
+		!GTeammateNpcAddConfirmYesBtn ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcAddConfirmYesBtn), UButton::StaticClass()) ||
+		!GTeammateNpcAddConfirmNoBtn ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcAddConfirmNoBtn), UButton::StaticClass()))
+	{
+		return;
+	}
+
+	const bool bYesPressed = GTeammateNpcAddConfirmYesBtn->IsPressed();
+	const bool bNoPressed = GTeammateNpcAddConfirmNoBtn->IsPressed();
+
+	if (!GTeammateNpcAddConfirmYesWasPressed && bYesPressed)
+	{
+		const int32 TargetNpcId = GTeammateNpcAddConfirmPendingNpcId;
+		AddTeammateNpcToTeamById(TargetNpcId);
+		return;
+	}
+
+	if (!GTeammateNpcAddConfirmNoWasPressed && bNoPressed)
+	{
+		ResetTeammateNpcAddConfirmState();
+		return;
+	}
+
+	GTeammateNpcAddConfirmYesWasPressed = bYesPressed;
+	GTeammateNpcAddConfirmNoWasPressed = bNoPressed;
+}
+
+#endif
 
 bool TryGetTeammateNpcResourceTable(UDataTable*& OutTable)
 {
@@ -977,12 +1991,26 @@ bool CanBuildTeammateNpcPrototypeCards(APlayerController* PC)
 	return bNpcTableOk && bResourceTableOk;
 }
 
-void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Binding)
+void RefreshTeammateNpcPrototypeCardContent_Impl(FTeammateNpcPrototypeCardBinding& Binding)
 {
 	if (!Binding.CardWidget ||
 		!IsSafeLiveObjectOfClass(static_cast<UObject*>(Binding.CardWidget), UJHNeoUIGHC_RegionElement_NPC::StaticClass()))
 	{
 		return;
+	}
+
+	if (Binding.IdleFlipbook &&
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(Binding.IdleFlipbook), UPaperFlipbook::StaticClass()))
+	{
+		Binding.IdleFlipbook = nullptr;
+		Binding.bVisualsPrimed = false;
+	}
+
+	auto* MainImage = Binding.CardWidget->IMG_Main;
+	if (MainImage && !IsSafeLiveObject(static_cast<UObject*>(MainImage)))
+	{
+		MainImage = nullptr;
+		Binding.bVisualsPrimed = false;
 	}
 
 	Binding.CardWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
@@ -992,69 +2020,71 @@ void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Bi
 	if (Binding.CardWidget->IsA(UJHGHC_RegionEle_NPC_C::StaticClass()))
 	{
 		auto* RegionNpcCard = static_cast<UJHGHC_RegionEle_NPC_C*>(Binding.CardWidget);
-		if (RegionNpcCard->JHGPCBtn_ActiveBG)
+		if (RegionNpcCard->JHGPCBtn_ActiveBG &&
+			IsSafeLiveObject(static_cast<UObject*>(RegionNpcCard->JHGPCBtn_ActiveBG)))
 		{
 			RegionNpcCard->JHGPCBtn_ActiveBG->SetRenderOpacity(0.0f);
 			RegionNpcCard->JHGPCBtn_ActiveBG->SetVisibility(ESlateVisibility::Collapsed);
 		}
-		if (RegionNpcCard->NeoUIImageBase_36)
+		if (RegionNpcCard->NeoUIImageBase_36 &&
+			IsSafeLiveObject(static_cast<UObject*>(RegionNpcCard->NeoUIImageBase_36)))
 		{
 			RegionNpcCard->NeoUIImageBase_36->SetRenderOpacity(0.0f);
 			RegionNpcCard->NeoUIImageBase_36->SetVisibility(ESlateVisibility::Collapsed);
 		}
-		if (RegionNpcCard->NeoUIImageBase_44)
+		if (RegionNpcCard->NeoUIImageBase_44 &&
+			IsSafeLiveObject(static_cast<UObject*>(RegionNpcCard->NeoUIImageBase_44)))
 		{
 			RegionNpcCard->NeoUIImageBase_44->SetRenderOpacity(0.0f);
 			RegionNpcCard->NeoUIImageBase_44->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
 
-	if (Binding.CardWidget->TXT_Title)
+	if (Binding.CardWidget->TXT_Title &&
+		IsSafeLiveObject(static_cast<UObject*>(Binding.CardWidget->TXT_Title)))
 	{
 		const wchar_t* Title = Binding.DisplayName.empty() ? L"未命名NPC" : Binding.DisplayName.c_str();
 		Binding.CardWidget->TXT_Title->SetText(MakeText(Title));
-		Binding.CardWidget->TXT_Title->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-		FSlateFontInfo TitleFont = Binding.CardWidget->TXT_Title->Font;
-		TitleFont.Size = kTeammateNpcTitleFontSize;
-		Binding.CardWidget->TXT_Title->SetFont(TitleFont);
-		Binding.CardWidget->TXT_Title->SetRenderTransformPivot(FVector2D{ 0.5f, 1.0f });
-		Binding.CardWidget->TXT_Title->SetRenderTranslation(FVector2D{ kTeammateNpcTitleOffsetX, kTeammateNpcTitleOffsetY });
+		EnsureTeammateNpcPrototypeCardTitleStyle(Binding);
 	}
 
-	if (Binding.CardWidget->IMG_Locked)
+	if (Binding.CardWidget->IMG_Locked &&
+		IsSafeLiveObject(static_cast<UObject*>(Binding.CardWidget->IMG_Locked)))
 	{
 		Binding.CardWidget->IMG_Locked->SetRenderOpacity(0.0f);
 		Binding.CardWidget->IMG_Locked->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	if (Binding.CardWidget->IMG_DLCMark)
+	if (Binding.CardWidget->IMG_DLCMark &&
+		IsSafeLiveObject(static_cast<UObject*>(Binding.CardWidget->IMG_DLCMark)))
 	{
 		Binding.CardWidget->IMG_DLCMark->SetVisibility(
 			Binding.bShowDlcMark ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
-	if (Binding.CardWidget->IMG_Main && Binding.IdleFlipbook && !Binding.bVisualsPrimed)
+	if (MainImage && Binding.IdleFlipbook && !Binding.bVisualsPrimed)
 	{
-		Binding.CardWidget->IMG_Main->SetFlipbook(Binding.IdleFlipbook);
-		Binding.CardWidget->IMG_Main->ResetAnimation();
-		Binding.CardWidget->IMG_Main->PlayAnimation();
-		Binding.CardWidget->IMG_Main->SetRenderOpacity(1.0f);
+		MainImage->SetFlipbook(Binding.IdleFlipbook);
+		MainImage->ResetAnimation();
+		MainImage->PlayAnimation();
+		MainImage->SetRenderOpacity(1.0f);
 		Binding.bVisualsPrimed = true;
 	}
-	else if (Binding.CardWidget->IMG_Main && !Binding.IdleFlipbook)
+	else if (MainImage && !Binding.IdleFlipbook)
 	{
-		Binding.CardWidget->IMG_Main->SetRenderOpacity(0.0f);
+		MainImage->SetRenderOpacity(0.0f);
 	}
 
-	if (Binding.CardWidget->IMG_Main)
+	if (MainImage)
 	{
-		Binding.CardWidget->IMG_Main->SetRenderTransformPivot(FVector2D{ 0.5f, 1.0f });
-		Binding.CardWidget->IMG_Main->SetRenderScale(FVector2D{ kTeammateNpcMainImageScale, kTeammateNpcMainImageScale });
-		Binding.CardWidget->IMG_Main->SetRenderTranslation(FVector2D{ kTeammateNpcMainImageOffsetX, kTeammateNpcMainImageLiftY });
-		if (Binding.CardWidget->IMG_Main->Slot &&
-			Binding.CardWidget->IMG_Main->Slot->IsA(UCanvasPanelSlot::StaticClass()))
+		MainImage->SetRenderTransformPivot(FVector2D{ 0.5f, 1.0f });
+		MainImage->SetRenderScale(FVector2D{ kTeammateNpcMainImageScale, kTeammateNpcMainImageScale });
+		MainImage->SetRenderTranslation(FVector2D{ kTeammateNpcMainImageOffsetX, kTeammateNpcMainImageLiftY });
+		if (MainImage->Slot &&
+			IsSafeLiveObject(static_cast<UObject*>(MainImage->Slot)) &&
+			MainImage->Slot->IsA(UCanvasPanelSlot::StaticClass()))
 		{
-			auto* MainSlot = static_cast<UCanvasPanelSlot*>(Binding.CardWidget->IMG_Main->Slot);
+			auto* MainSlot = static_cast<UCanvasPanelSlot*>(MainImage->Slot);
 			FAnchorData Layout = MainSlot->GetLayout();
 			Layout.Anchors.Minimum = FVector2D{ 0.5f, 1.0f };
 			Layout.Anchors.Maximum = FVector2D{ 0.5f, 1.0f };
@@ -1064,6 +2094,20 @@ void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Bi
 			MainSlot->SetLayout(Layout);
 			MainSlot->SetAutoSize(true);
 		}
+	}
+}
+
+void RefreshTeammateNpcPrototypeCardContent(FTeammateNpcPrototypeCardBinding& Binding)
+{
+	const int32 SafeNpcId = Binding.NpcId;
+	__try
+	{
+		RefreshTeammateNpcPrototypeCardContent_Impl(Binding);
+	}
+	__except (HandleTab6NpcProtoSehException("RefreshCardContent", SafeNpcId, GetExceptionCode()))
+	{
+		Binding.bVisualsPrimed = false;
+		Binding.WasPressed = false;
 	}
 }
 
@@ -1213,7 +2257,7 @@ void RebuildTeammateNpcPrototypeFilteredIndices()
 		: 0;
 }
 
-void RefreshTeammateNpcPrototypePage()
+void RefreshTeammateNpcPrototypePage_Impl()
 {
 	if (!GTeammateNpcPrototypeCardWrap ||
 		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcPrototypeCardWrap), UWrapBox::StaticClass()) ||
@@ -1267,6 +2311,11 @@ void RefreshTeammateNpcPrototypePage()
 			continue;
 
 		auto& Sample = GTeammateNpcPrototypeAllSamples[SampleIdx];
+		if (Sample.IdleFlipbook &&
+			!IsSafeLiveObjectOfClass(static_cast<UObject*>(Sample.IdleFlipbook), UPaperFlipbook::StaticClass()))
+		{
+			Sample.IdleFlipbook = nullptr;
+		}
 		if (!Sample.IdleFlipbook)
 			Sample.IdleFlipbook = ResolveTeammateNpcPrototypeIdleFlipbook(Sample.NpcId);
 
@@ -1368,6 +2417,20 @@ void RefreshTeammateNpcPrototypePage()
 	GTeammateNpcPrototypeLastLayoutLogTick = 0;
 	if (kTab6NpcPrototypeVerboseLog)
 		LogTeammateNpcPrototypeLayout("refresh-immediate");
+}
+
+void RefreshTeammateNpcPrototypePage()
+{
+	__try
+	{
+		RefreshTeammateNpcPrototypePage_Impl();
+	}
+	__except (HandleTab6NpcProtoSehException("RefreshPage", GTeammateNpcPrototypeSelectedNpcId, GetExceptionCode()))
+	{
+		ClearTeammateNpcPrototypeCards();
+		GTeammateNpcPrototypeLastSelectionPollTick = 0;
+		GTeammateNpcPrototypeLastPagerPollTick = 0;
+	}
 }
 
 const char* GetTeammateNpcPrototypeSlotTypeName(UPanelSlot* Slot)
@@ -1786,10 +2849,14 @@ void LogTeammateNpcPrototypeLayout(const char* StageTag)
 
 } // end anonymous namespace
 
-void PollTab6NpcPrototypeSelection(bool bTab6Active)
+void PollTab6NpcPrototypeSelection_Impl(bool bTab6Active)
 {
 	if (!bTab6Active)
 	{
+		if (!GTeammateNpcPrototypePollWasActive)
+			return;
+		GTeammateNpcPrototypePollWasActive = false;
+
 		for (auto& Binding : GTeammateNpcPrototypeCards)
 			Binding.WasPressed = false;
 		GTeammateNpcPrototypeLastSelectionPollTick = 0;
@@ -1797,8 +2864,10 @@ void PollTab6NpcPrototypeSelection(bool bTab6Active)
 		GTeammateNpcPrototypePrevWasPressed = false;
 		GTeammateNpcPrototypeNextWasPressed = false;
 		GTeammateNpcPrototypeLastLayoutLogTick = 0;
+		ResetTeammateNpcAddConfirmState();
 		return;
 	}
+	GTeammateNpcPrototypePollWasActive = true;
 
 	const ULONGLONG Now = GetTickCount64();
 	// 关闭轮询阶段布局日志，避免持续刷屏。
@@ -1849,6 +2918,11 @@ void PollTab6NpcPrototypeSelection(bool bTab6Active)
 		GTeammateNpcPrototypeNextWasPressed = NextPressed;
 	}
 
+	PollTeammateNpcAddConfirmDialog();
+
+	for (auto& Binding : GTeammateNpcPrototypeCards)
+		EnsureTeammateNpcPrototypeCardTitleStyle(Binding);
+
 	const bool bDoSelectionPoll =
 		!GTeammateNpcPrototypeLastSelectionPollTick ||
 		(Now - GTeammateNpcPrototypeLastSelectionPollTick) >= kTeammateNpcSelectionPollIntervalMs;
@@ -1871,6 +2945,7 @@ void PollTab6NpcPrototypeSelection(bool bTab6Active)
 		{
 			GTeammateNpcPrototypeSelectedNpcId = Binding.NpcId;
 			bSelectionChanged = true;
+			(void)ShowTeammateNpcAddConfirmDialog(Binding.NpcId);
 		}
 
 		Binding.WasPressed = bPressed;
@@ -1878,6 +2953,56 @@ void PollTab6NpcPrototypeSelection(bool bTab6Active)
 
 	if (bSelectionChanged)
 		ApplyTeammateNpcPrototypeSelectionVisuals();
+}
+
+void PollTab6NpcPrototypeSelection(bool bTab6Active)
+{
+	__try
+	{
+		PollTab6NpcPrototypeSelection_Impl(bTab6Active);
+	}
+	__except (HandleTab6NpcProtoSehException("PollSelection", GTeammateNpcPrototypeSelectedNpcId, GetExceptionCode()))
+	{
+		GTeammateNpcPrototypePollWasActive = false;
+		for (auto& Binding : GTeammateNpcPrototypeCards)
+			Binding.WasPressed = false;
+		GTeammateNpcPrototypeLastSelectionPollTick = 0;
+		GTeammateNpcPrototypeLastPagerPollTick = 0;
+		ResetTeammateNpcAddConfirmState();
+	}
+}
+
+UObject* GetTab6NpcConfirmAlertForProcessEventHook()
+{
+	if (!GTeammateNpcAddConfirmPending)
+		return nullptr;
+	if (!GTeammateNpcAddConfirmAlert ||
+		!IsSafeLiveObjectOfClass(static_cast<UObject*>(GTeammateNpcAddConfirmAlert), UJHNeoUIAlertContentSimple::StaticClass()))
+	{
+		return nullptr;
+	}
+	return static_cast<UObject*>(GTeammateNpcAddConfirmAlert);
+}
+
+void HandleTab6NpcConfirmProcessEventAction(bool bConfirmButton)
+{
+	if (!GTeammateNpcAddConfirmPending)
+		return;
+
+	const int32 TargetNpcId = GTeammateNpcAddConfirmPendingNpcId;
+	if (bConfirmButton)
+	{
+		LOGI_STREAM("Tab6Teammates")
+			<< "[SDK][Tab6NpcProto] ConfirmDialog yes trigger: source=process_event_handlebtn1"
+			<< " npcId=" << TargetNpcId << "\n";
+		ResetTeammateNpcAddConfirmState();
+		(void)AddTeammateNpcToTeamById(TargetNpcId);
+		return;
+	}
+
+	LOGI_STREAM("Tab6Teammates")
+		<< "[SDK][Tab6NpcProto] ConfirmDialog no trigger: source=process_event_handlebtn2\n";
+	ResetTeammateNpcAddConfirmState();
 }
 
 void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
@@ -2120,6 +3245,16 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 			int32 BuiltCards = 0;
 			int32 TotalSamples = 0;
+			if (!GTeammateNpcNeoUISubsystemLogged)
+			{
+				(void)GetJHNeoUISubsystemForTab6(true);
+				GTeammateNpcNeoUISubsystemLogged = true;
+			}
+			if (!GTeammateNpcSimpleAlertProbeLogged)
+			{
+				ProbeTeammateNpcSimpleAlert();
+				GTeammateNpcSimpleAlertProbeLogged = true;
+			}
 			const bool bCanBuildPrototypeCards = CanBuildTeammateNpcPrototypeCards(PC);
 			if (kTab6NpcPrototypeVerboseLog)
 			{
@@ -2201,6 +3336,47 @@ namespace
 
 // ── 设置队友跟随数量 (SDK直写) ──
 int32 GOriginalFollowerCount = -1; // -1 = not saved yet
+constexpr uintptr_t kFollowerCountOffset = 0x0518;
+
+bool IsTab6WritableAddress(const void* Address, size_t Size)
+{
+	if (!Address || Size == 0)
+		return false;
+
+	const uint8_t* Cursor = reinterpret_cast<const uint8_t*>(Address);
+	size_t Remaining = Size;
+	while (Remaining > 0)
+	{
+		MEMORY_BASIC_INFORMATION mbi{};
+		if (::VirtualQuery(Cursor, &mbi, sizeof(mbi)) == 0)
+			return false;
+		if (mbi.State != MEM_COMMIT)
+			return false;
+		if ((mbi.Protect & PAGE_GUARD) != 0 || (mbi.Protect & PAGE_NOACCESS) != 0)
+			return false;
+
+		const DWORD Protect = (mbi.Protect & 0xFF);
+		const bool Writable =
+			(Protect == PAGE_READWRITE) ||
+			(Protect == PAGE_WRITECOPY) ||
+			(Protect == PAGE_EXECUTE_READWRITE) ||
+			(Protect == PAGE_EXECUTE_WRITECOPY);
+		if (!Writable)
+			return false;
+
+		const uint8_t* RegionEnd = reinterpret_cast<const uint8_t*>(mbi.BaseAddress) + mbi.RegionSize;
+		if (RegionEnd <= Cursor)
+			return false;
+
+		const size_t Chunk = static_cast<size_t>(RegionEnd - Cursor);
+		if (Chunk >= Remaining)
+			return true;
+		Cursor += Chunk;
+		Remaining -= Chunk;
+	}
+
+	return true;
+}
 
 // ── 替换指定队友 (AOB hook) ──
 uint32_t GReplaceTeammateHookId = UINT32_MAX;
@@ -2238,8 +3414,17 @@ void ApplyFollowerCountSDK(int32 Value)
 		return;
 
 	uint8* HeroPtr = reinterpret_cast<uint8*>(Hero);
-	int32& FollowerCount = *reinterpret_cast<int32*>(HeroPtr + 0x0518);
+	int32* FollowerCountPtr = reinterpret_cast<int32*>(HeroPtr + kFollowerCountOffset);
+	if (!IsTab6WritableAddress(FollowerCountPtr, sizeof(int32)))
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK] FollowerCount write guard blocked hero=" << Hero
+			<< " ptr=" << FollowerCountPtr
+			<< " offset=0x" << std::hex << kFollowerCountOffset << std::dec << "\n";
+		return;
+	}
 
+	int32& FollowerCount = *FollowerCountPtr;
 	// Save original on first call
 	if (GOriginalFollowerCount < 0)
 		GOriginalFollowerCount = FollowerCount;
@@ -2267,7 +3452,18 @@ void DisableFollowerCountSDK()
 	}
 
 	uint8* HeroPtr = reinterpret_cast<uint8*>(Hero);
-	*reinterpret_cast<int32*>(HeroPtr + 0x0518) = GOriginalFollowerCount;
+	int32* FollowerCountPtr = reinterpret_cast<int32*>(HeroPtr + kFollowerCountOffset);
+	if (!IsTab6WritableAddress(FollowerCountPtr, sizeof(int32)))
+	{
+		LOGE_STREAM("Tab6Teammates")
+			<< "[SDK] FollowerCount restore guard blocked hero=" << Hero
+			<< " ptr=" << FollowerCountPtr
+			<< " offset=0x" << std::hex << kFollowerCountOffset << std::dec << "\n";
+		GOriginalFollowerCount = -1;
+		return;
+	}
+
+	*FollowerCountPtr = GOriginalFollowerCount;
 	LOGI_STREAM("Tab6Teammates") << "[SDK] FollowerCount restored to " << GOriginalFollowerCount << "\n";
 	GOriginalFollowerCount = -1;
 }

@@ -27,6 +27,7 @@
 #include "CheatState.hpp"
 #include "FrameHook.hpp"
 #include "ItemBrowser.hpp"
+#include "InlineHook.hpp"
 #include "PanelManager.hpp"
 #include "TabContent.hpp"
 #include "WidgetFactory.hpp"
@@ -229,6 +230,30 @@ struct PostRenderInFlightScope final
 	VTableHook GBackpackViewProcessEventHook;
 	UObjectProcessEventFn GOriginalBackpackViewProcessEvent = nullptr;
 	constexpr bool kVerboseBackpackViewProcessEventLogs = false;
+	constexpr bool kEnableTab6ConfirmInlineHook = true;
+	constexpr const char* kTab6ConfirmBtn1Pattern =
+		"48 89 5C 24 10 57 48 83 EC 70 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 60 "
+		"48 8B F9 48 8D 99 90 02 00 00 48 83 3B 00 75 0E 48 8B 01 FF 90 A8 05 00 00 "
+		"E9 ?? ?? ?? ?? 48 8B CB E8 ?? ?? ?? ?? 48 8B 43 10";
+	constexpr const char* kTab6ConfirmBtn2Pattern =
+		"48 89 5C 24 10 57 48 83 EC 70 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 60 "
+		"48 8B F9 48 8D 99 D0 02 00 00 48 83 3B 00 75 0E 48 8B 01 FF 90 A8 05 00 00 "
+		"E9 ?? ?? ?? ?? 48 8B CB E8 ?? ?? ?? ??";
+	constexpr unsigned char kTab6ConfirmInlineTemplate[] = {
+		0x41, 0x53,                                       // push r11
+		0x49, 0xBB,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov r11, imm64 (&GPendingTab6ConfirmClickAction)
+		0x41, 0xC7, 0x03,                                 // mov dword ptr [r11], imm32
+		0x00, 0x00, 0x00, 0x00,                           // imm32 (1/2)
+		0x41, 0x5B                                        // pop r11
+	};
+	constexpr size_t kTab6ConfirmInlineImm64Offset = 4;
+	constexpr size_t kTab6ConfirmInlineImm32Offset = 15;
+	uint32_t GTab6ConfirmBtn1InlineHookId = UINT32_MAX;
+	uint32_t GTab6ConfirmBtn2InlineHookId = UINT32_MAX;
+	uintptr_t GTab6ConfirmBtn1InlineAddr = 0;
+	uintptr_t GTab6ConfirmBtn2InlineAddr = 0;
+	volatile LONG GPendingTab6ConfirmClickAction = 0;
 	constexpr uintptr_t kBackpackGridCtxWeakOffset = 0x8A0;
 	constexpr int32 kBackpackCtxSourceAnchorIndex = 59720;
 	constexpr int32 kBackpackCtxSourceWindow = 10;
@@ -643,6 +668,168 @@ struct PostRenderInFlightScope final
 	// └─────────────────────────────────────────────────────────────┘
 
 	/// 检查 ComboBox 控件是否仍然存活且未被引擎标记为待销毁
+	bool ResolveTab6ConfirmInlineTargetOffsets(uint32_t& OutBtn1Offset, uint32_t& OutBtn2Offset)
+	{
+		OutBtn1Offset = 0;
+		OutBtn2Offset = 0;
+
+		HMODULE moduleHandle = ::GetModuleHandleA("JH-Win64-Shipping.exe");
+		if (!moduleHandle)
+		{
+			LOGE_STREAM("FrameHook") << "[SDK] Tab6 Confirm inline resolve failed: module not loaded\n";
+			return false;
+		}
+
+		const uintptr_t moduleBase = reinterpret_cast<uintptr_t>(moduleHandle);
+		const bool needResolveBtn1 = (GTab6ConfirmBtn1InlineAddr == 0);
+		const bool needResolveBtn2 = (GTab6ConfirmBtn2InlineAddr == 0);
+		if (needResolveBtn1)
+			GTab6ConfirmBtn1InlineAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab6ConfirmBtn1Pattern);
+		if (needResolveBtn2)
+			GTab6ConfirmBtn2InlineAddr = InlineHook::HookManager::ScanModulePatternRobust("JH-Win64-Shipping.exe", kTab6ConfirmBtn2Pattern);
+
+		if (GTab6ConfirmBtn1InlineAddr == 0 || GTab6ConfirmBtn2InlineAddr == 0)
+		{
+			LOGE_STREAM("FrameHook")
+				<< "[SDK] Tab6 Confirm inline resolve failed: btn1=0x" << std::hex << GTab6ConfirmBtn1InlineAddr
+				<< " btn2=0x" << GTab6ConfirmBtn2InlineAddr << std::dec << "\n";
+			return false;
+		}
+
+		auto ToOffset = [moduleBase](uintptr_t address, uint32_t& outOffset) -> bool
+		{
+			if (address < moduleBase)
+				return false;
+			const uintptr_t delta = address - moduleBase;
+			if (delta > static_cast<uintptr_t>((std::numeric_limits<uint32_t>::max)()))
+				return false;
+			outOffset = static_cast<uint32_t>(delta);
+			return true;
+		};
+
+		if (!ToOffset(GTab6ConfirmBtn1InlineAddr, OutBtn1Offset) ||
+			!ToOffset(GTab6ConfirmBtn2InlineAddr, OutBtn2Offset))
+		{
+			LOGE_STREAM("FrameHook")
+				<< "[SDK] Tab6 Confirm inline resolve failed: address out of module range "
+				<< "btn1=0x" << std::hex << GTab6ConfirmBtn1InlineAddr
+				<< " btn2=0x" << GTab6ConfirmBtn2InlineAddr
+				<< " moduleBase=0x" << moduleBase << std::dec << "\n";
+			return false;
+		}
+
+		if (needResolveBtn1 || needResolveBtn2)
+		{
+			LOGI_STREAM("FrameHook")
+				<< "[SDK] Tab6 Confirm inline targets resolved: "
+				<< "btn1Addr=0x" << std::hex << GTab6ConfirmBtn1InlineAddr
+				<< " btn2Addr=0x" << GTab6ConfirmBtn2InlineAddr
+				<< " offsets=(0x" << OutBtn1Offset << ",0x" << OutBtn2Offset << ")"
+				<< std::dec << "\n";
+		}
+
+		return true;
+	}
+
+	bool EnsureTab6ConfirmInlineHooksInstalled()
+	{
+		if (!kEnableTab6ConfirmInlineHook)
+			return false;
+
+		if (GTab6ConfirmBtn1InlineHookId != UINT32_MAX &&
+			GTab6ConfirmBtn2InlineHookId != UINT32_MAX)
+		{
+			return true;
+		}
+
+		uint32_t btn1Offset = 0;
+		uint32_t btn2Offset = 0;
+		if (!ResolveTab6ConfirmInlineTargetOffsets(btn1Offset, btn2Offset))
+			return false;
+
+		unsigned char btn1Code[sizeof(kTab6ConfirmInlineTemplate)] = {};
+		std::memcpy(btn1Code, kTab6ConfirmInlineTemplate, sizeof(btn1Code));
+		const uintptr_t actionAddr = reinterpret_cast<uintptr_t>(&GPendingTab6ConfirmClickAction);
+		const int32 actionYes = 1;
+		std::memcpy(btn1Code + kTab6ConfirmInlineImm64Offset, &actionAddr, sizeof(actionAddr));
+		std::memcpy(btn1Code + kTab6ConfirmInlineImm32Offset, &actionYes, sizeof(actionYes));
+
+		unsigned char btn2Code[sizeof(kTab6ConfirmInlineTemplate)] = {};
+		std::memcpy(btn2Code, kTab6ConfirmInlineTemplate, sizeof(btn2Code));
+		const int32 actionNo = 2;
+		std::memcpy(btn2Code + kTab6ConfirmInlineImm64Offset, &actionAddr, sizeof(actionAddr));
+		std::memcpy(btn2Code + kTab6ConfirmInlineImm32Offset, &actionNo, sizeof(actionNo));
+
+		uint32_t hookId1 = GTab6ConfirmBtn1InlineHookId;
+		if (hookId1 == UINT32_MAX)
+		{
+			if (!InlineHook::HookManager::InstallHook(
+				"JH-Win64-Shipping.exe",
+				btn1Offset,
+				btn1Code,
+				sizeof(btn1Code),
+				hookId1))
+			{
+				LOGE_STREAM("FrameHook")
+					<< "[SDK] Tab6 Confirm inline hook(btn1) install failed offset=0x"
+					<< std::hex << btn1Offset << " addr=0x" << GTab6ConfirmBtn1InlineAddr << std::dec << "\n";
+				return false;
+			}
+		}
+
+		uint32_t hookId2 = GTab6ConfirmBtn2InlineHookId;
+		if (hookId2 == UINT32_MAX)
+		{
+			if (!InlineHook::HookManager::InstallHook(
+				"JH-Win64-Shipping.exe",
+				btn2Offset,
+				btn2Code,
+				sizeof(btn2Code),
+				hookId2))
+			{
+				if (GTab6ConfirmBtn1InlineHookId == UINT32_MAX && hookId1 != UINT32_MAX)
+					InlineHook::HookManager::UninstallHook(hookId1);
+				LOGE_STREAM("FrameHook")
+					<< "[SDK] Tab6 Confirm inline hook(btn2) install failed offset=0x"
+					<< std::hex << btn2Offset << " addr=0x" << GTab6ConfirmBtn2InlineAddr << std::dec << "\n";
+				return false;
+			}
+		}
+
+		GTab6ConfirmBtn1InlineHookId = hookId1;
+		GTab6ConfirmBtn2InlineHookId = hookId2;
+		LOGI_STREAM("FrameHook")
+			<< "[SDK] Tab6 Confirm inline hooks enabled btn1Id=" << GTab6ConfirmBtn1InlineHookId
+			<< " btn2Id=" << GTab6ConfirmBtn2InlineHookId
+			<< " offsets=(0x" << std::hex << btn1Offset
+			<< ",0x" << btn2Offset << ")"
+			<< " addrs=(0x" << GTab6ConfirmBtn1InlineAddr
+			<< ",0x" << GTab6ConfirmBtn2InlineAddr << ")"
+			<< std::dec << "\n";
+		return true;
+	}
+
+	void RemoveTab6ConfirmInlineHooks()
+	{
+		if (GTab6ConfirmBtn2InlineHookId != UINT32_MAX)
+		{
+			InlineHook::HookManager::UninstallHook(GTab6ConfirmBtn2InlineHookId);
+			GTab6ConfirmBtn2InlineHookId = UINT32_MAX;
+		}
+		if (GTab6ConfirmBtn1InlineHookId != UINT32_MAX)
+		{
+			InlineHook::HookManager::UninstallHook(GTab6ConfirmBtn1InlineHookId);
+			GTab6ConfirmBtn1InlineHookId = UINT32_MAX;
+		}
+	}
+
+	bool TryConsumeTab6ConfirmClickAction(int32& OutAction)
+	{
+		const LONG Action = InterlockedExchange(&GPendingTab6ConfirmClickAction, 0);
+		OutAction = static_cast<int32>(Action);
+		return (OutAction == 1) || (OutAction == 2);
+	}
+
 	bool IsLiveComboBox(UComboBoxString* Combo)
 	{
 		return Combo &&
@@ -1853,10 +2040,31 @@ struct PostRenderInFlightScope final
 	void PollAndApplyTab6Features(bool CanReadFromUI)
 	{
 		static FTab6RuntimeConfig Config{};
+		static bool LastFollowerCount = false;
+		static bool LastReplaceTeammate = false;
+		const bool HasLivePanel =
+			GInternalWidgetVisible &&
+			GInternalWidget &&
+			IsSafeLiveObject(static_cast<UObject*>(GInternalWidget)) &&
+			GInternalWidget->IsInViewport();
+		if (!HasLivePanel)
+		{
+			if (LastFollowerCount)
+			{
+				DisableFollowerCountSDK();
+				LastFollowerCount = false;
+			}
+			if (LastReplaceTeammate)
+			{
+				DisableReplaceTeammateHook();
+				LastReplaceTeammate = false;
+			}
+			return;
+		}
+
 		if (CanReadFromUI)
 			ReadTab6ConfigFromUI(Config);
 
-		static bool LastFollowerCount = false;
 		if (Config.FollowerCountEnabled != LastFollowerCount)
 		{
 			if (!Config.FollowerCountEnabled)
@@ -1885,7 +2093,6 @@ struct PostRenderInFlightScope final
 		}
 		LastAddTeammateIdx = Config.AddTeammateIdx;
 
-		static bool LastReplaceTeammate = false;
 		if (Config.ReplaceTeammateEnabled != LastReplaceTeammate)
 		{
 			Config.ReplaceTeammateEnabled ? EnableReplaceTeammateHook() : DisableReplaceTeammateHook();
@@ -2056,6 +2263,11 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			RemoveItemEntryProcessEventHook();
 			if (kEnableBackpackViewProcessEventHook)
 				RemoveBackpackViewProcessEventHook();
+			if (kEnableTab6ConfirmInlineHook)
+			{
+				RemoveTab6ConfirmInlineHooks();
+				InterlockedExchange(&GPendingTab6ConfirmClickAction, 0);
+			}
 			DisableSkillNoCooldownHooks();
 			DisableNoEncounterPatch();
 			DisableAllTeammatesInFightHooks();
@@ -2488,8 +2700,29 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		GInternalWidgetVisible &&
 		LiveInternalWidget &&
 		IsTeammateTabActive;
+	if (kEnableTab6ConfirmInlineHook)
+	{
+		if (IsTeammateTabActive && GInternalWidgetVisible && LiveInternalWidget)
+			EnsureTab6ConfirmInlineHooksInstalled();
+		else
+		{
+			RemoveTab6ConfirmInlineHooks();
+			InterlockedExchange(&GPendingTab6ConfirmClickAction, 0);
+		}
+	}
 	PollAndApplyTab6Features(CanReadTab6FromUI);
 	PollTab6NpcPrototypeSelection(IsTeammateTabActive && GInternalWidgetVisible && LiveInternalWidget);
+	if (kEnableTab6ConfirmInlineHook)
+	{
+		int32 ConfirmAction = 0;
+		if (TryConsumeTab6ConfirmClickAction(ConfirmAction))
+		{
+			if (ConfirmAction == 1)
+				HandleTab6NpcConfirmProcessEventAction(true);
+			else if (ConfirmAction == 2)
+				HandleTab6NpcConfirmProcessEventAction(false);
+		}
+	}
 
 	// Tab7 quest button (always polls — button only acts on click)
 	if (GInternalWidgetVisible && LiveInternalWidget && GActiveDynTabForPoll == 7)
