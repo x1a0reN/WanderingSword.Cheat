@@ -1826,7 +1826,7 @@ struct PostRenderInFlightScope final
 
 	void ReadTab4ConfigFromUI(FTab4RuntimeConfig& Cfg)
 	{
-		Cfg.GiftAlwaysLiked = ReadToggleValue(GTab4.GiftAlwaysLikedToggle, Cfg.GiftAlwaysLiked);
+		Cfg.GiftAlwaysLiked = ReadToggleValue(GTab4.GiftAlwaysLikedToggle, false);
 		Cfg.InviteIgnore = ReadToggleValue(GTab4.InviteIgnoreToggle, Cfg.InviteIgnore);
 		Cfg.SparIgnoreFavor = ReadToggleValue(GTab4.SparIgnoreFavorToggle, Cfg.SparIgnoreFavor);
 		Cfg.ConsultIgnore = ReadToggleValue(GTab4.ConsultIgnoreToggle, Cfg.ConsultIgnore);

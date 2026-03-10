@@ -44,7 +44,6 @@ void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	auto* MainPanel = CreateCollapsiblePanel(PC, L"社交开关");
 	auto* MainBox = MainPanel ? MainPanel->CT_Contents : nullptr;
-	AddToggleStored(MainBox, L"送礼必定喜欢", GTab4.GiftAlwaysLikedToggle);
 	AddToggleStored(MainBox, L"邀请无视条件", GTab4.InviteIgnoreToggle);
 	AddToggleStored(MainBox, L"切磋无视好感", GTab4.SparIgnoreFavorToggle);
 	AddToggleStored(MainBox, L"请教无视要求", GTab4.ConsultIgnoreToggle);
@@ -53,11 +52,6 @@ void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	AddToggleStored(MainBox, L"NPC无视武器功法限制", GTab4.NpcIgnoreWeaponLimitToggle);
 	AddToggleStored(MainBox, L"强制显示NPC互动", GTab4.ForceNpcInteractionToggle);
 	AddPanelWithFixedGap(MainPanel, 0.0f, 10.0f);
-
-	auto* GiftPanel = CreateCollapsiblePanel(PC, L"送礼设置");
-	auto* GiftBox = GiftPanel ? GiftPanel->CT_Contents : nullptr;
-	GTab4.GiftQualityDD = AddDropdown(GiftBox, L"物品质量(送礼)", { L"全部", L"白", L"绿", L"蓝", L"紫", L"橙", L"红" });
-	AddPanelWithFixedGap(GiftPanel, 0.0f, 8.0f);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
