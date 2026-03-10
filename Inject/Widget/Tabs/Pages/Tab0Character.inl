@@ -527,6 +527,68 @@ namespace
 	}
 
 	void RefreshTab0BindingsText(APlayerController* PC);
+	bool IsValidTab0Dropdown(UBPVE_JHConfigVideoItem2_C* Item);
+	int32 GetComboOptionCountFast(UComboBoxString* Combo);
+	int32 GetComboSelectedIndexFast(UComboBoxString* Combo);
+	int32 ClampComboIndex(UComboBoxString* Combo, int32 Index);
+
+	int32 FindTab0RoleIndexByNpcId(int32 NPCId)
+	{
+		if (NPCId < 0)
+			return -1;
+		for (int32 i = 0; i < static_cast<int32>(GTab0RoleSelectNPCIds.size()); ++i)
+		{
+			if (GTab0RoleSelectNPCIds[i] == NPCId)
+				return i;
+		}
+		return -1;
+	}
+
+	void RefreshTab0RoleSelectDropdownFromGame()
+	{
+		int32 PreferredNPCId = -1;
+		if (GTab0SelectedRoleIdx >= 0 &&
+			GTab0SelectedRoleIdx < static_cast<int32>(GTab0RoleSelectNPCIds.size()))
+		{
+			PreferredNPCId = GTab0RoleSelectNPCIds[GTab0SelectedRoleIdx];
+		}
+
+		RefreshTab0RoleSelectOptions();
+
+		if (!IsValidTab0Dropdown(GTab0RoleSelectDD))
+		{
+			GTab0SelectedRoleIdx = FindTab0RoleIndexByNpcId(PreferredNPCId);
+			GTab0LastSelectedRoleIdx = GTab0SelectedRoleIdx;
+			return;
+		}
+
+		UComboBoxString* Combo = GTab0RoleSelectDD->CB_Main;
+		Combo->ClearOptions();
+		for (const auto& Name : GTab0RoleSelectNames)
+			Combo->AddOption(FString(Name.c_str()));
+
+		int32 TargetIdx = FindTab0RoleIndexByNpcId(PreferredNPCId);
+		if (TargetIdx < 0 && !GTab0RoleSelectNPCIds.empty())
+			TargetIdx = 0;
+
+		if (GetComboOptionCountFast(Combo) > 0 && TargetIdx >= 0)
+		{
+			TargetIdx = ClampComboIndex(Combo, TargetIdx);
+			if (GetComboSelectedIndexFast(Combo) != TargetIdx)
+				Combo->SetSelectedIndex(TargetIdx);
+		}
+		else
+		{
+			TargetIdx = -1;
+		}
+
+		GTab0SelectedRoleIdx = TargetIdx;
+		GTab0LastSelectedRoleIdx = TargetIdx;
+
+		LOGI_STREAM("Tab0Character") << "[SDK][Tab0Role] RoleDropdownRefresh preferredNpcId=" << PreferredNPCId
+		          << " count=" << GTab0RoleSelectNPCIds.size()
+		          << " selectedIdx=" << TargetIdx << "\n";
+	}
 
 	FTab0HeroContext BuildTab0HeroContext(APlayerController* PC)
 	{
@@ -1339,6 +1401,48 @@ namespace
 		PollOne(GTab0SceneMoveSpeedItem, GTab0SceneMoveSpeedLastPercent, L"SceneMoveSpeed", GTab0SceneMoveSpeedMinusWasPressed, GTab0SceneMoveSpeedPlusWasPressed);
 	}
 
+	void RefreshTab0RatioSlidersFromLive(APlayerController* PC)
+	{
+		FTab0HeroContext Ctx = BuildTab0HeroContext(PC);
+
+		auto RefreshOne = [&](UBPVE_JHConfigVolumeItem2_C* Item, float& LastPercent, const wchar_t* AttrName)
+		{
+			if (!Item || !IsSafeLiveObject(static_cast<UObject*>(Item)))
+				return;
+
+			float Percent = 1.0f;
+			if (Ctx.NPCId >= 0 && TryGetTab0MultiplierPercent(Ctx, AttrName, &Percent))
+				SetVolumeItemPercent(Item, Percent);
+			else
+				SetVolumeItemPercent(Item, 1.0f);
+
+			LastPercent = GetVolumeItemPercent(Item);
+			UpdateVolumeItemPercentText(Item, LastPercent);
+		};
+
+		RefreshOne(GTab0MoneyMultiplierItem, GTab0MoneyMultiplierLastPercent, L"MoneyMultiplier");
+		RefreshOne(GTab0SkillExpMultiplierItem, GTab0SkillExpMultiplierLastPercent, L"SExpMultiplier");
+		RefreshOne(GTab0ManaCostMultiplierItem, GTab0ManaCostMultiplierLastPercent, L"ManaCostMultiplier");
+		RefreshOne(GTab0EscapeSuccrateItem, GTab0EscapeSuccrateLastPercent, L"EscapeSuccrate");
+		RefreshOne(GTab0WorldMoveSpeedItem, GTab0WorldMoveSpeedLastPercent, L"WorldMoveSpeed");
+		RefreshOne(GTab0SceneMoveSpeedItem, GTab0SceneMoveSpeedLastPercent, L"SceneMoveSpeed");
+	}
+
+	void RefreshTab0StateOnTabShown(APlayerController* PC)
+	{
+		if (!PC)
+			return;
+
+		RefreshTab0RoleSelectDropdownFromGame();
+		SyncTab0RoleDropdownsFromLive(PC);
+		RefreshTab0BindingsText(PC);
+		RefreshTab0RatioSlidersFromLive(PC);
+
+		LOGI_STREAM("Tab0Character") << "[SDK][Tab0Role] Tab shown refresh complete"
+		          << " selectedIdx=" << GTab0SelectedRoleIdx
+		          << " roleCount=" << GTab0RoleSelectNPCIds.size() << "\n";
+	}
+
 	bool TryGetTab0FieldValue(const FTab0HeroContext& Ctx, ETab0Field Field, double* OutValue)
 	{
 		if (!OutValue)
@@ -2095,51 +2199,7 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	RemoveVolumeItemFromGlobalPoll(GTab0EscapeSuccrateItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0WorldMoveSpeedItem);
 	RemoveVolumeItemFromGlobalPoll(GTab0SceneMoveSpeedItem);
-	{
-		FTab0HeroContext RatioCtx = BuildTab0HeroContext(PC);
-			float Pct = 1.0f;
-
-		if (TryGetTab0MultiplierPercent(RatioCtx, L"MoneyMultiplier", &Pct))
-			SetVolumeItemPercent(GTab0MoneyMultiplierItem, Pct);
-		else
-				SetVolumeItemPercent(GTab0MoneyMultiplierItem, 1.0f);
-		GTab0MoneyMultiplierLastPercent = GetVolumeItemPercent(GTab0MoneyMultiplierItem);
-
-			Pct = 1.0f;
-		if (TryGetTab0MultiplierPercent(RatioCtx, L"SExpMultiplier", &Pct))
-			SetVolumeItemPercent(GTab0SkillExpMultiplierItem, Pct);
-		else
-				SetVolumeItemPercent(GTab0SkillExpMultiplierItem, 1.0f);
-		GTab0SkillExpMultiplierLastPercent = GetVolumeItemPercent(GTab0SkillExpMultiplierItem);
-
-			Pct = 1.0f;
-		if (TryGetTab0MultiplierPercent(RatioCtx, L"ManaCostMultiplier", &Pct))
-			SetVolumeItemPercent(GTab0ManaCostMultiplierItem, Pct);
-		else
-				SetVolumeItemPercent(GTab0ManaCostMultiplierItem, 1.0f);
-		GTab0ManaCostMultiplierLastPercent = GetVolumeItemPercent(GTab0ManaCostMultiplierItem);
-
-			Pct = 1.0f;
-		if (TryGetTab0MultiplierPercent(RatioCtx, L"EscapeSuccrate", &Pct))
-			SetVolumeItemPercent(GTab0EscapeSuccrateItem, Pct);
-		else
-				SetVolumeItemPercent(GTab0EscapeSuccrateItem, 1.0f);
-		GTab0EscapeSuccrateLastPercent = GetVolumeItemPercent(GTab0EscapeSuccrateItem);
-
-			Pct = 1.0f;
-		if (TryGetTab0MultiplierPercent(RatioCtx, L"WorldMoveSpeed", &Pct))
-			SetVolumeItemPercent(GTab0WorldMoveSpeedItem, Pct);
-		else
-				SetVolumeItemPercent(GTab0WorldMoveSpeedItem, 1.0f);
-		GTab0WorldMoveSpeedLastPercent = GetVolumeItemPercent(GTab0WorldMoveSpeedItem);
-
-			Pct = 1.0f;
-		if (TryGetTab0MultiplierPercent(RatioCtx, L"SceneMoveSpeed", &Pct))
-			SetVolumeItemPercent(GTab0SceneMoveSpeedItem, Pct);
-		else
-				SetVolumeItemPercent(GTab0SceneMoveSpeedItem, 1.0f);
-		GTab0SceneMoveSpeedLastPercent = GetVolumeItemPercent(GTab0SceneMoveSpeedItem);
-	}
+	RefreshTab0RatioSlidersFromLive(PC);
 	AddPanelWithFixedGap(RatioPanel, 0.0f, 10.0f);
 
 	auto* WeaponPanel = CreateCollapsiblePanel(PC, L"武学精通与经验");
@@ -2195,6 +2255,7 @@ void PopulateTab_Character(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 void PollTab0CharacterInput(bool bTab0Active)
 {
+	static bool sWasTab0Active = false;
 
 	const ULONGLONG Now = GetTickCount64();
 	const bool bDoCleanup = !GTab0LastCleanupTick || (Now - GTab0LastCleanupTick) >= kTab0CleanupIntervalMs;
@@ -2234,12 +2295,19 @@ void PollTab0CharacterInput(bool bTab0Active)
 		GTab0FocusCacheTick = 0;
 		GTab0LastRoleDropdownPollTick = 0;
 		GTab0LastGuildRepairPollTick = 0;
+		sWasTab0Active = false;
 		return;
 	}
 
 	APlayerController* PC = nullptr;
 	if (UWorld* World = UWorld::GetWorld())
 		PC = UGameplayStatics::GetPlayerController(World, 0);
+
+	if (!sWasTab0Active)
+	{
+		RefreshTab0StateOnTabShown(PC);
+		sWasTab0Active = true;
+	}
 
 	const bool bDoUiPoll = !GTab0LastUiPollTick || (Now - GTab0LastUiPollTick) >= kTab0UiPollIntervalMs;
 	if (bDoUiPoll)
