@@ -156,7 +156,7 @@ void PopulateTab_Quests(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 
 	// 执行按钮
 	UWidget* BtnLayout = nullptr;
-	GQuest.ExecuteBtn = CreateGameStyleButton(PC, L"立刻执行任务", "QuestExecute",
+	GQuest.ExecuteBtn = CreateGameStyleButton(PC, L"执行", "QuestExecute",
 		0.0f, 0.0f, &BtnLayout);
 	if (BtnLayout)
 	{
@@ -253,17 +253,17 @@ void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	if (AboutBox)
 	{
 		AddAboutText(AboutBox,
-			L"WanderingSword.Cheat 是一个面向《逸剑风云决》的游戏内修改器，目标是把常用能力直接塞进游戏原生 UI 流程里，少折腾、少跳窗、少来回切工具。",
+			L"作者：x1a0reN",
 			12.0f);
 		AddAboutText(AboutBox,
-			L"当前界面主要覆盖角色、物品、队友、任务等常见功能；像 NPC 浏览器这类页面也会记住上次搜索词和页码，避免每次重建后又从第一页重新翻，纯属对重复劳动下死手。",
+			L"交流群：940533953",
 			12.0f);
 		AddAboutText(AboutBox,
-			L"面板通过 HOME 呼出或隐藏。隐藏后如果某个功能没有立刻响应，优先重新呼出面板确认当前页状态，再看是不是游戏版本更新把偏移、蓝图结构或者事件链偷偷改了。",
+			L"接一切定制哦",
 			12.0f);
-		AddAboutText(AboutBox,
-			L"这一页只负责说明，不执行任何游戏逻辑；真正的功能入口请切到对应页签使用。遇到异常时，优先看日志，比盲猜靠谱得多。",
-			0.0f);
+		// AddAboutText(AboutBox,
+		// 	L"这一页只负责说明，不执行任何游戏逻辑；真正的功能入口请切到对应页签使用。遇到异常时，优先看日志，比盲猜靠谱得多。",
+		// 	0.0f);
 	}
 
 	AddPanelWithFixedGap(AboutPanel, 0.0f, 10.0f);

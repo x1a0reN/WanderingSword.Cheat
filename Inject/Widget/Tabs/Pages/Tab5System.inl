@@ -242,9 +242,9 @@ void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	auto* StoryPanel = CreateCollapsiblePanel(PC, L"开档与解锁");
 	auto* StoryBox = StoryPanel ? StoryPanel->CT_Contents : nullptr;
 	AddToggleStored(StoryBox, L"一周目可选极难", GTab5.FirstPlayHardToggle);
-	AddToggleStored(StoryBox, L"一周目可选传承", GTab5.FirstPlayInheritToggle);
+	// AddToggleStored(StoryBox, L"一周目可选传承", GTab5.FirstPlayInheritToggle);
 	AddToggleStored(StoryBox, L"未交互驿站可用", GTab5.PostStationToggle);
-	AddToggle(StoryBox, L"激活GM命令行");
+	// AddToggle(StoryBox, L"激活GM命令行");
 	AddToggleStored(StoryBox, L"解锁全图鉴", GTab5.UnlockCodexToggle);
 	AddToggleStored(StoryBox, L"解锁全成就", GTab5.UnlockAchievementToggle);
 	AddPanelWithFixedGap(StoryPanel, 0.0f, 10.0f);
