@@ -90,6 +90,8 @@ constexpr ULONGLONG kTeammateNpcPagerPollIntervalMs = 33ULL;
 constexpr bool kTab6NpcPrototypeVerboseLog = true;
 constexpr bool kTeammateNpcDumpAlertFunctions = false;
 constexpr const wchar_t* kTab6NpcPrototypeBuildTag = L"tab6-npc-page-search-20260309-2012-confirm-show2-priority-2";
+constexpr const wchar_t* kTab6NpcPrototypeRememberSearchKey = L"Tab6.NpcBrowser.SearchText";
+constexpr const wchar_t* kTab6NpcPrototypeRememberPageKey = L"Tab6.NpcBrowser.Page";
 constexpr int32 kTeammateNpcNeoUISubsystemHintIdx = 45025;
 constexpr int32 kTeammateNpcNeoUISubsystemHintRadius = 10;
 constexpr int32 kTeammateNpcConfirmDialogZOrder = 20000;
@@ -122,6 +124,32 @@ void EnsureTeammateNpcAddConfirmDialogPriority(UJHNeoUIAlertContentSimple* Alert
 void ResetTeammateNpcAddConfirmState();
 bool ShowTeammateNpcAddConfirmDialog(int32 NpcId);
 void PollTeammateNpcAddConfirmDialog();
+
+std::wstring GetRememberedTeammateNpcPrototypeSearchText()
+{
+	const auto It = GUIRememberState.EditTextByTitle.find(kTab6NpcPrototypeRememberSearchKey);
+	if (It == GUIRememberState.EditTextByTitle.end())
+		return {};
+	return It->second;
+}
+
+int32 GetRememberedTeammateNpcPrototypeCurrentPage()
+{
+	const auto It = GUIRememberState.ComboIndexByTitle.find(kTab6NpcPrototypeRememberPageKey);
+	if (It == GUIRememberState.ComboIndexByTitle.end())
+		return 0;
+	return It->second;
+}
+
+void RememberTeammateNpcPrototypeSearchText(const std::wstring& Text)
+{
+	GUIRememberState.EditTextByTitle[kTab6NpcPrototypeRememberSearchKey] = Text;
+}
+
+void RememberTeammateNpcPrototypeCurrentPage(int32 Page)
+{
+	GUIRememberState.ComboIndexByTitle[kTab6NpcPrototypeRememberPageKey] = (Page >= 0) ? Page : 0;
+}
 
 std::wstring GetTeammateNpcPrototypeText(const FText& Text)
 {
@@ -181,6 +209,8 @@ void ReleaseTeammateNpcPrototypeWidgets()
 	GTeammateNpcPrototypeOwnerOuter = nullptr;
 	GTeammateNpcPrototypePrevPageBtn = nullptr;
 	GTeammateNpcPrototypeNextPageBtn = nullptr;
+	RememberTeammateNpcPrototypeSearchText(GTeammateNpcPrototypeSearchKeyword);
+	RememberTeammateNpcPrototypeCurrentPage(GTeammateNpcPrototypeCurrentPage);
 	GTeammateNpcPrototypeSearchKeyword.clear();
 	GTeammateNpcPrototypeSelectedNpcId = 0;
 	GTeammateNpcPrototypeCurrentPage = 0;
@@ -2167,6 +2197,7 @@ bool UpdateTeammateNpcSearchKeywordFromEdit()
 		return false;
 
 	GTeammateNpcPrototypeSearchKeyword = std::move(NewKeyword);
+	RememberTeammateNpcPrototypeSearchText(GTeammateNpcPrototypeSearchKeyword);
 	return true;
 }
 
@@ -2281,6 +2312,7 @@ void RefreshTeammateNpcPrototypePage_Impl()
 		if (GTeammateNpcPrototypeCurrentPage >= GTeammateNpcPrototypeTotalPages)
 			GTeammateNpcPrototypeCurrentPage = GTeammateNpcPrototypeTotalPages - 1;
 	}
+	RememberTeammateNpcPrototypeCurrentPage(GTeammateNpcPrototypeCurrentPage);
 
 	ClearTeammateNpcPrototypeCards();
 	while (GTeammateNpcPrototypeCardWrap->GetChildrenCount() > 0)
@@ -3037,6 +3069,9 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	};
 
+	const std::wstring RememberedSearchText = GetRememberedTeammateNpcPrototypeSearchText();
+	const int32 RememberedPage = GetRememberedTeammateNpcPrototypeCurrentPage();
+
 	auto* PrototypePanel = CreateCollapsiblePanel(PC, L"NPC浏览器");
 	auto* PrototypeBox = PrototypePanel ? PrototypePanel->CT_Contents : nullptr;
 	if (PrototypeBox)
@@ -3047,7 +3082,7 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		{
 			RememberTeammateNpcPrototypeWidget(static_cast<UObject*>(SearchEdit));
 			SearchEdit->SetHintText(MakeText(L"输入以搜索..."));
-			SearchEdit->SetText(MakeText(L""));
+			SearchEdit->SetText(MakeText(RememberedSearchText.c_str()));
 			SearchEdit->SetJustification(ETextJustify::Left);
 			SearchEdit->MinimumDesiredWidth = 500.0f;
 			SearchEdit->SelectAllTextWhenFocused = true;
@@ -3242,8 +3277,10 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 				GTeammateNpcPrototypeCardWrap = CardWrap;
 				GTeammateNpcPrototypeOwnerPC = PC;
 				GTeammateNpcPrototypeOwnerOuter = Outer;
-				GTeammateNpcPrototypeCurrentPage = 0;
+				GTeammateNpcPrototypeSearchKeyword = RememberedSearchText;
+				GTeammateNpcPrototypeCurrentPage = (RememberedPage >= 0) ? RememberedPage : 0;
 				GTeammateNpcPrototypeTotalPages = 0;
+				UpdateTeammateNpcSearchKeywordFromEdit();
 
 				if (kTab6NpcPrototypeVerboseLog)
 				{
