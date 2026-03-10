@@ -863,6 +863,20 @@ struct PostRenderInFlightScope final
 		return Idx > 0;
 	}
 
+	int32 ReadDropdownIndexValue(UBPVE_JHConfigVideoItem2_C* Dropdown, int32 DefaultValue, int32 MinValue, int32 MaxValue)
+	{
+		if (!Dropdown || !IsSafeLiveObject(static_cast<UObject*>(Dropdown)))
+			return DefaultValue;
+		if (!Dropdown->CB_Main || !IsLiveComboBox(Dropdown->CB_Main))
+			return DefaultValue;
+
+		const int32 Idx = GetComboSelectedIndexSafe(Dropdown->CB_Main);
+		if (Idx < 0)
+			return DefaultValue;
+
+		return std::clamp(Idx, MinValue, MaxValue);
+	}
+
 	int32 ReadIntegerEditValue(UEditableTextBox* Edit, int32 DefaultValue, int32 MinValue, int32 MaxValue)
 	{
 		if (!Edit || !IsSafeLiveObject(static_cast<UObject*>(Edit)))
@@ -1815,6 +1829,7 @@ struct PostRenderInFlightScope final
 	struct FTab4RuntimeConfig
 	{
 		bool GiftAlwaysLiked = false;
+		int32 GiftQualityIdx = 5;
 		bool InviteIgnore = false;
 		bool SparIgnoreFavor = false;
 		bool ConsultIgnore = false;
@@ -1827,6 +1842,7 @@ struct PostRenderInFlightScope final
 	void ReadTab4ConfigFromUI(FTab4RuntimeConfig& Cfg)
 	{
 		Cfg.GiftAlwaysLiked = ReadToggleValue(GTab4.GiftAlwaysLikedToggle, false);
+		Cfg.GiftQualityIdx = ReadDropdownIndexValue(GTab4.GiftQualityDD, Cfg.GiftQualityIdx, 0, 6);
 		Cfg.InviteIgnore = ReadToggleValue(GTab4.InviteIgnoreToggle, Cfg.InviteIgnore);
 		Cfg.SparIgnoreFavor = ReadToggleValue(GTab4.SparIgnoreFavorToggle, Cfg.SparIgnoreFavor);
 		Cfg.ConsultIgnore = ReadToggleValue(GTab4.ConsultIgnoreToggle, Cfg.ConsultIgnore);
@@ -1841,6 +1857,8 @@ struct PostRenderInFlightScope final
 		static FTab4RuntimeConfig Config{};
 		if (CanReadFromUI)
 			ReadTab4ConfigFromUI(Config);
+
+		SetGiftQualityMinIndex(Config.GiftQualityIdx);
 
 		#define TAB4_TOGGLE(field, enableFn, disableFn) \
 			{ static bool Last_##field = false; \

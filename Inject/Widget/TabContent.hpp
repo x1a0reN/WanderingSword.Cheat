@@ -13,6 +13,8 @@ void PopulateTab_Battle(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 void PopulateTab_Life(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 
 void PopulateTab_Social(UBPMV_ConfigView2_C* CV, APlayerController* PC);
+int32 GetGiftQualityMinIndex();
+void SetGiftQualityMinIndex(int32 QualityIndex);
 
 void PopulateTab_System(UBPMV_ConfigView2_C* CV, APlayerController* PC);
 
