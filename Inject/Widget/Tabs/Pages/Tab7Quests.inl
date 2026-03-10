@@ -204,11 +204,67 @@ void PopulateTab_Controls(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		reinterpret_cast<uintptr_t>(CV) + 0x01D8);
 	UObject* Outer = WidgetTree ? static_cast<UObject*>(WidgetTree)
 		: static_cast<UObject*>(CV);
-	UWidget* BtnLayout = nullptr;
-	auto* ResetBtn = CreateGameStyleButton(PC, L"下一页", "Tab8Showcase",
-		0.0f, 0.0f, &BtnLayout);
-	if (BtnLayout)
+
+	auto AddAboutText = [&](UVerticalBox* Box, const wchar_t* Text, float BottomPadding)
 	{
-		GDynTab.Content8->AddChild(BtnLayout);
+		if (!Box || !Text || !*Text)
+			return;
+		auto* Label = CreateRawTextLabel(Outer, Text);
+		if (!Label)
+			return;
+		Label->Font.Size = 18;
+		Label->SetJustification(ETextJustify::Left);
+		Label->SetAutoWrapText(true);
+		Label->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 1.0f, 1.0f, 1.0f)));
+
+		if (UPanelSlot* Slot = Box->AddChild(Label))
+		{
+			if (Slot->IsA(UVerticalBoxSlot::StaticClass()))
+			{
+				auto* VBoxSlot = static_cast<UVerticalBoxSlot*>(Slot);
+				VBoxSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Left);
+				VBoxSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+				FMargin Pad{};
+				Pad.Bottom = BottomPadding;
+				VBoxSlot->SetPadding(Pad);
+			}
+		}
+	};
+
+	auto AddPanelWithFixedGap = [&](UVE_JHVideoPanel2_C* Panel, float TopGap, float BottomGap)
+	{
+		if (!Panel)
+			return;
+		if (UPanelSlot* Slot = GDynTab.Content8->AddChild(Panel))
+		{
+			if (Slot->IsA(UVerticalBoxSlot::StaticClass()))
+			{
+				auto* VSlot = static_cast<UVerticalBoxSlot*>(Slot);
+				FMargin Pad{};
+				Pad.Top = TopGap;
+				Pad.Bottom = BottomGap;
+				VSlot->SetPadding(Pad);
+			}
+		}
+	};
+
+	auto* AboutPanel = CreateCollapsiblePanel(PC, L"关于本修改器");
+	auto* AboutBox = AboutPanel ? AboutPanel->CT_Contents : nullptr;
+	if (AboutBox)
+	{
+		AddAboutText(AboutBox,
+			L"WanderingSword.Cheat 是一个面向《逸剑风云决》的游戏内修改器，目标是把常用能力直接塞进游戏原生 UI 流程里，少折腾、少跳窗、少来回切工具。",
+			12.0f);
+		AddAboutText(AboutBox,
+			L"当前界面主要覆盖角色、物品、队友、任务等常见功能；像 NPC 浏览器这类页面也会记住上次搜索词和页码，避免每次重建后又从第一页重新翻，纯属对重复劳动下死手。",
+			12.0f);
+		AddAboutText(AboutBox,
+			L"面板通过 HOME 呼出或隐藏。隐藏后如果某个功能没有立刻响应，优先重新呼出面板确认当前页状态，再看是不是游戏版本更新把偏移、蓝图结构或者事件链偷偷改了。",
+			12.0f);
+		AddAboutText(AboutBox,
+			L"这一页只负责说明，不执行任何游戏逻辑；真正的功能入口请切到对应页签使用。遇到异常时，优先看日志，比盲猜靠谱得多。",
+			0.0f);
 	}
+
+	AddPanelWithFixedGap(AboutPanel, 0.0f, 10.0f);
 }

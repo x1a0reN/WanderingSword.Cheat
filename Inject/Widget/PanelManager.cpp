@@ -304,7 +304,7 @@ void CreateDynamicTabs(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 	GDynTab.Btn8 = CreateTabButton(PC);
 	if (GDynTab.Btn8)
 	{
-		SetupTab(GDynTab.Btn8, 8, L"\u63A7\u4EF6");
+		SetupTab(GDynTab.Btn8, 8, L"\u5173\u4E8E");
 		PatchTabBtnRuntimeContext(GDynTab.Btn8, CV, "DynTab8");
 		if (CV->CT_TabBtns)
 			CV->CT_TabBtns->AddChild(GDynTab.Btn8);
