@@ -3037,33 +3037,6 @@ void PopulateTab_Teammates(UBPMV_ConfigView2_C* CV, APlayerController* PC)
 		Count++;
 	};
 
-	auto* OperatePanel = CreateCollapsiblePanel(PC, L"队友操作");
-	auto* OperateBox = OperatePanel ? OperatePanel->CT_Contents : nullptr;
-	GTeammate.AddDD = CreateVideoItemWithOptions(PC, L"添加队友",
-		{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
-	if (GTeammate.AddDD)
-	{
-		if (OperateBox) OperateBox->AddChild(GTeammate.AddDD);
-		else GDynTab.Content6->AddChild(GTeammate.AddDD);
-		Count++;
-	}
-	GTeammate.ReplaceToggle = CreateToggleItem(PC, L"替换指定队友");
-	if (GTeammate.ReplaceToggle)
-	{
-		if (OperateBox) OperateBox->AddChild(GTeammate.ReplaceToggle);
-		else GDynTab.Content6->AddChild(GTeammate.ReplaceToggle);
-		Count++;
-	}
-	GTeammate.ReplaceDD = CreateVideoItemWithOptions(PC, L"指定队友",
-		{ L"请选择", L"百里东风", L"尚云溪", L"叶千秋", L"谢渊", L"唐婉莹", L"徐小七", L"向天歌" });
-	if (GTeammate.ReplaceDD)
-	{
-		if (OperateBox) OperateBox->AddChild(GTeammate.ReplaceDD);
-		else GDynTab.Content6->AddChild(GTeammate.ReplaceDD);
-		Count++;
-	}
-	AddPanelWithFixedGap(OperatePanel, 0.0f, 8.0f);
-
 	auto* PrototypePanel = CreateCollapsiblePanel(PC, L"NPC浏览器");
 	auto* PrototypeBox = PrototypePanel ? PrototypePanel->CT_Contents : nullptr;
 	if (PrototypeBox)
