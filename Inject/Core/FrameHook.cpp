@@ -2766,6 +2766,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		static int32 sPendingNativeRestoreIdx = -1;
 		static int32 sPendingNativeHighlightSettleFrames = 0;
 		static int32 sPendingNativeInactiveSettleFrames = 0;
+		static int32 sLastAppliedNativeHighlightIdx = -999;
 		auto ApplyNativeTabHighlight = [&](int32 ActiveIdx)
 		{
 			if (IsLiveTabBtn(CV->BTN_Sound))   CV->BTN_Sound->EVT_UpdateActiveStatus(ActiveIdx == 0);
@@ -2774,6 +2775,17 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			if (IsLiveTabBtn(CV->BTN_Lan))     CV->BTN_Lan->EVT_UpdateActiveStatus(ActiveIdx == 3);
 			if (IsLiveTabBtn(CV->BTN_Others))  CV->BTN_Others->EVT_UpdateActiveStatus(ActiveIdx == 4);
 			if (IsLiveTabBtn(CV->BTN_Gamepad)) CV->BTN_Gamepad->EVT_UpdateActiveStatus(ActiveIdx == 5);
+			sLastAppliedNativeHighlightIdx = ActiveIdx;
+		};
+		auto GetCurrentNativeTabIndex = [&]() -> int32
+		{
+			if (!CV->CT_Contents ||
+				!IsSafeLiveObject(static_cast<UObject*>(CV->CT_Contents)))
+			{
+				return -1;
+			}
+			const int32 ActiveIdx = CV->CT_Contents->GetActiveWidgetIndex();
+			return (ActiveIdx >= 0 && ActiveIdx <= 5) ? ActiveIdx : -1;
 		};
 		if (HomeNeedDynTabRestore)
 		{
@@ -2890,6 +2902,16 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(false);
 				sActiveDynTab = -1;
 			}
+		}
+
+		if (sActiveDynTab < 6 &&
+			sPendingNativeRestoreIdx < 0 &&
+			sPendingNativeHighlightSettleFrames <= 0 &&
+			sPendingNativeInactiveSettleFrames <= 0)
+		{
+			const int32 CurrentNativeIdx = GetCurrentNativeTabIndex();
+			if (CurrentNativeIdx != sLastAppliedNativeHighlightIdx)
+				ApplyNativeTabHighlight(CurrentNativeIdx);
 		}
 
 		GActiveDynTabForPoll = sActiveDynTab;
