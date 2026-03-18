@@ -186,7 +186,18 @@ void RememberTeammateNpcPrototypeWidget(UObject* Obj)
 {
 	if (!Obj)
 		return;
+	if (std::find(GTeammateNpcPrototypeWidgets.begin(), GTeammateNpcPrototypeWidgets.end(), Obj) != GTeammateNpcPrototypeWidgets.end())
+		return;
 	GTeammateNpcPrototypeWidgets.push_back(Obj);
+}
+
+void ForgetTeammateNpcPrototypeWidget(UObject* Obj)
+{
+	if (!Obj)
+		return;
+	auto It = std::remove(GTeammateNpcPrototypeWidgets.begin(), GTeammateNpcPrototypeWidgets.end(), Obj);
+	if (It != GTeammateNpcPrototypeWidgets.end())
+		GTeammateNpcPrototypeWidgets.erase(It, GTeammateNpcPrototypeWidgets.end());
 }
 
 void ReleaseTeammateNpcPrototypeWidgets()
@@ -2203,17 +2214,23 @@ bool UpdateTeammateNpcSearchKeywordFromEdit()
 
 void ClearTeammateNpcPrototypeCards()
 {
+	auto ReleaseWidget = [](UWidget* Widget)
+	{
+		if (!Widget)
+			return;
+		auto* Obj = static_cast<UObject*>(Widget);
+		if (IsSafeLiveObject(Obj))
+			Widget->RemoveFromParent();
+		ClearGCRoot(Obj);
+		ForgetTeammateNpcPrototypeWidget(Obj);
+	};
+
 	for (auto& Binding : GTeammateNpcPrototypeCards)
 	{
-		if (Binding.FrameBorder && IsSafeLiveObject(static_cast<UObject*>(Binding.FrameBorder)))
-			Binding.FrameBorder->RemoveFromParent();
-		if (Binding.ClickButton && IsSafeLiveObject(static_cast<UObject*>(Binding.ClickButton)))
-			Binding.ClickButton->RemoveFromParent();
-		if (Binding.CardWidget && IsSafeLiveObject(static_cast<UObject*>(Binding.CardWidget)))
-		{
-			Binding.CardWidget->RemoveFromParent();
-			ClearGCRoot(static_cast<UObject*>(Binding.CardWidget));
-		}
+		ReleaseWidget(static_cast<UWidget*>(Binding.FrameBorder));
+		ReleaseWidget(static_cast<UWidget*>(Binding.ClickButton));
+		ReleaseWidget(static_cast<UWidget*>(Binding.CardHost));
+		ReleaseWidget(static_cast<UWidget*>(Binding.CardWidget));
 	}
 	GTeammateNpcPrototypeCards.clear();
 }
@@ -2951,9 +2968,6 @@ void PollTab6NpcPrototypeSelection_Impl(bool bTab6Active)
 	}
 
 	PollTeammateNpcAddConfirmDialog();
-
-	for (auto& Binding : GTeammateNpcPrototypeCards)
-		EnsureTeammateNpcPrototypeCardTitleStyle(Binding);
 
 	const bool bDoSelectionPoll =
 		!GTeammateNpcPrototypeLastSelectionPollTick ||

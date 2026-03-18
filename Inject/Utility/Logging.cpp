@@ -125,12 +125,18 @@ namespace Logging
 {
 void SetMinLevel(LogLevel Level)
 {
+	if constexpr (!Logging::kLoggingEnabled)
+		return;
+
 	std::lock_guard<std::mutex> Lock(GLogMutex);
 	GMinLevel = Level;
 }
 
 void Write(LogLevel Level, const char* Tag, const std::string& Message)
 {
+	if constexpr (!Logging::kLoggingEnabled)
+		return;
+
 	std::lock_guard<std::mutex> Lock(GLogMutex);
 	if (static_cast<int>(Level) < static_cast<int>(GMinLevel))
 		return;
@@ -156,7 +162,7 @@ void Write(LogLevel Level, const char* Tag, const std::string& Message)
 }
 
 LogLine::LogLine(LogLevel Level, const char* Tag)
-	: Level_(Level), Tag_(Tag), Active_(true), Buffer_()
+	: Level_(Level), Tag_(Tag), Active_(Logging::kLoggingEnabled), Buffer_()
 {
 }
 
@@ -188,62 +194,73 @@ LogLine::~LogLine()
 
 LogLine& LogLine::operator<<(const char* Value)
 {
-	if (Value)
+	if (Active_ && Value)
 		Buffer_ << Value;
 	return *this;
 }
 
 LogLine& LogLine::operator<<(const std::string& Value)
 {
-	Buffer_ << Value;
+	if (Active_)
+		Buffer_ << Value;
 	return *this;
 }
 
 LogLine& LogLine::operator<<(const wchar_t* Value)
 {
-	Buffer_ << WideToUtf8(Value);
+	if (Active_)
+		Buffer_ << WideToUtf8(Value);
 	return *this;
 }
 
 LogLine& LogLine::operator<<(const std::wstring& Value)
 {
-	Buffer_ << WideToUtf8(Value.c_str());
+	if (Active_)
+		Buffer_ << WideToUtf8(Value.c_str());
 	return *this;
 }
 
 LogLine& LogLine::operator<<(char Value)
 {
-	Buffer_ << Value;
+	if (Active_)
+		Buffer_ << Value;
 	return *this;
 }
 
 LogLine& LogLine::operator<<(signed char Value)
 {
-	Buffer_ << static_cast<int>(Value);
+	if (Active_)
+		Buffer_ << static_cast<int>(Value);
 	return *this;
 }
 
 LogLine& LogLine::operator<<(unsigned char Value)
 {
-	Buffer_ << static_cast<unsigned int>(Value);
+	if (Active_)
+		Buffer_ << static_cast<unsigned int>(Value);
 	return *this;
 }
 
 LogLine& LogLine::operator<<(std::ostream& (*Manip)(std::ostream&))
 {
-	Manip(Buffer_);
+	if (Active_)
+		Manip(Buffer_);
 	return *this;
 }
 
 LogLine& LogLine::operator<<(std::ios_base& (*Manip)(std::ios_base&))
 {
-	Manip(Buffer_);
+	if (Active_)
+		Manip(Buffer_);
 	return *this;
 }
 }
 
 void SetupLocalLogging(HMODULE Module)
 {
+	if constexpr (!Logging::kLoggingEnabled)
+		return;
+
 	std::lock_guard<std::mutex> Lock(GLogMutex);
 	if (GLocalLogFile.is_open())
 		return;
@@ -272,6 +289,9 @@ void SetupLocalLogging(HMODULE Module)
 
 void ShutdownLocalLogging()
 {
+	if constexpr (!Logging::kLoggingEnabled)
+		return;
+
 	std::lock_guard<std::mutex> Lock(GLogMutex);
 	if (GLocalLogFile.is_open())
 	{

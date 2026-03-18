@@ -35,7 +35,13 @@ bool IsPointerInLiveObjectArray(UObject* Obj)
 
 bool IsSafeLiveObject(UObject* Obj)
 {
+	if (!Obj)
+		return false;
 	if (!IsPointerInLiveObjectArray(Obj))
+		return false;
+	if (Obj->Flags & EObjectFlags::BeginDestroyed)
+		return false;
+	if (Obj->Flags & EObjectFlags::FinishDestroyed)
 		return false;
 	return UKismetSystemLibrary::IsValid(Obj);
 }

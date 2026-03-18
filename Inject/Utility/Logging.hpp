@@ -6,6 +6,8 @@
 
 namespace Logging
 {
+inline constexpr bool kLoggingEnabled = false;
+
 enum class LogLevel : unsigned char
 {
 	Trace = 0,
@@ -43,7 +45,8 @@ public:
 	template <typename TValue>
 	LogLine& operator<<(const TValue& Value)
 	{
-		Buffer_ << Value;
+		if (Active_)
+			Buffer_ << Value;
 		return *this;
 	}
 

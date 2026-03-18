@@ -254,9 +254,26 @@ void ApplyConfigView2TextPatch(UUserWidget* Widget, APlayerController* PC)
 	if (CV->BTN_Lan)     CV->BTN_Lan->EVT_UpdateActiveStatus(false);
 	if (CV->BTN_Others)  CV->BTN_Others->EVT_UpdateActiveStatus(false);
 	if (CV->BTN_Gamepad) CV->BTN_Gamepad->EVT_UpdateActiveStatus(false);
-	if (GDynTab.Btn6)     GDynTab.Btn6->EVT_UpdateActiveStatus(false);
-	if (GDynTab.Btn7)     GDynTab.Btn7->EVT_UpdateActiveStatus(false);
-	if (GDynTab.Btn8)     GDynTab.Btn8->EVT_UpdateActiveStatus(false);
+	auto ResetDynamicTabButtonVisual = [](UBP_JHConfigTabBtn_C* Btn)
+	{
+		if (!Btn || !IsSafeLiveObject(static_cast<UObject*>(Btn)))
+			return;
+		if (Btn->IMG_Active &&
+			IsSafeLiveObject(static_cast<UObject*>(Btn->IMG_Active)))
+		{
+			Btn->IMG_Active->SetRenderOpacity(0.0f);
+			Btn->IMG_Active->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (Btn->JHGPCBtn_ActiveBG &&
+			IsSafeLiveObject(static_cast<UObject*>(Btn->JHGPCBtn_ActiveBG)))
+		{
+			Btn->JHGPCBtn_ActiveBG->SetRenderOpacity(0.0f);
+			Btn->JHGPCBtn_ActiveBG->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	};
+	ResetDynamicTabButtonVisual(GDynTab.Btn6);
+	ResetDynamicTabButtonVisual(GDynTab.Btn7);
+	ResetDynamicTabButtonVisual(GDynTab.Btn8);
 
 	if (kEnableUIInitLog)
 		LOGI_STREAM("PanelManager") << "[SDK] ConfigView2 patched: 9 tabs populated\n";
@@ -606,16 +623,22 @@ void ToggleInternalWidget()
 
 void ShowDynamicTab(UBPMV_ConfigView2_C* CV, int32 DynIdx)
 {
-	if (CV->CT_Contents)
+	if (CV->CT_Contents &&
+		IsSafeLiveObject(static_cast<UObject*>(CV->CT_Contents)))
 		CV->CT_Contents->SetVisibility(ESlateVisibility::Collapsed);
-	if (GDynTab.Content6) GDynTab.Content6->SetVisibility(
+	if (GDynTab.Content6 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content6))) GDynTab.Content6->SetVisibility(
 		DynIdx == 6 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-	if (GDynTab.Content7) GDynTab.Content7->SetVisibility(
+	if (GDynTab.Content7 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content7))) GDynTab.Content7->SetVisibility(
 		DynIdx == 7 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-	if (GDynTab.Content8) GDynTab.Content8->SetVisibility(
+	if (GDynTab.Content8 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content8))) GDynTab.Content8->SetVisibility(
 		DynIdx == 8 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 
-	if (DynIdx == 8 && GDynTab.Content8)
+	if (DynIdx == 8 &&
+		GDynTab.Content8 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content8)))
 	{
 		int32 Cnt = GDynTab.Content8->GetChildrenCount();
 		UWidget* Child0 = (Cnt > 0) ? GDynTab.Content8->GetChildAt(0) : nullptr;
@@ -629,9 +652,13 @@ void ShowDynamicTab(UBPMV_ConfigView2_C* CV, int32 DynIdx)
 }
 void ShowOriginalTab(UBPMV_ConfigView2_C* CV)
 {
-	if (CV->CT_Contents)
+	if (CV->CT_Contents &&
+		IsSafeLiveObject(static_cast<UObject*>(CV->CT_Contents)))
 		CV->CT_Contents->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-	if (GDynTab.Content6) GDynTab.Content6->SetVisibility(ESlateVisibility::Collapsed);
-	if (GDynTab.Content7) GDynTab.Content7->SetVisibility(ESlateVisibility::Collapsed);
-	if (GDynTab.Content8) GDynTab.Content8->SetVisibility(ESlateVisibility::Collapsed);
+	if (GDynTab.Content6 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content6))) GDynTab.Content6->SetVisibility(ESlateVisibility::Collapsed);
+	if (GDynTab.Content7 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content7))) GDynTab.Content7->SetVisibility(ESlateVisibility::Collapsed);
+	if (GDynTab.Content8 &&
+		IsSafeLiveObject(static_cast<UObject*>(GDynTab.Content8))) GDynTab.Content8->SetVisibility(ESlateVisibility::Collapsed);
 }

@@ -2264,15 +2264,13 @@ struct PostRenderInFlightScope final
 // └─────────────────────────────────────────────────────────────┘
 
 /// 每帧由引擎渲染线程调用的顶层分发函数。
-/// 按序执行：快捷键 → 面板生命周期 → Tab1 → Tab2 → 动态Tab → 滑块 → FPS
+/// 按序执行：快捷键 → 面板生命周期 → Tab1 → Tab2 → 动态Tab → 滑块
 void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 {
 	PostRenderInFlightScope InFlightScope;
 
 	if (GOriginalPostRender)
 		GOriginalPostRender(This, Canvas);
-
-	DrawFpsOverlay(static_cast<UCanvas*>(Canvas));
 
 	if (GIsUnloading.load(std::memory_order_relaxed))
 	{
@@ -2713,11 +2711,39 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		sLastSystemSliderPollTick = 0;
 	}
 
+	auto IsLiveConfigTabBtn = [](UJHNeoUIConfigV2TabBtn* Btn) -> bool
+	{
+		return Btn && IsSafeLiveObject(static_cast<UObject*>(Btn));
+	};
+	auto IsAnyNativeConfigTabHovered = [&](UBPMV_ConfigView2_C* CV) -> bool
+	{
+		if (!CV)
+			return false;
+		return
+			(IsLiveConfigTabBtn(CV->BTN_Sound) && CV->BTN_Sound->IsHovered()) ||
+			(IsLiveConfigTabBtn(CV->BTN_Video) && CV->BTN_Video->IsHovered()) ||
+			(IsLiveConfigTabBtn(CV->BTN_Keys) && CV->BTN_Keys->IsHovered()) ||
+			(IsLiveConfigTabBtn(CV->BTN_Lan) && CV->BTN_Lan->IsHovered()) ||
+			(IsLiveConfigTabBtn(CV->BTN_Others) && CV->BTN_Others->IsHovered()) ||
+			(IsLiveConfigTabBtn(CV->BTN_Gamepad) && CV->BTN_Gamepad->IsHovered());
+	};
+
 	const bool IsTeammateTabActive = (GActiveDynTabForPoll == 6);
+	const bool IsLeavingTeammateTabByHover =
+		IsTeammateTabActive &&
+		GInternalWidgetVisible &&
+		LiveInternalWidget &&
+		LiveConfigView &&
+		(
+			(IsLiveConfigTabBtn(GDynTab.Btn7) && GDynTab.Btn7->IsHovered()) ||
+			(IsLiveConfigTabBtn(GDynTab.Btn8) && GDynTab.Btn8->IsHovered()) ||
+			IsAnyNativeConfigTabHovered(LiveConfigView)
+		);
 	const bool CanReadTab6FromUI =
 		GInternalWidgetVisible &&
 		LiveInternalWidget &&
-		IsTeammateTabActive;
+		IsTeammateTabActive &&
+		!IsLeavingTeammateTabByHover;
 	if (kEnableTab6ConfirmInlineHook)
 	{
 		if (IsTeammateTabActive && GInternalWidgetVisible && LiveInternalWidget)
@@ -2729,7 +2755,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		}
 	}
 	PollAndApplyTab6Features(CanReadTab6FromUI);
-	PollTab6NpcPrototypeSelection(IsTeammateTabActive && GInternalWidgetVisible && LiveInternalWidget);
+	PollTab6NpcPrototypeSelection(CanReadTab6FromUI);
 	if (kEnableTab6ConfirmInlineHook)
 	{
 		int32 ConfirmAction = 0;
@@ -2785,8 +2811,11 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		static int32 sPendingNativeHighlightSettleFrames = 0;
 		static int32 sPendingNativeInactiveSettleFrames = 0;
 		static int32 sLastAppliedNativeHighlightIdx = -999;
+		static int32 sLastAppliedDynHighlightIdx = -999;
 		auto ApplyNativeTabHighlight = [&](int32 ActiveIdx)
 		{
+			if (sLastAppliedNativeHighlightIdx == ActiveIdx)
+				return;
 			if (IsLiveTabBtn(CV->BTN_Sound))   CV->BTN_Sound->EVT_UpdateActiveStatus(ActiveIdx == 0);
 			if (IsLiveTabBtn(CV->BTN_Video))   CV->BTN_Video->EVT_UpdateActiveStatus(ActiveIdx == 1);
 			if (IsLiveTabBtn(CV->BTN_Keys))    CV->BTN_Keys->EVT_UpdateActiveStatus(ActiveIdx == 2);
@@ -2794,6 +2823,38 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 			if (IsLiveTabBtn(CV->BTN_Others))  CV->BTN_Others->EVT_UpdateActiveStatus(ActiveIdx == 4);
 			if (IsLiveTabBtn(CV->BTN_Gamepad)) CV->BTN_Gamepad->EVT_UpdateActiveStatus(ActiveIdx == 5);
 			sLastAppliedNativeHighlightIdx = ActiveIdx;
+		};
+		auto ApplyDynamicTabHighlight = [&](int32 ActiveIdx)
+		{
+			if (sLastAppliedDynHighlightIdx == ActiveIdx)
+				return;
+
+			auto SetDynButtonActive = [&](UBP_JHConfigTabBtn_C* Btn, int32 TabIdx)
+			{
+				if (!IsLiveTabBtn(Btn))
+					return;
+
+				const bool bActive = (ActiveIdx == TabIdx);
+				if (Btn->IMG_Active &&
+					IsSafeLiveObject(static_cast<UObject*>(Btn->IMG_Active)))
+				{
+					Btn->IMG_Active->SetRenderOpacity(bActive ? 1.0f : 0.0f);
+					Btn->IMG_Active->SetVisibility(
+						bActive ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+				}
+				if (Btn->JHGPCBtn_ActiveBG &&
+					IsSafeLiveObject(static_cast<UObject*>(Btn->JHGPCBtn_ActiveBG)))
+				{
+					Btn->JHGPCBtn_ActiveBG->SetRenderOpacity(bActive ? 1.0f : 0.0f);
+					Btn->JHGPCBtn_ActiveBG->SetVisibility(
+						bActive ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+				}
+			};
+
+			SetDynButtonActive(GDynTab.Btn6, 6);
+			SetDynButtonActive(GDynTab.Btn7, 7);
+			SetDynButtonActive(GDynTab.Btn8, 8);
+			sLastAppliedDynHighlightIdx = ActiveIdx;
 		};
 		auto GetCurrentNativeTabIndex = [&]() -> int32
 		{
@@ -2815,9 +2876,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 				sPendingNativeHighlightSettleFrames = 0;
 				sPendingNativeInactiveSettleFrames = 30;
 				ShowDynamicTab(CV, LastClosedTab);
-				if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(LastClosedTab == 6);
-				if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(LastClosedTab == 7);
-				if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(LastClosedTab == 8);
+				ApplyDynamicTabHighlight(LastClosedTab);
 				sActiveDynTab = LastClosedTab;
 				LOGI_STREAM("FrameHook") << "[SDK] Restore dynamic tab on HOME-show: idx=" << LastClosedTab << "\n";
 			}
@@ -2862,9 +2921,7 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 					<< "\n";
 				CV->EVT_SyncTabIndex(sPendingNativeRestoreIdx);
 				ShowOriginalTab(CV);
-				if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(false);
+				ApplyDynamicTabHighlight(-1);
 				sActiveDynTab = -1;
 			}
 			else
@@ -2897,27 +2954,17 @@ void __fastcall HookedGVCPostRender(void* This, void* Canvas)
 		{
 			ShowDynamicTab(CV, dynHoverIdx);
 			sPendingNativeInactiveSettleFrames = 30;
-			if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(dynHoverIdx == 6);
-			if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(dynHoverIdx == 7);
-			if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(dynHoverIdx == 8);
+			ApplyDynamicTabHighlight(dynHoverIdx);
 			sActiveDynTab = dynHoverIdx;
 		}
 		else if (sActiveDynTab >= 6 && dynHoverIdx == -1)
 		{
-			bool nativeHovered =
-				(CV->BTN_Sound && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Sound)) && CV->BTN_Sound->IsHovered()) ||
-				(CV->BTN_Video && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Video)) && CV->BTN_Video->IsHovered()) ||
-				(CV->BTN_Keys && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Keys)) && CV->BTN_Keys->IsHovered()) ||
-				(CV->BTN_Lan && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Lan)) && CV->BTN_Lan->IsHovered()) ||
-				(CV->BTN_Others && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Others)) && CV->BTN_Others->IsHovered()) ||
-				(CV->BTN_Gamepad && IsSafeLiveObject(static_cast<UObject*>(CV->BTN_Gamepad)) && CV->BTN_Gamepad->IsHovered());
+			bool nativeHovered = IsAnyNativeConfigTabHovered(CV);
 			if (nativeHovered)
 			{
 				ShowOriginalTab(CV);
 				sPendingNativeInactiveSettleFrames = 0;
-				if (IsLiveTabBtn(GDynTab.Btn6)) GDynTab.Btn6->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTab.Btn7)) GDynTab.Btn7->EVT_UpdateActiveStatus(false);
-				if (IsLiveTabBtn(GDynTab.Btn8)) GDynTab.Btn8->EVT_UpdateActiveStatus(false);
+				ApplyDynamicTabHighlight(-1);
 				sActiveDynTab = -1;
 			}
 		}
